@@ -1,0 +1,1 @@
+include $(wildcard $(APPDIR)/nuttx-telemetry/*/Make.defs)
