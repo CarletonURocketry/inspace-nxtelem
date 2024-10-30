@@ -33,13 +33,19 @@ static uint32_t ms_since_on(struct timespec *start) {
 void *collection_main(void *arg) {
 
   int err;
+  enum flight_state_e flight_state;
   struct timespec start_time;
   rocket_state_t *state = (rocket_state_t *)(arg);
 
   /* Get startup time */
   clock_gettime(CLOCK_MONOTONIC, &start_time);
 
+  /* Measure data forever */
+
   for (;;) {
+
+    /* Get the current flight state */
+    err = state_get_flightstate(state, &flight_state); // TODO: error handling
 
     /* Collect data; TODO */
 
@@ -56,6 +62,14 @@ void *collection_main(void *arg) {
 
     err = state_signal_change(state);
     // TODO: handle error
+
+    /* Decide whether to move to lift-off state. TODO: real logic */
+
+    if (flight_state == STATE_IDLE) {
+      // Perform lift-off detection
+      // If lift-off:
+      state_set_flightstate(state, STATE_AIRBORNE);
+    }
   }
 
   pthread_exit(0);

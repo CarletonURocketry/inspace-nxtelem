@@ -20,7 +20,7 @@ void *transmit_main(void *arg) {
     pthread_exit(EXIT_FAILURE); // TODO: handle more gracefully
   }
 
-  /* Transmit forever */
+  /* Transmit forever, regardless of rocket flight state. */
 
   for (;;) {
     err = state_wait_for_change(state); // TODO handle error
