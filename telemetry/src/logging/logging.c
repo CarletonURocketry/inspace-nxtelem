@@ -19,6 +19,7 @@ void *logging_main(void *arg) {
   }
 
   /* Infinite loop to log data */
+
   for (;;) {
 
     /* Wait for the data to have a change */

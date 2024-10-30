@@ -13,6 +13,7 @@ struct coordinate_t {
 
 /* Describes the state of the rocket at any given moment */
 struct rocket_t {
+  uint32_t time;    /* Time of measurement in milliseconds since launch */
   int32_t temp;     /* Temperature in millidegrees Celsius */
   int32_t pressure; /* Pressure in Pascals */
   int32_t altitude; /* Altitude in millimetres */
