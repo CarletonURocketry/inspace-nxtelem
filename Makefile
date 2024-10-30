@@ -1,3 +1,3 @@
-MENUDESC = "telemetry"
+MENUDESC = "InSpace Telemetry"
 
 include $(APPDIR)/Directory.mk

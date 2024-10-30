@@ -1,0 +1,3 @@
+ifneq ($(CONFIG_INSPACE_TELEMETRY),)
+CONFIGURED_APPS += $(APPDIR)/inspace-nxtelem/telemetry
+endif

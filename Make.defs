@@ -1,1 +1,1 @@
-include $(wildcard $(APPDIR)/nuttx-telemetry/*/Make.defs)
+include $(wildcard $(APPDIR)/inspace-nxtelem/*/Make.defs)

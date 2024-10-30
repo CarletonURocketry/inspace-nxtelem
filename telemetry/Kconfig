@@ -1,0 +1,26 @@
+# TODO: add all the requirements for device drivers
+
+config INSPACE_TELEMETRY
+        tristate "InSpace Telemetry System"
+        default n
+        ---help---
+            Enable the Carleton University InSpace telemetry system code.
+
+if INSPACE_TELEMETRY
+
+config INSPACE_TELEMETRY_PROGNAME
+        string "Program name"
+        default "inspace_telem"
+        ---help---
+            This is the name of the program that will be used for the
+            telemetry system application.
+
+config INSPACE_TELEMETRY_PRIORITY
+        int "Telemetry system task priority"
+        default 100
+
+config INSPACE_TELEMETRY_STACKSIZE
+        int "Telemetry system stack size"
+        default DEFAULT_TASK_STACKSIZE
+
+endif # INSPACE_TELEMETRY
