@@ -30,7 +30,7 @@ void *transmit_main(void *arg) {
     /* Encode radio data into packet */
 
     /* Transmit radio data; TODO right now just transmitting state struct */
-    written = write(radio, &state->state, sizeof(state->state));
+    written = write(radio, &state->data, sizeof(state->data));
     if (written == -1) {
       // TODO: handle error in errno
     }

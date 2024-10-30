@@ -30,7 +30,7 @@ void *logging_main(void *arg) {
 
     err = state_read_lock(state); // TODO: handle error
 
-    written = fwrite(&state->state, sizeof(state->state), 1, storage);
+    written = fwrite(&state->data, sizeof(state->data), 1, storage);
     if (written == 0) {
       // TODO: Handle error (might happen if file got too large, start another
       // file)

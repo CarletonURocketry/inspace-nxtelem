@@ -48,8 +48,8 @@ void *collection_main(void *arg) {
     if (err)
       continue;
 
-    state->state.temp++; // TODO: remove and replace with real data
-    state->state.time = ms_since_on(&start_time); /* Measurement time */
+    state->data.temp++; // TODO: remove and replace with real data
+    state->data.time = ms_since_on(&start_time); /* Measurement time */
 
     err = state_unlock(state);
     // TODO: handle error
