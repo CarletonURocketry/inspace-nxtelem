@@ -1,12 +1,19 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <pthread.h>
-#include <stdlib.h>
 #include <unistd.h>
+
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+#include <stdio.h>
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
 
 #include "../packets/packets.h"
 #include "../rocket-state/rocket-state.h"
 #include "transmit.h"
+
+/* Cast an error to a void pointer */
+
+#define err_to_ptr(err) ((void *)((err)))
 
 static uint32_t construct_packet(struct rocket_t *data, uint8_t *pkt,
                                  uint32_t seq_num);
@@ -30,9 +37,10 @@ void *transmit_main(void *arg) {
   radio = open(radio_dev, O_WRONLY);
   if (radio < 0) {
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-    fprintf(stderr, "Error getting radio handle: %d\n", errno);
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
-    pthread_exit((void *)(uint64_t)errno); // TODO: handle more gracefully
+    err = errno;
+    fprintf(stderr, "Error getting radio handle: %d\n", err);
+#endif                             /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+    pthread_exit(err_to_ptr(err)); // TODO: handle more gracefully
   }
 
   /* Transmit forever, regardless of rocket flight state. */
@@ -47,7 +55,7 @@ void *transmit_main(void *arg) {
     packet_size = construct_packet(&state->data, packet, seq_num);
     seq_num++; /* Increment sequence numbering */
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-    printf("Constructed packet #%u of size %u bytes\n", seq_num, packet_size);
+    printf("Constructed packet #%lu of size %lu bytes\n", seq_num, packet_size);
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
 
     /* Transmit radio data */
@@ -70,7 +78,7 @@ void *transmit_main(void *arg) {
 #else
   close(radio);
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
-  pthread_exit((void *)(uint64_t)err);
+  pthread_exit(err_to_ptr(err));
 }
 
 /* Construct a packet from the rocket state data.

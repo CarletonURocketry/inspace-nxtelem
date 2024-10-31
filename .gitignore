@@ -1,3 +1,7 @@
 *.o
 .clang-format
 .cache/
+.kconfig
+.depend
+/Kconfig
+Make.dep

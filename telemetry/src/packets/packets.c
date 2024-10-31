@@ -1,3 +1,5 @@
+#include <string.h>
+
 #include "packets.h"
 
 /* Initialize the packet header.
@@ -7,7 +9,8 @@
  */
 void pkt_hdr_init(pkt_hdr_t *p, const uint32_t packet_number) {
   p->version = PACKET_SPEC_VERSION;
-  p->call_sign = CONFIG_INSPACE_TELEMETRY_CALLSIGN;
+  memcpy(&p->call_sign, CONFIG_INSPACE_TELEMETRY_CALLSIGN,
+         sizeof(CONFIG_INSPACE_TELEMETRY_CALLSIGN));
   p->src_addr = ADDR_ROCKET;
   p->packet_num = packet_number;
   pkt_hdr_set_len(p, 0);

@@ -15,6 +15,6 @@ CSRCS += $(wildcard src/collection/*.c)
 CSRCS += $(wildcard src/rocket-state/*.c)
 CSRCS += $(wildcard src/transmission/*.c)
 CSRCS += $(wildcard src/logging/*.c)
-CSRCS += $(wildcard ../radio-packet/*.c)
+CSRCS += $(wildcard src/packets/*.c)
 
 include $(APPDIR)/Application.mk

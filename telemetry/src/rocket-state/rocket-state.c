@@ -1,5 +1,9 @@
-#include "rocket-state.h"
 #include <pthread.h>
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+#include <stdio.h>
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+
+#include "rocket-state.h"
 
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
 static const char *FLIGHT_STATES[] = {

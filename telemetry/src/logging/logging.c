@@ -21,9 +21,10 @@ void *logging_main(void *arg) {
   FILE *storage = fopen(flight_loc, "ab");
   if (storage == NULL) {
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-    fprintf(stderr, "Error opening log file: %d\n", errno);
+    err = errno;
+    fprintf(stderr, "Error opening log file: %d\n", err);
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
-    pthread_exit((void *)(uint64_t)errno); // TODO: fail more gracefully
+    pthread_exit((void *)((uint64_t)(err))); // TODO: fail more gracefully
   }
 
   /* Infinite loop to handle states */
@@ -51,7 +52,7 @@ void *logging_main(void *arg) {
 
         written = fwrite(&state->data, sizeof(state->data), 1, storage);
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-        printf("Logged %ld bytes\n", written);
+        printf("Logged %u bytes\n", written);
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
         if (written == 0) {
           // TODO: Handle error (might happen if file got too large, start
@@ -79,4 +80,14 @@ void *logging_main(void *arg) {
     }
     }
   }
+
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+  if (fclose(storage) != 0) {
+    err = errno;
+    fprintf(stderr, "Failed to close flight logfile handle: %d\n", err);
+  }
+#else
+  fclose(storage);
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+  pthread_exit((void *)((uint64_t)(err)));
 }
