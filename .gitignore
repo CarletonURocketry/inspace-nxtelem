@@ -5,3 +5,4 @@
 .depend
 /Kconfig
 Make.dep
+.built
