@@ -53,6 +53,8 @@ void *transmit_main(void *arg) {
     /* Encode radio data into packet. */
 
     packet_size = construct_packet(&state->data, packet, seq_num);
+    err = state_unlock(state); // TODO: handle error
+
     seq_num++; /* Increment sequence numbering */
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
     printf("Constructed packet #%lu of size %lu bytes\n", seq_num, packet_size);
@@ -67,8 +69,6 @@ void *transmit_main(void *arg) {
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
       // TODO: handle error in errno
     }
-
-    err = state_unlock(state); // TODO: handle error
   }
 
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
