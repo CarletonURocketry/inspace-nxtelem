@@ -24,8 +24,7 @@ void *transmit_main(void *arg) {
   int err;
   int radio; /* Radio device file descriptor */
   ssize_t written;
-  rocket_state_t *state = ((struct transmit_args_t *)(arg))->state;
-  const char *radio_dev = ((struct transmit_args_t *)(arg))->radio_dev;
+  rocket_state_t *state = (rocket_state_t *)(arg);
 
   /* Packet variables. */
 
@@ -34,7 +33,8 @@ void *transmit_main(void *arg) {
   uint32_t packet_size;            /* The packet size after encoding */
 
   /* Get access to radio TODO: remove O_CREAT */
-  radio = open(radio_dev, O_WRONLY | O_CREAT);
+
+  radio = open(CONFIG_INSPACE_TELEMETRY_RADIO, O_WRONLY | O_CREAT);
   if (radio < 0) {
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
     err = errno;
