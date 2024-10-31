@@ -26,11 +26,16 @@ int main(int argc, char **argv) {
 
   /* Initialize thread arguments */
 
-  struct logging_args_t log_args = {.state = &state,
-                                    .storage_loc = "./test.bin"};
+  struct logging_args_t log_args = {
+      .state = &state,
+      .flight_storage = CONFIG_INSPACE_TELEMETRY_FLIGHT_FS,
+      .landing_storage = CONFIG_INSPACE_TELEMETRY_LANDED_FS,
+  };
 
-  struct transmit_args_t transmit_args = {.state = &state,
-                                          .radio_dev = "./radio.bin"};
+  struct transmit_args_t transmit_args = {
+      .state = &state,
+      .radio_dev = "./radio.bin",
+  };
 
   /* Start all threads */
 

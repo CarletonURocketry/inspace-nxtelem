@@ -5,7 +5,8 @@
 
 struct logging_args_t {
   rocket_state_t *state; /* The rocket state to log */
-  char *storage_loc;     /* Storage location to log to */
+  char *flight_storage;  /* Storage location to log to in flight */
+  char *landing_storage; /* Storage location to copy to when landed */
 };
 
 void *logging_main(void *arg);

@@ -49,4 +49,25 @@ config INSPACE_TELEMETRY_CALLSIGN
         is required. This is used in the packet format transmitted by the
         telemetry system.
 
+config INSPACE_TELEMETRY_FLIGHT_FS
+    string "Flight logging filesystem"
+    default "/flight/"
+    ---help---
+        The path identifier of the filesystem to log data to during flight.
+        Should be a power-failure safe filesystem.
+
+config INSPACE_TELEMETRY_LANDED_FS
+    string "Landing logging filesystem"
+    default "/landed/"
+    ---help---
+        The path identifier of the filesystem to log data to after landing.
+        Should be a FAT file system or something easily accessed from a host
+        computer.
+
+config INSPACE_TELEMETRY_RADIO
+    string "Radio device"
+    default "/dev/rn2483"
+    ---help---
+        The path identifier of the radio device for transmitting.
+
 endif # INSPACE_TELEMETRY

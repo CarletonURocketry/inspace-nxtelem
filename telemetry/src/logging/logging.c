@@ -12,11 +12,13 @@ void *logging_main(void *arg) {
   size_t written;
   enum flight_state_e flight_state;
   rocket_state_t *state = ((struct logging_args_t *)(arg))->state;
-  char *loc = ((struct logging_args_t *)(arg))->storage_loc;
+  char *flight_loc = ((struct logging_args_t *)(arg))->flight_storage;
+  char *landed_loc = ((struct logging_args_t *)(arg))->landing_storage;
   int err;
 
   /* Open storage location in append mode */
-  FILE *storage = fopen(loc, "ab");
+
+  FILE *storage = fopen(flight_loc, "ab");
   if (storage == NULL) {
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
     fprintf(stderr, "Error opening log file: %d\n", errno);
