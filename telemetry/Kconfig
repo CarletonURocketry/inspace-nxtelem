@@ -32,7 +32,7 @@ config INSPACE_TELEMETRY_DEBUG
 config INSPACE_TELEMETRY_RATE
     int "Measurement/logging rate in Hz"
     default 10
-    range 0-100
+    range 0 100
 
 config INSPACE_TELEMETRY_STARTBUFFER
     int "Start buffering in seconds"
