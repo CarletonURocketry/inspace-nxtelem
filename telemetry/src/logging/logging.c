@@ -52,7 +52,7 @@ void *logging_main(void *arg) {
 
         written = fwrite(&state->data, sizeof(state->data), 1, storage);
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-        printf("Logged %u bytes\n", written);
+        printf("Logged %u bytes\n", written * sizeof(state->data));
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
         if (written == 0) {
           // TODO: Handle error (might happen if file got too large, start
@@ -70,6 +70,10 @@ void *logging_main(void *arg) {
     }
 
     case STATE_LANDED: {
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+      printf("Copying files to extraction file system.\n");
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+
       // TODO: copy files
 
       /* Now that logs are copied to FAT partition, move back to the idle state
