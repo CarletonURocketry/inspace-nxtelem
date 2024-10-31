@@ -27,7 +27,7 @@ void *transmit_main(void *arg) {
 
     err = state_read_lock(state); // TODO: handle error
 
-    /* Encode radio data into packet */
+    /* Encode radio data into packet: TODO */
 
     /* Transmit radio data; TODO right now just transmitting state struct */
     written = write(radio, &state->data, sizeof(state->data));

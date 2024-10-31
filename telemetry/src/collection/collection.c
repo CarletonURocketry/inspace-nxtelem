@@ -1,3 +1,4 @@
+#include <bits/time.h>
 #include <pthread.h>
 #include <time.h>
 
@@ -35,9 +36,16 @@ void *collection_main(void *arg) {
   int err;
   enum flight_state_e flight_state;
   struct timespec start_time;
+#if CONFIG_INSPACE_TELEMETRY_RATE != 0
+  const struct timespec interval = {
+      .tv_sec = 0,
+      .tv_nsec = (1e9 / CONFIG_INSPACE_TELEMETRY_RATE),
+  };
+#endif /* CONFIG_INSPACE_TELEMETRY_RATE != 0 */
   rocket_state_t *state = (rocket_state_t *)(arg);
 
   /* Get startup time */
+
   clock_gettime(CLOCK_MONOTONIC, &start_time);
 
   /* Measure data forever */
@@ -45,6 +53,7 @@ void *collection_main(void *arg) {
   for (;;) {
 
     /* Get the current flight state */
+
     err = state_get_flightstate(state, &flight_state); // TODO: error handling
 
     /* Collect data; TODO */
@@ -65,11 +74,26 @@ void *collection_main(void *arg) {
 
     /* Decide whether to move to lift-off state. TODO: real logic */
 
-    if (flight_state == STATE_IDLE) {
-      // Perform lift-off detection
+    switch (flight_state) {
+    case STATE_IDLE: {
+      // Perform lift-off detection operations
       // If lift-off:
       state_set_flightstate(state, STATE_AIRBORNE);
+    } break;
+    case STATE_AIRBORNE: {
+      // Perform landing detection operations
+      // If landed
+      state_set_flightstate(state, STATE_LANDED);
+    } break;
+    case STATE_LANDED:
+      break; /* Do nothing, just continue collecting */
     }
+
+#if CONFIG_INSPACE_TELEMETRY_RATE != 0
+    /* Once operations are complete, wait until the next measuring period */
+
+    clock_nanosleep(CLOCK_MONOTONIC, 0, &interval, NULL);
+#endif /* CONFIG_INSPACE_TELEMETRY_RATE != 0 */
   }
 
   pthread_exit(0);

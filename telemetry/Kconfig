@@ -1,4 +1,4 @@
-# TODO: add all the requirements for device drivers
+# TODO: add all the "dependency" requirements for device drivers
 
 config INSPACE_TELEMETRY
     tristate "InSpace Telemetry System"
@@ -34,5 +34,12 @@ config INSPACE_TELEMETRY_STARTBUFFER
         When the telemetry system starts, a rolling buffer of the last `n`
         seconds is kept up to date. This ensures that lift-off detection latency
         does not cause data loss about the initial lift-off.
+
+config INSPACE_TELEMETRY_CALLSIGN
+    string "HAM radio call sign"
+    ---help---
+        In order to transmit radio messages legally, an amateur radio call sign
+        is required. This is used in the packet format transmitted by the
+        telemetry system.
 
 endif # INSPACE_TELEMETRY
