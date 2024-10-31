@@ -66,6 +66,10 @@ void *collection_main(void *arg) {
     state->data.temp++; // TODO: remove and replace with real data
     state->data.time = ms_since_on(&start_time); /* Measurement time */
 
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+    printf("Measurement time: %u ms\n", state->data.time);
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+
     err = state_unlock(state);
     // TODO: handle error
 

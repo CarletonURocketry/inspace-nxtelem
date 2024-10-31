@@ -23,6 +23,12 @@ config INSPACE_TELEMETRY_STACKSIZE
     int "Telemetry system stack size"
     default DEFAULT_TASK_STACKSIZE
 
+config INSPACE_TELEMETRY_DEBUG
+    bool "Debug telemetry system"
+    default n
+    ---help---
+        Enable debugging loggin in the telemetry system application.
+
 config INSPACE_TELEMETRY_RATE
     int "Measurement/logging rate in Hz"
     default 10

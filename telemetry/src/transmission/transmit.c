@@ -1,3 +1,4 @@
+#include <errno.h>
 #include <fcntl.h>
 #include <pthread.h>
 #include <stdlib.h>
@@ -28,7 +29,10 @@ void *transmit_main(void *arg) {
   /* Get access to radio */
   radio = open(radio_dev, O_WRONLY);
   if (radio < 0) {
-    pthread_exit(EXIT_FAILURE); // TODO: handle more gracefully
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+    fprintf(stderr, "Error getting radio handle: %d\n", errno);
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+    pthread_exit((void *)(uint64_t)errno); // TODO: handle more gracefully
   }
 
   /* Transmit forever, regardless of rocket flight state. */
@@ -42,21 +46,39 @@ void *transmit_main(void *arg) {
 
     packet_size = construct_packet(&state->data, packet, seq_num);
     seq_num++; /* Increment sequence numbering */
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+    printf("Constructed packet #%u of size %u bytes\n", seq_num, packet_size);
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
 
     /* Transmit radio data */
 
     written = write(radio, packet, packet_size);
     if (written == -1) {
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+      fprintf(stderr, "Error transmitting: %d\n", errno);
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
       // TODO: handle error in errno
     }
 
     err = state_unlock(state); // TODO: handle error
   }
 
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+  if (close(radio) < 0) {
+    fprintf(stderr, "Error closing radio handle: %d\n", err);
+  }
+#else
   close(radio);
-  pthread_exit(0);
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+  pthread_exit((void *)(uint64_t)err);
 }
 
+/* Construct a packet from the rocket state data.
+ * @param data The rocket data to encode
+ * @param pkt The packet buffer to encode the data in
+ * @param seq_num The sequence number of the packet
+ * @return The packet's length in bytes
+ */
 static uint32_t construct_packet(struct rocket_t *data, uint8_t *pkt,
                                  uint32_t seq_num) {
 
@@ -85,4 +107,5 @@ static uint32_t construct_packet(struct rocket_t *data, uint8_t *pkt,
   /* Update packet header length with the size of all written bytes */
 
   pkt_hdr_set_len(pkt_hdr, size - sizeof(pkt_hdr_t));
+  return size;
 }

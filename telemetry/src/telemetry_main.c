@@ -18,7 +18,9 @@ int main(int argc, char **argv) {
   pthread_t log_thread;
   pthread_t collect_thread;
 
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
   puts("You are running the Carleton University InSpace telemetry system.");
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
 
   state_init(&state); /* Initialize shared state */
 
@@ -34,16 +36,28 @@ int main(int argc, char **argv) {
 
   // TODO: handle thread creation errors better
   err = pthread_create(&collect_thread, NULL, collection_main, &state);
-  if (err)
+  if (err) {
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+    fprintf(stderr, "Problem starting collection thread: %d\n", err);
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
     exit(EXIT_FAILURE);
+  }
 
   err = pthread_create(&log_thread, NULL, logging_main, &log_args);
-  if (err)
+  if (err) {
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+    fprintf(stderr, "Problem starting logging thread: %d\n", err);
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
     exit(EXIT_FAILURE);
+  }
 
   err = pthread_create(&transmit_thread, NULL, transmit_main, &transmit_thread);
-  if (err)
+  if (err) {
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+    fprintf(stderr, "Problem starting transmission thread: %d\n", err);
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
     exit(EXIT_FAILURE);
+  }
 
   /* Join on all threads: TODO handle errors */
 

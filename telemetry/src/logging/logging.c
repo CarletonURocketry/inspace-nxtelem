@@ -1,6 +1,8 @@
-#include "logging.h"
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
+
+#include "logging.h"
 
 /*
  * Logging thread which runs to log data to the SD card.
@@ -16,14 +18,17 @@ void *logging_main(void *arg) {
   /* Open storage location in append mode */
   FILE *storage = fopen(loc, "ab");
   if (storage == NULL) {
-    pthread_exit((void *)EXIT_FAILURE); // TODO: fail more gracefully
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+    fprintf(stderr, "Error opening log file: %d\n", errno);
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+    pthread_exit((void *)(uint64_t)errno); // TODO: fail more gracefully
   }
 
   /* Infinite loop to handle states */
 
-  err = state_get_flightstate(state, &flight_state);
-
   for (;;) {
+
+    err = state_get_flightstate(state, &flight_state);
 
     switch (flight_state) {
     case STATE_IDLE:
@@ -43,6 +48,9 @@ void *logging_main(void *arg) {
         err = state_read_lock(state); // TODO: handle error
 
         written = fwrite(&state->data, sizeof(state->data), 1, storage);
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+        printf("Logged %ld bytes\n", written);
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
         if (written == 0) {
           // TODO: Handle error (might happen if file got too large, start
           // another file)

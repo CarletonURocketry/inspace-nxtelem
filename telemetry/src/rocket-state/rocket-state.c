@@ -1,6 +1,14 @@
 #include "rocket-state.h"
 #include <pthread.h>
 
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+static const char *FLIGHT_STATES[] = {
+    [STATE_IDLE] = "STATE_IDLE",
+    [STATE_LANDED] = "STATE_LANDED",
+    [STATE_AIRBORNE] = "STATE_AIRBORNE",
+};
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+
 /*
  * Gets the current flight state stored in NV storage.
  * TODO: tell this where to get flight state
@@ -40,6 +48,9 @@ int state_init(rocket_state_t *state) {
  * @return 0 on success, error code on failure
  */
 int state_signal_change(rocket_state_t *state) {
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+  printf("State change signalled.\n");
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
   state->changed = true;
   return pthread_cond_broadcast(&state->change);
 }
@@ -115,6 +126,9 @@ int state_set_flightstate(rocket_state_t *state,
   int err;
   err = state_write_lock(state);
   state->state = flight_state;
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+  printf("Flight state changed to %s\n", FLIGHT_STATES[flight_state]);
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
   err = state_unlock(state);
   return err;
 }
