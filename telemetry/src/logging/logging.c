@@ -9,9 +9,17 @@
 
 #define MAX_FILENAME 32
 
-/* The format for log file names */
+/* The format for flight log file names */
 
-#define FILENAME_FORMAT(dir) dir "log%d.bin"
+#define FLIGHT_FNAME_FMT CONFIG_INSPACE_TELEMETRY_FLIGHT_FS "/flog%d.bin"
+
+/* The format for extraction log file names */
+
+#define EXTR_FNAME_FMT CONFIG_INSPACE_TELEMETRY_LANDED_FS "/elog%d.bin"
+
+/* Cast an error to a void pointer */
+
+#define err_to_ptr(err) ((void *)((err)))
 
 /*
  * Logging thread which runs to log data to the SD card.
@@ -24,12 +32,11 @@ void *logging_main(void *arg) {
   rocket_state_t *state = ((rocket_state_t *)(arg));
   char flight_filename[sizeof(CONFIG_INSPACE_TELEMETRY_FLIGHT_FS) +
                        MAX_FILENAME];
-  char land_filename[sizeof(CONFIG_INSPACE_TELEMETRY_LAND_FS) + MAX_FILENAME];
+  char land_filename[sizeof(CONFIG_INSPACE_TELEMETRY_LANDED_FS) + MAX_FILENAME];
 
   /* Generate flight log file name TODO: use sequence numbers */
 
-  snprintf(flight_filename, sizeof(flight_filename),
-           FILENAME_FORMAT(CONFIG_INSPACE_TELEMETRY_FLIGHT_FS), 0);
+  snprintf(flight_filename, sizeof(flight_filename), FLIGHT_FNAME_FMT, 0);
 
   /* Open storage location in append mode */
 
@@ -37,9 +44,9 @@ void *logging_main(void *arg) {
   if (storage == NULL) {
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
     err = errno;
-    fprintf(stderr, "Error opening log file: %d\n", err);
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
-    pthread_exit((void *)((uint64_t)(err))); // TODO: fail more gracefully
+    fprintf(stderr, "Error opening log file '%s': %d\n", flight_filename, err);
+#endif                             /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+    pthread_exit(err_to_ptr(err)); // TODO: fail more gracefully
   }
 
   /* Infinite loop to handle states */
@@ -91,20 +98,20 @@ void *logging_main(void *arg) {
 
       /* Generate log file name for extraction file system */
 
-      snprintf(land_filename, sizeof(land_filename),
-               FILENAME_FORMAT(CONFIG_INSPACE_TELEMETRY_LAND_FS),
+      snprintf(land_filename, sizeof(land_filename), EXTR_FNAME_FMT,
                0); // TODO: use log seq number
 
       /* Open extraction log file */
 
       FILE *log = fopen(land_filename, "wb");
       if (log == NULL) {
+        err = errno;
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
         fprintf(stderr,
                 "Couldn't open extraction log file '%s' with error: %d\n",
-                land_filename, errno);
+                land_filename, err);
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
-        pthread_exit(errno);
+        pthread_exit(err_to_ptr(err));
       }
 
       /* Roll power-safe log file pointer back to beginning */
@@ -129,10 +136,11 @@ void *logging_main(void *arg) {
 
       if (fclose(log) != 0) {
         // TODO: handle error
+        err = errno;
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
         fprintf(stderr,
                 "Couldn't close extraction log file '%s' with error: %d\n",
-                land_filename, errno);
+                land_filename, err);
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
       }
 
@@ -149,5 +157,5 @@ void *logging_main(void *arg) {
 #else
   fclose(storage);
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
-  pthread_exit((void *)((uint64_t)(err)));
+  pthread_exit(err_to_ptr(err));
 }
