@@ -32,6 +32,10 @@ void *transmit_main(void *arg) {
   uint32_t seq_num = 0;            /* Packet numbering */
   uint32_t packet_size;            /* The packet size after encoding */
 
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+  printf("Transmit thread started.\n");
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+
   /* Get access to radio TODO: remove O_CREAT */
 
   radio = open(CONFIG_INSPACE_TELEMETRY_RADIO, O_WRONLY | O_CREAT);

@@ -34,6 +34,10 @@ void *logging_main(void *arg) {
                        MAX_FILENAME];
   char land_filename[sizeof(CONFIG_INSPACE_TELEMETRY_LANDED_FS) + MAX_FILENAME];
 
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+  printf("Logging thread started.\n");
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+
   /* Generate flight log file name TODO: use sequence numbers */
 
   snprintf(flight_filename, sizeof(flight_filename), FLIGHT_FNAME_FMT, 0);
@@ -62,32 +66,29 @@ void *logging_main(void *arg) {
 
       /* Infinite loop to log data */
 
-      for (;;) {
+      /* Wait for the data to have a change */
 
-        /* Wait for the data to have a change */
+      err = state_wait_for_change(state); // TODO: handle error
 
-        err = state_wait_for_change(state); // TODO: handle error
+      /* Log data */
 
-        /* Log data */
+      err = state_read_lock(state); // TODO: handle error
 
-        err = state_read_lock(state); // TODO: handle error
-
-        written = fwrite(&state->data, sizeof(state->data), 1, storage);
+      written = fwrite(&state->data, sizeof(state->data), 1, storage);
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-        printf("Logged %u bytes\n", written * sizeof(state->data));
+      printf("Logged %u bytes\n", written * sizeof(state->data));
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
-        if (written == 0) {
-          // TODO: Handle error (might happen if file got too large, start
-          // another file)
-        }
+      if (written == 0) {
+        // TODO: Handle error (might happen if file got too large, start
+        // another file)
+      }
 
-        err = state_unlock(state); // TODO: handle error
+      err = state_unlock(state); // TODO: handle error
 
-        /* If we are in the idle state, only write the latest n seconds of data
-         */
-        if (flight_state == STATE_IDLE) {
-          // TODO: check file position
-        }
+      /* If we are in the idle state, only write the latest n seconds of data
+       */
+      if (flight_state == STATE_IDLE) {
+        // TODO: check file position
       }
     }
 

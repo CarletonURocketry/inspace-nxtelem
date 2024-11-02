@@ -30,6 +30,10 @@ void *collection_main(void *arg) {
   struct timespec next_interval;
 #endif /* CONFIG_INSPACE_TELEMETRY_RATE != 0 */
 
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+  printf("Collection thread started.\n");
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+
   /* Get startup time */
 
   clock_gettime(CLOCK_MONOTONIC, &start_time);
