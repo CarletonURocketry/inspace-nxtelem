@@ -90,7 +90,7 @@ void *logging_main(void *arg) {
       if (flight_state == STATE_IDLE) {
         // TODO: check file position
       }
-    }
+    } break;
 
     case STATE_LANDED: {
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)

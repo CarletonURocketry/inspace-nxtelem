@@ -56,8 +56,8 @@ int main(int argc, char **argv) {
 
   /* Join on all threads: TODO handle errors */
 
-  err = pthread_join(transmit_thread, NULL);
   err = pthread_join(collect_thread, NULL);
+  err = pthread_join(transmit_thread, NULL);
   err = pthread_join(log_thread, NULL);
 
   return err;
