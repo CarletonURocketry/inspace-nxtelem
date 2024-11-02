@@ -50,7 +50,14 @@ void *transmit_main(void *arg) {
   /* Transmit forever, regardless of rocket flight state. */
 
   for (;;) {
-    err = state_wait_for_change(state); // TODO handle error
+
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+    printf("Transmit thread blocking.\n");
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+    err = state_wait_for_change(state); // TODO: handle error
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+    printf("Transmit thread unblocked.\n");
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
 
     err = state_read_lock(state); // TODO: handle error
 

@@ -38,18 +38,18 @@ int main(int argc, char **argv) {
     exit(EXIT_FAILURE);
   }
 
-  err = pthread_create(&log_thread, NULL, logging_main, &state);
-  if (err) {
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-    fprintf(stderr, "Problem starting logging thread: %d\n", err);
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
-    exit(EXIT_FAILURE);
-  }
-
   err = pthread_create(&transmit_thread, NULL, transmit_main, &state);
   if (err) {
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
     fprintf(stderr, "Problem starting transmission thread: %d\n", err);
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+    exit(EXIT_FAILURE);
+  }
+
+  err = pthread_create(&log_thread, NULL, logging_main, &state);
+  if (err) {
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+    fprintf(stderr, "Problem starting logging thread: %d\n", err);
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
     exit(EXIT_FAILURE);
   }

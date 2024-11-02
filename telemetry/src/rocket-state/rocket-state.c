@@ -42,15 +42,15 @@ static int barrier_init(struct barrier_t *barrier) {
  */
 static int barrier_signal_change(struct barrier_t *barrier) {
 
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-  printf("State change signalled.\n");
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
-
   /* Allow all currently waiting threads to pass */
 
   pthread_mutex_lock(&barrier->lock);
   barrier->signalled = barrier->waiting;
   pthread_mutex_unlock(&barrier->lock);
+
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+  printf("State change signalled to %u threads.\n", barrier->signalled);
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
 
   return pthread_cond_broadcast(&barrier->change);
 }

@@ -68,7 +68,13 @@ void *logging_main(void *arg) {
 
       /* Wait for the data to have a change */
 
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+      printf("Logging thread blocking.\n");
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
       err = state_wait_for_change(state); // TODO: handle error
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+      printf("Logging thread unblocked.\n");
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
 
       /* Log data */
 
