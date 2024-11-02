@@ -80,6 +80,7 @@ void *transmit_main(void *arg) {
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
       // TODO: handle error in errno
     }
+    usleep(500000);
   }
 
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
