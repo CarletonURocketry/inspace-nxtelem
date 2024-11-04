@@ -10,15 +10,14 @@ typedef struct {
 } partition_state_t;
 
 static void partition_handler(struct partition_s *part, void *arg) {
-  unsigned partition = *(int *)arg;
-
   partition_state_t *partition_handler_state = (partition_state_t *)arg;
 
   char devname[] = "/dev/mmcsd0p0";
 
-  if (partition < 10 && part->index == partition_handler_state->partition_num) {
+  if (partition_handler_state->partition_num < 10 &&
+      part->index == partition_handler_state->partition_num) {
     finfo("Num of sectors: %d \n", part->nblocks);
-    devname[sizeof(devname) - 2] = partition + 48;
+    devname[sizeof(devname) - 2] = partition_handler_state->partition_num + 48;
     register_blockpartition(devname, 0, "/dev/mmcsd0", part->firstblock,
                             part->nblocks);
     partition_handler_state->err = 0;
@@ -51,14 +50,14 @@ int main(int argc, char **argv) {
   }
   if (ret) {
     ferr("ERROR: Could not mount fat partition %d: \n", ret);
-    // return ret;
+    return ret;
   }
 
   /*Mount our littlefs partition, and format it if it's corrupted*/
   ret = nx_mount("dev/mmcsd0p1", "/mnt/sd0p1", "littlefs", 666, "autoformat");
   if (ret) {
     ferr("ERROR: could not mount littlefs partition %d: \n", ret);
-    // return ret;
+    return ret;
   }
 
   return OK;
