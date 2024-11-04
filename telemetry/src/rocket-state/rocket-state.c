@@ -28,6 +28,7 @@ static enum flight_state_e get_flight_state(void) {
  */
 static int barrier_init(struct barrier_t *barrier) {
   int err;
+  barrier->version = 0;
   err = pthread_mutex_init(&barrier->lock, NULL);
   if (err)
     return err;
@@ -40,7 +41,21 @@ static int barrier_init(struct barrier_t *barrier) {
  */
 static int barrier_signal_change(struct barrier_t *barrier) {
 
-  /* Allow all currently waiting threads to pass */
+  int err;
+
+  /* Increment the version number of the data. */
+
+  err = pthread_mutex_lock(&barrier->lock);
+  if (err)
+    return err;
+
+  barrier->version++;
+
+  err = pthread_mutex_unlock(&barrier->lock);
+  if (err)
+    return err;
+
+    /* Allow all currently waiting threads to pass */
 
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
   printf("State change signalled.\n");
@@ -51,9 +66,11 @@ static int barrier_signal_change(struct barrier_t *barrier) {
 
 /* Block on the barrier until a change is signalled.
  * @param barrier The barrier to block on.
+ * @param version The last version of data the caller has seen
  * @return 0 for success, error code on failure.
  */
-static int barrier_wait_for_change(struct barrier_t *barrier) {
+static int barrier_wait_for_change(struct barrier_t *barrier,
+                                   uint32_t *version) {
 
   int err;
 
@@ -63,13 +80,22 @@ static int barrier_wait_for_change(struct barrier_t *barrier) {
   if (err)
     return err;
 
-  /* TODO: this is susceptible to spurious wake-up. How can we prevent this? */
+  /*
+   * If the latest version of the data matches is less than or equal to the last
+   * version we saw, we should block and wait for something new that we haven't
+   * seen before.
+   */
 
-  pthread_cond_wait(&barrier->change, &barrier->lock);
+  while (barrier->version <= *version) {
+    pthread_cond_wait(&barrier->change, &barrier->lock);
+  }
 
   /* If we are here, the state has changed and we have passed the barrier.
-   * Release the lock so we can do something with the newly changed state. */
+   * Make sure we update our most recently seen version, then release the lock
+   * so we can do something with the newly changed state.
+   */
 
+  *version = barrier->version;
   return pthread_mutex_unlock(&barrier->lock);
 }
 
@@ -102,10 +128,11 @@ int state_signal_change(rocket_state_t *state) {
 
 /* Blocking wait until the rocket state has changed.
  * @param state The rocket state on which to wait for a change
+ * @param version The last version of the data seen by the caller
  * @return 0 on success, error code on failure
  */
-int state_wait_for_change(rocket_state_t *state) {
-  return barrier_wait_for_change(&state->barrier);
+int state_wait_for_change(rocket_state_t *state, uint32_t *version) {
+  return barrier_wait_for_change(&state->barrier, version);
 }
 
 /* Lock the rocket state for writing.

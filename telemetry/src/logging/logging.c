@@ -30,6 +30,7 @@ void *logging_main(void *arg) {
   size_t written;
   enum flight_state_e flight_state;
   rocket_state_t *state = ((rocket_state_t *)(arg));
+  uint32_t version = 0;
   char flight_filename[sizeof(CONFIG_INSPACE_TELEMETRY_FLIGHT_FS) +
                        MAX_FILENAME];
   char land_filename[sizeof(CONFIG_INSPACE_TELEMETRY_LANDED_FS) + MAX_FILENAME];
@@ -73,7 +74,7 @@ void *logging_main(void *arg) {
 
       /* Wait for the data to have a change */
 
-      err = state_wait_for_change(state); // TODO: handle error
+      err = state_wait_for_change(state, &version); // TODO: handle error
 
       /* Log data */
 
