@@ -51,6 +51,11 @@ void *collection_main(void *arg) {
     /* Get the current flight state */
 
     err = state_get_flightstate(state, &flight_state); // TODO: error handling
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+    if (err) {
+      fprintf(stderr, "Could not get flight state: %d\n", err);
+    }
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
 
     /* Collect data; TODO */
 
@@ -59,9 +64,14 @@ void *collection_main(void *arg) {
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
 
     /* Put data in the state structure */
+
     err = state_write_lock(state);
-    if (err)
+    if (err) {
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+      fprintf(stderr, "Could not acquire state write lock: %d\n", err);
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
       continue;
+    }
 
     state->data.temp++; // TODO: remove and replace with real data
     state->data.time = ms_since(&start_time); /* Measurement time */
@@ -71,10 +81,18 @@ void *collection_main(void *arg) {
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
 
     err = state_unlock(state);
-    // TODO: handle error
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+    if (err) {
+      fprintf(stderr, "Could not release state write lock: %d\n", err);
+    }
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
 
     err = state_signal_change(state);
-    // TODO: handle error
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+    if (err) {
+      fprintf(stderr, "Could not signal state change: %d\n", err);
+    }
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
 
     /* Decide whether to move to lift-off state. TODO: real logic */
 
@@ -113,7 +131,7 @@ void *collection_main(void *arg) {
 static uint32_t ms_since(struct timespec *start) {
 
   struct timespec now;
-  clock_gettime(CLOCK_MONOTONIC, &now);
+  clock_gettime(CLOCK_MONOTONIC, &now); // TODO: this can fail
 
   struct timespec diff = {
       .tv_sec = (now.tv_sec - start->tv_sec),

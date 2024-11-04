@@ -58,6 +58,11 @@ void *logging_main(void *arg) {
   for (;;) {
 
     err = state_get_flightstate(state, &flight_state);
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+    if (err) {
+      fprintf(stderr, "Error getting flight state: %d\n", err);
+    }
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
 
     switch (flight_state) {
     case STATE_IDLE:
@@ -79,6 +84,11 @@ void *logging_main(void *arg) {
       /* Log data */
 
       err = state_read_lock(state); // TODO: handle error
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+      if (err) {
+        fprintf(stderr, "Error getting read lock: %d\n", err);
+      }
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
 
       written = fwrite(&state->data, sizeof(state->data), 1, storage);
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
@@ -90,6 +100,11 @@ void *logging_main(void *arg) {
       }
 
       err = state_unlock(state); // TODO: handle error
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+      if (err) {
+        fprintf(stderr, "Error releasing read lock: %d\n", err);
+      }
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
 
       /* If we are in the idle state, only write the latest n seconds of data
        */
@@ -151,7 +166,7 @@ void *logging_main(void *arg) {
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
       }
 
-      state_set_flightstate(state, STATE_IDLE); // TODO: error handling
+      err = state_set_flightstate(state, STATE_IDLE); // TODO: error handling
     }
     }
   }

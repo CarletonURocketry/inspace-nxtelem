@@ -60,11 +60,21 @@ void *transmit_main(void *arg) {
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
 
     err = state_read_lock(state); // TODO: handle error
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+    if (err) {
+      fprintf(stderr, "Error acquiring read lock: %d\n", err);
+    }
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
 
     /* Encode radio data into packet. */
 
     packet_size = construct_packet(&state->data, packet, seq_num);
     err = state_unlock(state); // TODO: handle error
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+    if (err) {
+      fprintf(stderr, "Error releasing read lock: %d\n", err);
+    }
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
 
     seq_num++; /* Increment sequence numbering */
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
@@ -75,12 +85,16 @@ void *transmit_main(void *arg) {
 
     written = write(radio, packet, packet_size);
     if (written == -1) {
+      err = errno;
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-      fprintf(stderr, "Error transmitting: %d\n", errno);
+      fprintf(stderr, "Error transmitting: %d\n", err);
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
       // TODO: handle error in errno
     }
     usleep(500000);
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+    printf("Completed transmission of packet #%lu.\n", seq_num);
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
   }
 
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
