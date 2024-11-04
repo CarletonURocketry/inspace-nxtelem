@@ -73,22 +73,11 @@ void *logging_main(void *arg) {
 
       /* Wait for the data to have a change */
 
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-      printf("Logging thread blocking.\n");
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
       err = state_wait_for_change(state); // TODO: handle error
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-      printf("Logging thread unblocked.\n");
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
 
       /* Log data */
 
       err = state_read_lock(state); // TODO: handle error
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-      if (err) {
-        fprintf(stderr, "Error getting read lock: %d\n", err);
-      }
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
 
       written = fwrite(&state->data, sizeof(state->data), 1, storage);
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)

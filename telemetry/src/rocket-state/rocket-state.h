@@ -35,8 +35,6 @@ struct rocket_t {
 struct barrier_t {
   pthread_mutex_t lock;  /* Lock for blocking on condvar */
   pthread_cond_t change; /* Condvar to detect state change */
-  uint8_t waiting;       /* Number of threads waiting at the barrier */
-  uint8_t signalled;     /* Number of threads allowed to pass the barrier */
 };
 
 /* A monitor struct for accessing the rocket state safely between threads */

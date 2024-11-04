@@ -28,8 +28,6 @@ static enum flight_state_e get_flight_state(void) {
  */
 static int barrier_init(struct barrier_t *barrier) {
   int err;
-  barrier->waiting = 0;
-  barrier->signalled = 0;
   err = pthread_mutex_init(&barrier->lock, NULL);
   if (err)
     return err;
@@ -42,22 +40,10 @@ static int barrier_init(struct barrier_t *barrier) {
  */
 static int barrier_signal_change(struct barrier_t *barrier) {
 
-  int err;
-
   /* Allow all currently waiting threads to pass */
 
-  err = pthread_mutex_lock(&barrier->lock);
-  if (err)
-    return err;
-
-  barrier->signalled = barrier->waiting;
-
-  err = pthread_mutex_unlock(&barrier->lock);
-  if (err)
-    return err;
-
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-  printf("State change signalled to %u threads.\n", barrier->signalled);
+  printf("State change signalled.\n");
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
 
   return pthread_cond_broadcast(&barrier->change);
@@ -77,44 +63,12 @@ static int barrier_wait_for_change(struct barrier_t *barrier) {
   if (err)
     return err;
 
-  barrier->waiting++; /* Record that we are waiting */
+  /* TODO: this is susceptible to spurious wake-up. How can we prevent this? */
 
-  /* Here we block inside a loop which prevents us from waking up spuriously.
-   *
-   * If the number of currently waiting threads is not equal to the number of
-   * signalled threads, this is because one of the threads who was already
-   * signalled came back around to wait again. It should block.
-   *
-   * If the number of waiting threads is equal to the number of signalled
-   * threads, we know that any thread who was waiting here passed the barrier
-   * and decremented the number of waiting and signalled threads to keep them
-   * equal. When the condvar is first signalled, the producer sets `waiting`
-   * equal to `signalled`, so these numbers start equal.
-   *
-   * That means that a thread who has come around to block twice in a row will
-   * get trapped by this condition until all other waiting threads have passed
-   * the barrier.
-   *
-   * This synchronization method allows consumers of different speeds to consume
-   * the same data. If a really fast consumer is keeping up with the producer
-   * while the slow consumer is still doing processing, `waiting` will only be
-   * 1. This means the fast consumer does not have to wait for the slow one to
-   * continue consuming new data. Whenever the slow one is done processing, it
-   * will also increment wait. Now wait will be 2, both consumers will be
-   * signalled when a change happens, and they will both get a chance to consume
-   * the underlying data.
-   */
-  while (barrier->waiting != barrier->signalled) {
-    /* Never returns an error code as per manpages `pthread_cond_init(3)` */
-    pthread_cond_wait(&barrier->change, &barrier->lock);
-  }
+  pthread_cond_wait(&barrier->change, &barrier->lock);
 
-  /* If we are here, the state has changed and we have passed the barrier. */
-
-  barrier->waiting--;
-  barrier->signalled--;
-
-  /* Release the lock so we can do something with the newly changed state */
+  /* If we are here, the state has changed and we have passed the barrier.
+   * Release the lock so we can do something with the newly changed state. */
 
   return pthread_mutex_unlock(&barrier->lock);
 }
