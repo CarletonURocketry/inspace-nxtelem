@@ -2,6 +2,7 @@
 #include <sched.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
 
 #include "rocket-state/rocket-state.h"
 
@@ -26,7 +27,13 @@ int main(int argc, char **argv) {
 
   /* Initialize shared state */
 
-  state_init(&state);
+  err = state_init(&state);
+  if (err) {
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+    fprintf(stderr, "Could not initialize state: %d\n", err);
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+    exit(EXIT_FAILURE);
+  }
 
   /* Start all threads */
 
@@ -47,32 +54,12 @@ int main(int argc, char **argv) {
     exit(EXIT_FAILURE);
   }
 
-  int policy;
-  struct sched_param param;
-  err = pthread_getschedparam(transmit_thread, &policy, &param);
-
-  err = pthread_setschedparam(transmit_thread, SCHED_FIFO, &param);
-  if (err) {
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-    fprintf(stderr, "Problem setting transmit thread scheduling policy: %d\n",
-            err);
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
-  }
-
   err = pthread_create(&log_thread, NULL, logging_main, &state);
   if (err) {
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
     fprintf(stderr, "Problem starting logging thread: %d\n", err);
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
     exit(EXIT_FAILURE);
-  }
-  err = pthread_setschedparam(log_thread, SCHED_FIFO, &param);
-  if (err) {
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-    fprintf(stderr, "Problem setting logging thread scheduling policy: %d\n",
-            err);
-#endif /* defined                                                              \
-CONFIG_INSPACE_TELEMETRY_DEBUG) */
   }
 
   /* Join on all threads: TODO handle errors */

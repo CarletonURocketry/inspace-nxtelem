@@ -28,8 +28,7 @@ static enum flight_state_e get_flight_state(void) {
  */
 static int barrier_init(struct barrier_t *barrier) {
   int err;
-  barrier->waiting = 0;
-  barrier->signalled = 0;
+  barrier->version = 0;
   err = pthread_mutex_init(&barrier->lock, NULL);
   if (err)
     return err;
@@ -42,14 +41,24 @@ static int barrier_init(struct barrier_t *barrier) {
  */
 static int barrier_signal_change(struct barrier_t *barrier) {
 
-  /* Allow all currently waiting threads to pass */
+  int err;
 
-  pthread_mutex_lock(&barrier->lock);
-  barrier->signalled = barrier->waiting;
-  pthread_mutex_unlock(&barrier->lock);
+  /* Increment the version number of the data. */
+
+  err = pthread_mutex_lock(&barrier->lock);
+  if (err)
+    return err;
+
+  barrier->version++;
+
+  err = pthread_mutex_unlock(&barrier->lock);
+  if (err)
+    return err;
+
+    /* Allow all currently waiting threads to pass */
 
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-  printf("State change signalled to %u threads.\n", barrier->signalled);
+  printf("State change signalled.\n");
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
 
   return pthread_cond_broadcast(&barrier->change);
@@ -57,9 +66,11 @@ static int barrier_signal_change(struct barrier_t *barrier) {
 
 /* Block on the barrier until a change is signalled.
  * @param barrier The barrier to block on.
+ * @param version The last version of data the caller has seen
  * @return 0 for success, error code on failure.
  */
-static int barrier_wait_for_change(struct barrier_t *barrier) {
+static int barrier_wait_for_change(struct barrier_t *barrier,
+                                   uint32_t *version) {
 
   int err;
 
@@ -69,44 +80,22 @@ static int barrier_wait_for_change(struct barrier_t *barrier) {
   if (err)
     return err;
 
-  barrier->waiting++; /* Record that we are waiting */
-
-  /* Here we block inside a loop which prevents us from waking up spuriously.
-   *
-   * If the number of currently waiting threads is not equal to the number of
-   * signalled threads, this is because one of the threads who was already
-   * signalled came back around to wait again. It should block.
-   *
-   * If the number of waiting threads is equal to the number of signalled
-   * threads, we know that any thread who was waiting here passed the barrier
-   * and decremented the number of waiting and signalled threads to keep them
-   * equal. When the condvar is first signalled, the producer sets `waiting`
-   * equal to `signalled`, so these numbers start equal.
-   *
-   * That means that a thread who has come around to block twice in a row will
-   * get trapped by this condition until all other waiting threads have passed
-   * the barrier.
-   *
-   * This synchronization method allows consumers of different speeds to consume
-   * the same data. If a really fast consumer is keeping up with the producer
-   * while the slow consumer is still doing processing, `waiting` will only be
-   * 1. This means the fast consumer does not have to wait for the slow one to
-   * continue consuming new data. Whenever the slow one is done processing, it
-   * will also increment wait. Now wait will be 2, both consumers will be
-   * signalled when a change happens, and they will both get a chance to consume
-   * the underlying data.
+  /*
+   * If the latest version of the data matches is less than or equal to the last
+   * version we saw, we should block and wait for something new that we haven't
+   * seen before.
    */
-  while (barrier->waiting != barrier->signalled) {
+
+  while (barrier->version <= *version) {
     pthread_cond_wait(&barrier->change, &barrier->lock);
   }
 
-  /* If we are here, the state has changed and we have passed the barrier. */
+  /* If we are here, the state has changed and we have passed the barrier.
+   * Make sure we update our most recently seen version, then release the lock
+   * so we can do something with the newly changed state.
+   */
 
-  barrier->waiting--;
-  barrier->signalled--;
-
-  /* Release the lock so we can do something with the newly changed state */
-
+  *version = barrier->version;
   return pthread_mutex_unlock(&barrier->lock);
 }
 
@@ -139,10 +128,11 @@ int state_signal_change(rocket_state_t *state) {
 
 /* Blocking wait until the rocket state has changed.
  * @param state The rocket state on which to wait for a change
+ * @param version The last version of the data seen by the caller
  * @return 0 on success, error code on failure
  */
-int state_wait_for_change(rocket_state_t *state) {
-  return barrier_wait_for_change(&state->barrier);
+int state_wait_for_change(rocket_state_t *state, uint32_t *version) {
+  return barrier_wait_for_change(&state->barrier, version);
 }
 
 /* Lock the rocket state for writing.

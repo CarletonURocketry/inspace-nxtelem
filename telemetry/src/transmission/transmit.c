@@ -24,6 +24,7 @@ void *transmit_main(void *arg) {
   int err;
   int radio; /* Radio device file descriptor */
   ssize_t written;
+  uint32_t version = 0;
   rocket_state_t *state = (rocket_state_t *)(arg);
 
   /* Packet variables. */
@@ -51,20 +52,24 @@ void *transmit_main(void *arg) {
 
   for (;;) {
 
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-    printf("Transmit thread blocking.\n");
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
-    err = state_wait_for_change(state); // TODO: handle error
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-    printf("Transmit thread unblocked.\n");
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+    err = state_wait_for_change(state, &version); // TODO: handle error
 
     err = state_read_lock(state); // TODO: handle error
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+    if (err) {
+      fprintf(stderr, "Error acquiring read lock: %d\n", err);
+    }
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
 
     /* Encode radio data into packet. */
 
     packet_size = construct_packet(&state->data, packet, seq_num);
     err = state_unlock(state); // TODO: handle error
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+    if (err) {
+      fprintf(stderr, "Error releasing read lock: %d\n", err);
+    }
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
 
     seq_num++; /* Increment sequence numbering */
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
@@ -75,12 +80,17 @@ void *transmit_main(void *arg) {
 
     written = write(radio, packet, packet_size);
     if (written == -1) {
+      err = errno;
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-      fprintf(stderr, "Error transmitting: %d\n", errno);
+      fprintf(stderr, "Error transmitting: %d\n", err);
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
       // TODO: handle error in errno
     }
     usleep(500000);
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+    printf("Completed transmission of packet #%lu of %ld bytes.\n", seq_num,
+           packet_size);
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
   }
 
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)

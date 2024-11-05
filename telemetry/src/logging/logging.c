@@ -30,6 +30,7 @@ void *logging_main(void *arg) {
   size_t written;
   enum flight_state_e flight_state;
   rocket_state_t *state = ((rocket_state_t *)(arg));
+  uint32_t version = 0;
   char flight_filename[sizeof(CONFIG_INSPACE_TELEMETRY_FLIGHT_FS) +
                        MAX_FILENAME];
   char land_filename[sizeof(CONFIG_INSPACE_TELEMETRY_LANDED_FS) + MAX_FILENAME];
@@ -58,6 +59,11 @@ void *logging_main(void *arg) {
   for (;;) {
 
     err = state_get_flightstate(state, &flight_state);
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+    if (err) {
+      fprintf(stderr, "Error getting flight state: %d\n", err);
+    }
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
 
     switch (flight_state) {
     case STATE_IDLE:
@@ -68,13 +74,7 @@ void *logging_main(void *arg) {
 
       /* Wait for the data to have a change */
 
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-      printf("Logging thread blocking.\n");
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
-      err = state_wait_for_change(state); // TODO: handle error
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-      printf("Logging thread unblocked.\n");
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+      err = state_wait_for_change(state, &version); // TODO: handle error
 
       /* Log data */
 
@@ -90,6 +90,11 @@ void *logging_main(void *arg) {
       }
 
       err = state_unlock(state); // TODO: handle error
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+      if (err) {
+        fprintf(stderr, "Error releasing read lock: %d\n", err);
+      }
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
 
       /* If we are in the idle state, only write the latest n seconds of data
        */
@@ -151,7 +156,7 @@ void *logging_main(void *arg) {
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
       }
 
-      state_set_flightstate(state, STATE_IDLE); // TODO: error handling
+      err = state_set_flightstate(state, STATE_IDLE); // TODO: error handling
     }
     }
   }
