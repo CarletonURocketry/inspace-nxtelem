@@ -4,6 +4,7 @@
 #include <pthread.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdatomic.h>
 
 /* Enum representing the current flight state. */
 
@@ -42,7 +43,7 @@ struct barrier_t {
 
 typedef struct {
   struct rocket_t data;      /* Rocket state data, being protected */
-  enum flight_state_e state; /* Flight state of the rocket. */
+  atomic_int state;          /* Flight state of the rocket. */
   pthread_rwlock_t rw_lock;  /* Read-write lock for modifying state. */
   struct barrier_t barrier;  /* Barrier for synchronizing multiple readers */
 } rocket_state_t;
