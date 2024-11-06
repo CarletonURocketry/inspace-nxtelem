@@ -108,7 +108,7 @@ int state_init(rocket_state_t *state) {
 
   int err;
 
-  state->state = get_flight_state();
+  atomic_store(&state->state, get_flight_state());
 
   err = barrier_init(&state->barrier);
   if (err)
@@ -168,14 +168,11 @@ int state_unlock(rocket_state_t *state) {
 int state_set_flightstate(rocket_state_t *state,
                           enum flight_state_e flight_state) {
   // TODO: set for real in NV-storage
-  int err;
-  err = state_write_lock(state);
-  state->state = flight_state;
+  atomic_store(&state->state, flight_state);
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
   printf("Flight state changed to %s\n", FLIGHT_STATES[flight_state]);
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
-  err = state_unlock(state);
-  return err;
+  return 0;
 }
 
 /*
@@ -186,9 +183,6 @@ int state_set_flightstate(rocket_state_t *state,
  */
 int state_get_flightstate(rocket_state_t *state,
                           enum flight_state_e *flight_state) {
-  int err;
-  err = state_read_lock(state);
-  *flight_state = state->state;
-  err = state_unlock(state);
-  return err;
+  *flight_state = atomic_load(&state->state);
+  return 0;
 }
