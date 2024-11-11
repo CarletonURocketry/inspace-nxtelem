@@ -84,8 +84,7 @@ struct temp_blk_t {
   int32_t temperature;
 };
 
-void temp_blk_init(struct temp_blk_t *b, ,
-                   const int32_t temperature);
+void temp_blk_init(struct temp_blk_t *b, const int32_t temperature);
 
 /* A data block containing information about humidity. */
 struct hum_blk_t {
