@@ -35,7 +35,7 @@ static int calc_offset(uint32_t mission_time, uint16_t abs_timestamp,
 
 /* Check if a block has an offset that needs to be set
  * @param b The block header
- * @returns 1 if the block has an offset, 0 otherwise
+ * @return 1 if the block has an offset, 0 otherwise
  */
 static int has_offset(blk_hdr_t *b) {
   /* All blocks have offsets right now */
@@ -107,7 +107,7 @@ int blk_len(blk_hdr_t *b) {
  * @param p The header of the packet to be sent, initialized
  * @param b The block to be sent, initialized
  * @param mission_time The number of milliseconds since the start of the mission
- * @returns 0 if the block can now be included with the packet, 1 otherwise
+ * @return 0 if the block can now be included with the packet, 1 otherwise
  */
 int pkt_add_blk(pkt_hdr_t *p, blk_hdr_t *b, void *blk, uint32_t mission_time) {
   p->blocks++;
