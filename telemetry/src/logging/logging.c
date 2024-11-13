@@ -139,7 +139,7 @@ void *logging_main(void *arg) {
         nbytes = sizeof(buf) * fread(buf, sizeof(buf), 1, storage);
         if (nbytes == 0)
           break;
-        nbytes = sizeof(buf) * fwrite(buf, nbytes, 1, storage);
+        nbytes = sizeof(buf) * fwrite(buf, nbytes, 1, log);
       }
 
       /* Now that logs are copied to FAT partition, move back to the idle state
