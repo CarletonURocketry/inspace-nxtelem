@@ -170,31 +170,7 @@ struct volt_blk_t {
   int16_t voltage;
 };
 
-void volt_blk_init(struct volt_blk_t *b, const uint16_t id, 
+void volt_blk_init(struct volt_blk_t *b, const uint16_t id,
                    const int16_t voltage);
-
-/* Sets the length of the packet the header is associated with.
- * @param p The packet header to store the length in.
- * @param length The number of blocks in this packet header itself.
- */
-static inline void pkt_hdr_set_len(pkt_hdr_t *p, const uint8_t length) {
-  p->blocks = length;
-}
-
-/* Gets the length of the packet header.
- * @param p The packet header to read the length from.
- * @return The length of the packet header in bytes, including itself.
- */
-static inline uint8_t pkt_hdr_get_len(const pkt_hdr_t *p) {
-  return p->blocks;
-}
-
-/* Increments the length of the packet header.
- * @param p The packet header change the length of.
- * @param l The additional length (in bytes) to add to the packet length.
- */
-static inline void pkt_hdr_inc_len(pkt_hdr_t *p, const uint16_t l) {
-  p->blocks++;
-}
 
 #endif // _INSPACE_TELEMETRY_PACKET_H_

@@ -116,26 +116,27 @@ static uint32_t construct_packet(struct rocket_t *data, uint8_t *pkt,
   uint8_t *write_ptr = pkt;                /* Location in packet buffer */
   uint32_t size = 0;                       /* Packet size */
 
-  pkt_hdr_init(pkt_hdr, seq_num); /* Fresh packet header */
+  pkt_hdr_init(pkt_hdr, seq_num, data->time); /* Fresh packet header */
   size += sizeof(pkt_hdr_t);
   write_ptr += sizeof(pkt_hdr_t);
 
   /* Encode temperature */
 
   blk_hdr_t *temp_blk_hdr = (blk_hdr_t *)(write_ptr);
-  blk_hdr_init(temp_blk_hdr, TYPE_DATA, DATA_TEMP);
+  blk_hdr_init(temp_blk_hdr, DATA_TEMP);
   size += sizeof(blk_hdr_t);
   write_ptr += sizeof(blk_hdr_t);
 
   struct temp_blk_t *tempblk = (struct temp_blk_t *)(write_ptr);
-  temp_blk_init(tempblk, data->time, data->temp);
+  temp_blk_init(tempblk, data->temp);
   size += sizeof(struct temp_blk_t);
   write_ptr += sizeof(struct temp_blk_t);
+
+  pkt_add_blk(pkt_hdr, temp_blk_hdr, tempblk, data->time);
 
   // TODO: encode rest of data
 
   /* Update packet header length with the size of all written bytes */
 
-  pkt_hdr_set_len(pkt_hdr, size - sizeof(pkt_hdr_t));
   return size;
 }

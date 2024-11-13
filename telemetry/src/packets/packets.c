@@ -23,31 +23,26 @@ static uint16_t calc_timestamp(uint32_t mission_time) {
  */
 static int calc_offset(uint32_t mission_time, uint16_t abs_timestamp,
                        int16_t *result) {
-  uint32_t abs_converted = abs_timestamp * 2 * 60;
-  if (abs_converted <= mission_time) {
-    mission_time -= abs_converted;
-    if (mission_time <= INT16_MAX) {
-      *result = mission_time;
-      return 0;
-    }
-  }
-  else {
-    abs_converted -= mission_time;
-    if (abs_converted >= INT16_MIN) {
-      *result = mission_time;
-      return 0;
-    }
+  /* Offset from abs_timestamp to time zero */
+  int64_t offset = (int64_t)abs_timestamp * 30 * -1000;
+  offset += mission_time;
+  if (offset <= INT16_MAX && offset >= INT16_MIN) {
+    *result = offset;
+    return 0;
   }
   return 1;
 }
 
 /* Check if a block has an offset that needs to be set
- * @param b The block header 
+ * @param b The block header
  * @returns 1 if the block has an offset, 0 otherwise
  */
 static int has_offset(blk_hdr_t *b) {
   /* All blocks have offsets right now */
-  return 1;
+  switch ((enum block_type_e)b->type) {
+  default:
+    return 1;
+  }
 }
 
 /* Initialize the packet header.
@@ -60,7 +55,7 @@ void pkt_hdr_init(pkt_hdr_t *p, uint8_t packet_number, uint32_t mission_time) {
          sizeof(CONFIG_INSPACE_TELEMETRY_CALLSIGN));
   p->packet_num = packet_number;
   p->timestamp = calc_timestamp(mission_time);
-  pkt_hdr_set_len(p, 0);
+  p->blocks = 0;
 }
 
 /* Initialize the block header.
@@ -102,6 +97,9 @@ int blk_len(blk_hdr_t *b) {
   case DATA_ALT_LAUNCH:
     return sizeof(struct alt_blk_t);
     break;
+  default:
+    return 0;
+    break;
   }
 }
 
@@ -112,9 +110,10 @@ int blk_len(blk_hdr_t *b) {
  * @returns 0 if the block can now be included with the packet, 1 otherwise
  */
 int pkt_add_blk(pkt_hdr_t *p, blk_hdr_t *b, void *blk, uint32_t mission_time) {
+  p->blocks++;
   if (has_offset(b)) {
-    return calc_offset(mission_time, p->timestamp, 
-                       ((offset_blk *)blk)->time_offset);
+    return calc_offset(mission_time, p->timestamp,
+                       &((offset_blk *)blk)->time_offset);
   }
   return 0;
 }
