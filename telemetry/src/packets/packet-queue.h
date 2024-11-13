@@ -6,39 +6,49 @@
 #include <stdint.h>
 #include "packets.h"
 
-#define PACKET_QUEUE_NUM_BUFFERS 4
-#define PACKET_QUEUE_NUM_CONSUMERS 2
-#define PACKET_QUEUE_PACKET_MAX_SIZE 256
+#define QUEUE_NUM_BUFFERS 4
+#define QUEUE_NUM_CONSUMERS 2
+#define QUEUE_MAX_PKT_SIZE PACKET_MAX_SIZE
+
+/* A buffer for assembling packets piecewise and then reading all at once */
 
 typedef struct {
-  int consumer_flags[PACKET_QUEUE_NUM_CONSUMERS];
+  int consumer_flags[QUEUE_NUM_CONSUMERS];
   int packet_length;
   pthread_rwlock_t packet_lock;
-
   /* Header and blocks array should be contiguous */
   pkt_hdr_t header;
-  uint8_t blocks[PACKET_QUEUE_PACKET_MAX_SIZE - sizeof(pkt_hdr_t)];
+  uint8_t blocks[QUEUE_MAX_PKT_SIZE - sizeof(pkt_hdr_t)];
 } packet_buffer_t;
 
+/* A queue for writing to and reading from multiple packet buffers at once */
+
 typedef struct {
-  atomic_int num_consumers; /* */
-  int packet_number; /* The current sequence number on packets */
-  pthread_rwlock_t queue_lock; /* A lock on the read_queue */
-  packet_buffer_t buffers[PACKET_QUEUE_NUM_BUFFERS]; /* The actual storage for this queue */
-  packet_buffer_t *write_buffer; /* Where data is being written, no lock for writing, assumes only one producer*/
-  packet_buffer_t *read_queue[PACKET_QUEUE_NUM_BUFFERS - 1]; /* A queue of packets ready to be read */
+  atomic_int num_consumers;
+  int packet_number;                          /* Sequence number */
+  pthread_rwlock_t queue_lock;                /* A lock on the read_queue */
+  packet_buffer_t buffers[QUEUE_NUM_BUFFERS]; /* The actual storage */
+  packet_buffer_t *write_buffer;              /* Where data is being written,
+                                               * assumes only one producer
+                                               */
+  packet_buffer_t *read_queue[QUEUE_NUM_BUFFERS - 1]; /* A queue of packets */
 } packet_queue_t;
 
-typedef int consumer_id_t;
+/* Consumer id type */
+
+typedef int cons_id_t;
+
+/* Setup and writer */
 
 int queue_init(packet_queue_t *queue);
-int queue_write(packet_queue_t *queue, blk_hdr_t *blk_header, uint8_t *block,
-                const size_t block_len, const uint32_t mission_time);
-consumer_id_t queue_add_consumer(packet_queue_t *queue);
-packet_buffer_t *queue_get_buffer(packet_queue_t *queue,
-                                  const consumer_id_t id);
-int queue_release_buffer(packet_buffer_t *read_buffer,
-                         const consumer_id_t id);
+int queue_write(packet_queue_t *queue, blk_hdr_t *blk_hdr,  uint8_t *blk,
+                const size_t blk_len, const uint32_t mission_time);
+
+/* Consumer functions*/
+
+cons_id_t queue_add_consumer(packet_queue_t *queue);
+packet_buffer_t *queue_get_buffer(packet_queue_t *queue, const cons_id_t id);
+int queue_release_buffer(packet_buffer_t *read_buffer, const cons_id_t id);
 uint8_t *queue_read_head(packet_buffer_t *read_buffer);
 int queue_read_length(packet_buffer_t *read_buffer);
 
