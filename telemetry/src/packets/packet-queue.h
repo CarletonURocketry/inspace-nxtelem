@@ -35,9 +35,9 @@ int queue_init(packet_queue_t *queue);
 int queue_write(packet_queue_t *queue, blk_hdr_t *blk_header, uint8_t *block,
                 const size_t block_len, const uint32_t mission_time);
 consumer_id_t queue_add_consumer(packet_queue_t *queue);
-packet_buffer_t *queue_get_buffer(packet_queue_t *queue, 
+packet_buffer_t *queue_get_buffer(packet_queue_t *queue,
                                   const consumer_id_t id);
-int queue_release_buffer(packet_buffer_t *read_buffer, 
+int queue_release_buffer(packet_buffer_t *read_buffer,
                          const consumer_id_t id);
 uint8_t *queue_read_head(packet_buffer_t *read_buffer);
 int queue_read_length(packet_buffer_t *read_buffer);
