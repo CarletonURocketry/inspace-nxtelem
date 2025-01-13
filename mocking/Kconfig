@@ -28,7 +28,7 @@ config INSPACE_MOCKING_STACKSIZE
 
 config INSPACE_MOCKING_MOUNT
 	string "ROMFS mount point"
-	default "/data"
+	default "/inspace"
 	---help---
 		Where to mount the ROMFS containing the files in the test-data directory
 

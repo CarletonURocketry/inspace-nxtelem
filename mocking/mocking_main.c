@@ -9,7 +9,7 @@
 
 #include "data_romfs.h"
 
-#define CONFIG_MOCKING_ROMFS_DEVNO 10
+#define CONFIG_MOCKING_ROMFS_DEVNO 4
 #define CONFIG_MOCKING_ROMFS_SECTORSIZE 512
 
 
