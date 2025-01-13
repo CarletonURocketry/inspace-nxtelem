@@ -1,27 +1,28 @@
-# TODO: add all the "dependency" requirements for device drivers
+#
+# For a description of the syntax of this configuration file,
+# see the file kconfig-language.txt in the NuttX tools repository.
+#
 
 config INSPACE_MOCKING
-    tristate "InSpace Sensor Mocking"
-    default n
-    ---help---
-        Create and mount a romfs with test sensor data, and use the
-        fakesensor driver to mock real sensor data
+	tristate "Sensor Mocking"
+	default n
+	---help---
+		Enable mocking of sensors using test data
 
 if INSPACE_MOCKING
 
-config INSPACE_MOCKING_PROGRNAME
-    string "Program name"
-    default "inspace_mock"
-    ---help---
-		This is the name of the program that will be used when the
-		program is installed
+config INSPACE_MOCKING_PROGNAME
+	string "Program name"
+	default "inspace_mock"
+	---help---
+		This is the name of the program that sets up sensor mocking
 
-config INSPACE_TELEMETRY_PRIORITY
-    int "Telemetry system task priority"
-    default 100
+config INSPACE_MOCKING_PRIORITY
+	int "Mocking setup task priority"
+	default 100
 
-config INSPACE_TELEMETRY_STACKSIZE
-    int "Telemetry system stack size"
-    default DEFAULT_TASK_STACKSIZE
+config INSPACE_MOCKING_STACKSIZE
+	int "Mocking setup stack size"
+	default DEFAULT_TASK_STACKSIZE
 
 endif

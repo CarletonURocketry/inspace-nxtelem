@@ -24,28 +24,23 @@
 #define MOUNT_DEVNAME MKMOUNT_DEVNAME(CONFIG_MOCK_ROMFS_DEVNO)
 #define MOCK_BARO_FILE CONFIG_MOCK_ROMFS_MOUNTPOINT "baro.csv"
 
-//
 int mount_mock_fs() {
     // Created a ROMDISK using genromfs, then converted it into a header file earlier
     int ret;
     ret = romdisk_register(CONFIG_MOCK_ROMFS_DEVNO, data_img, NSECTORS(data_img_len), CONFIG_MOCK_ROMFS_SECTORSIZE);
     if (ret < 0) {
         printf("ERROR: Failed to create RAM disk: %s\n", strerror(errno));
-        return -1
+        return -1;
     }
     printf("Mounting ROMFS filesystem at %s with source /dev/ram1\n",
         CONFIG_MOCK_ROMFS_MOUNTPOINT);
-    ret = mount(MOUNT_DEVNAME, MOUNT_CONFIG_MOCK_ROMFS_MOUNTPOINT, "romfs", MS_RDONLY, NULL);
+    ret = mount(MOUNT_DEVNAME, CONFIG_MOCK_ROMFS_MOUNTPOINT, "romfs", MS_RDONLY, NULL);
     if (ret < 0) {
-        printF("ERROR: Failed to mount: %s", strerror(errno));
+        printf("ERROR: Failed to mount: %s", strerror(errno));
+        return -1;
     }
-}
-
-int activate_mock_sensor() {
-    fakesensor_init(SENSOR_TYPE_BAROMETER, MOCK_BARO_FILE, 0, 0);
 }
 
 int main(int argc, FAR char *argv[]) {
     mount_mock_fs();
-    activate_mock_sensor();
 }
