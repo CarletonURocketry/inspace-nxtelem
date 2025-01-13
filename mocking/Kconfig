@@ -11,10 +11,10 @@ if INSPACE_MOCKING
 
 config INSPACE_MOCKING_PROGRNAME
     string "Program name"
-    default "inspace_mount"
+    default "inspace_mock"
     ---help---
 		This is the name of the program that will be used when the
-		program is installed.
+		program is installed
 
 config INSPACE_TELEMETRY_PRIORITY
     int "Telemetry system task priority"
@@ -23,3 +23,5 @@ config INSPACE_TELEMETRY_PRIORITY
 config INSPACE_TELEMETRY_STACKSIZE
     int "Telemetry system stack size"
     default DEFAULT_TASK_STACKSIZE
+
+endif
