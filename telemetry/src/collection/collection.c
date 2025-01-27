@@ -1,5 +1,10 @@
 #include <pthread.h>
 #include <time.h>
+#include <nuttx/sensors/sensor.h>
+#include <fcntl.h>
+#include <poll.h>
+#include <sys/ioctl.h>
+
 
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
 #include <stdio.h>
@@ -16,6 +21,12 @@
 
 static uint32_t ms_since(struct timespec *start);
 
+void print_accel(const struct sensor_accel *accel) {
+  printf("Data recieved from accel: X: %lf Y: %lf Z: %lf, %lu\n", accel->x, accel->y, accel->z, accel->timestamp);
+}
+void print_baro(const struct sensor_baro *baro) {
+  printf("Data recieved from baro: temp: %lf pressure: %lf, %lu\n", baro->pressure, baro->temperature, baro->timestamp);
+}
 /*
  * Collection thread which runs to collect data.
  */
@@ -25,6 +36,75 @@ void *collection_main(void *arg) {
   enum flight_state_e flight_state;
   struct timespec start_time;
   rocket_state_t *state = (rocket_state_t *)(arg);
+
+  struct pollfd fds[2];
+  struct sensor_accel accel;
+  struct sensor_baro baro;
+  
+  union {
+    struct sensor_accel accel[10];
+    struct sensor_baro baro[10];
+  } data;
+
+  int accel_fd = open("/dev/uorb/sensor_accel0", O_RDONLY);
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+  if (accel_fd < 0) {
+    fprintf(stderr, "Couldn't open accel device\n");
+  } 
+#endif
+  fds[0].fd = accel_fd;
+  fds[0].events = POLLIN;
+  int baro_fd = open("/dev/uorb/sensor_baro0", O_RDONLY);
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+  if (baro_fd < 0) {
+    fprintf(stderr, "Couldn't open baro device\n");
+  }
+#endif
+  fds[1].fd = baro_fd;
+  fds[1].events = POLLIN;
+
+  // Configure to have a higher latency, allowing for batching to occur. Currently set latency for all
+
+  unsigned int latency_us = 50 * 1000;
+  for (int i = 0; i < sizeof(fds) / sizeof(struct pollfd); i++) {
+    err = ioctl(fds[i].fd, SNIOC_BATCH, latency_us); // A latency of 50ms -> (50ms / (100Hz sample rate)) = 5 measurements per read, hopefully
+    if (err < 0) {
+      fprintf(stderr, "Couldn't set batch interval of %ud", latency_us);
+    }
+  }
+
+  // Test reading, forever
+  for (;;) {
+    printf("calling poll()...\n");
+    if (poll(fds, sizeof(fds) / sizeof(struct pollfd), -1) > 0) {
+      printf("woken up\n");
+      if (fds[0].revents == POLLIN) {
+        int len = read(fds[0].fd, &data, sizeof(data));
+        if (len > 0) {
+          if (len % sizeof(struct sensor_accel) != 0) {
+            printf("Recieved odd number of bytes: %d", len);
+          } else {
+            for (int i = 0; i < (len / sizeof(struct sensor_accel)); i++) {
+              print_accel(&data.accel[i]);
+            }
+          }
+        }
+      }
+      if (fds[1].revents == POLLIN) {
+        int len = read(fds[1].fd, &data, sizeof(data));
+        if (len > 0) {
+          if (len % sizeof(struct sensor_baro) != 0) {
+            printf("Recieved odd number of bytes: %d", len);
+          } else {
+            for (int i = 0; i < (len / sizeof(struct sensor_baro)); i++) {
+              print_baro(&data.baro[i]);
+            }
+          }
+        }
+      }
+    }
+    usleep(latency_us);
+  }
 #if CONFIG_INSPACE_TELEMETRY_RATE != 0
   struct timespec period_start;
   struct timespec next_interval;
@@ -74,6 +154,7 @@ void *collection_main(void *arg) {
     }
 
     state->data.temp++; // TODO: remove and replace with real data
+    
     state->data.time = ms_since(&start_time); /* Measurement time */
 
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
