@@ -19,12 +19,13 @@ Setup:
     - Enable GNSSUTILS_MINMEA_LIB, SENSORS_GNSS
     - Enable SENSORS_FAKESENSOR
     - Enable ROMFS support
-  3. Configure SIM_FAKE_BARO
+  3. Configure fake sensor support
   4. You can either use the program included under `mocking` to include your csv in a read-only
      file system, or you can place your program somewhere in the NuttX repo - the sim:nsh config
      will put a link to the `nuttx` folder at `/data` by default
-
+      - Put your .csv file under test-data and it will be included in the read-only file system
+        automatically
 Running:
-  1. Run the program included under `mocking`, which will mount a new drive with your test files
-  2. Run telemetry_main. When the program opens the sensors, they will activate and
+  1. Run `inspace_mock`, which will mount a new drive with your test files
+  2. Run `inspace_telem`. When the program opens the sensors, they will activate and
      begin reading from the csv files (creating sensor measurements at the defined intervals)
