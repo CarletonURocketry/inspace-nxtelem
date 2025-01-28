@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+#include <stdatomic.h>
 
 #include "rocket-state/rocket-state.h"
 
