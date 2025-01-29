@@ -78,15 +78,6 @@ int register_fakesensors(void) {
     }
 #endif
 
-#if defined(CONFIG_INSPACE_FAKE_VEL)
-    printf("Mounting a fake velocity sensor with csv %s\n", CONFIG_INSPCE_FAKE_VEL_FILENAME);
-    ret = fakesensor_init(SENSOR_TYPE_VELOCITY, CONFIG_INSPACE_FAKE_VEL_FILENAME, 0, CONFIG_INSPACE_FAKE_VEL_MAX_BATCH);
-    if (ret < 0)
-    {
-        fprintf(stderr, "ERROR: fakesensor_init() failed: %d\n", ret);
-        return ret;
-    }
-#endif
     return ret;
 }
 int main(int argc, char **argv) {
