@@ -32,4 +32,68 @@ config INSPACE_MOCKING_MOUNT
 	---help---
 		Where to mount the ROMFS containing the files in the test-data directory
 
+if SENSORS_FAKESENSOR
+menu "Faked Sensors"
+config INSPACE_FAKE_BARO
+	bool "Fake Barometic Sensor"
+	default n
+	---help---
+		Create a fakesensor for barometric data
+
+config INSPACE_FAKE_BARO_FILENAME
+	string "Fake Barometric Sensor Input File"
+	depends on INSPACE_FAKE_BARO
+	default "/inspace/baro.csv"
+	---help---
+		The file to read fake barometric sensor data from
+
+config INSPACE_FAKE_BARO_MAX_BATCH
+	int "The maximum batch size of this sensor"
+	depends on INSPACE_FAKE_BARO
+	default 1
+	---help---
+		The maximum batch size of sensor measurements
+
+config INSPACE_FAKE_ACCEL
+	bool "Fake Acceleration Sensor"
+	default n
+	---help---
+		Create a fakesensor for acceleration data
+
+config INSPACE_FAKE_ACCEL_FILENAME
+	string "Fake Acceleration Sensor Input File"
+	depends on INSPACE_FAKE_ACCEL
+	default "/inspace/accel.csv"
+	---help---
+		The file to read fake acceleration data from
+
+config INSPACE_FAKE_ACCEL_MAX_BATCH
+	int "The maximum batch size of this sensor"
+	depends on INSPACE_FAKE_ACCEL
+	default 1
+	---help---
+		The maximum batch size of sensor measurements
+
+config INSPACE_FAKE_VEL
+	bool "Fake Velocity Sensor"
+	default n
+	---help---
+		Create a fakesensor for velocity data
+
+config INSPACE_FAKE_VEL_FILENAME
+	string "Fake Velocity Sensor Input File"
+	depends on INSPACE_FAKE_VEL
+	default "/inspace/vel.csv"
+	---help---
+		The file to read fake velocity data from
+
+config INSPACE_FAKE_VEL_MAX_BATCH
+	int "The maximum batch size of this sensor"
+	depends on SIM_FAKE_VEL
+	default 1
+	---help---
+		The maximum batch size of sensor measurements	
+
+endmenu # Faked Sensors
+endif # SENSORS_FAKESENSOR
 endif
