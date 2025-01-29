@@ -4,6 +4,7 @@
 #include <fcntl.h>
 #include <poll.h>
 #include <sys/ioctl.h>
+#include <uORB/uORB.h>
 
 
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
@@ -37,74 +38,39 @@ void *collection_main(void *arg) {
   struct timespec start_time;
   rocket_state_t *state = (rocket_state_t *)(arg);
 
-  struct pollfd fds[2];
+  struct pollfd fds;
   struct sensor_accel accel;
-  struct sensor_baro baro;
-  
-  union {
-    struct sensor_accel accel[10];
-    struct sensor_baro baro[10];
-  } data;
 
-  int accel_fd = open("/dev/uorb/sensor_accel0", O_RDONLY);
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+  orb_id_t accel_meta;
+  accel_meta = orb_get_meta("sensor_accel");
+  int accel_fd = orb_subscribe(accel_meta);
   if (accel_fd < 0) {
-    fprintf(stderr, "Couldn't open accel device\n");
-  } 
-#endif
-  fds[0].fd = accel_fd;
-  fds[0].events = POLLIN;
-  int baro_fd = open("/dev/uorb/sensor_baro0", O_RDONLY);
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-  if (baro_fd < 0) {
-    fprintf(stderr, "Couldn't open baro device\n");
+    fprintf(stderr, "Failed to subscribe to topic\n");
+    pthread_exit(0);
   }
-#endif
-  fds[1].fd = baro_fd;
-  fds[1].events = POLLIN;
+  struct orb_state orbstate;
+  orb_get_state(accel_fd, &orbstate);
 
-  // Configure to have a higher latency, allowing for batching to occur. Currently set latency for all
+  printf("max pub freq %d", orbstate.max_frequency);
+  printf("min batch interval %d", orbstate.min_batch_interval);
+  printf("queue size %d", orbstate.queue_size);
+  printf("nsubscribe %d", orbstate.nsubscribers);
+  printf("genindex %ld", orbstate.generation);
 
-  unsigned int latency_us = 50 * 1000;
-  for (int i = 0; i < sizeof(fds) / sizeof(struct pollfd); i++) {
-    err = ioctl(fds[i].fd, SNIOC_BATCH, latency_us); // A latency of 50ms -> (50ms / (100Hz sample rate)) = 5 measurements per read, hopefully
-    if (err < 0) {
-      fprintf(stderr, "Couldn't set batch interval of %ud", latency_us);
-    }
-  }
-
-  // Test reading, forever
+  fds.fd = accel_fd;
+  fds.events = POLLIN;
   for (;;) {
-    printf("calling poll()...\n");
-    if (poll(fds, sizeof(fds) / sizeof(struct pollfd), -1) > 0) {
-      printf("woken up\n");
-      if (fds[0].revents == POLLIN) {
-        int len = read(fds[0].fd, &data, sizeof(data));
-        if (len > 0) {
-          if (len % sizeof(struct sensor_accel) != 0) {
-            printf("Recieved odd number of bytes: %d", len);
-          } else {
-            for (int i = 0; i < (len / sizeof(struct sensor_accel)); i++) {
-              print_accel(&data.accel[i]);
-            }
-          }
-        }
-      }
-      if (fds[1].revents == POLLIN) {
-        int len = read(fds[1].fd, &data, sizeof(data));
-        if (len > 0) {
-          if (len % sizeof(struct sensor_baro) != 0) {
-            printf("Recieved odd number of bytes: %d", len);
-          } else {
-            for (int i = 0; i < (len / sizeof(struct sensor_baro)); i++) {
-              print_baro(&data.baro[i]);
-            }
-          }
-        }
-      }
+    poll(&fds, 1, -1);
+    if (fds.revents == POLLIN) {
+      printf("data published\n");
+      orb_copy_multi(accel_fd, &accel, sizeof(accel));
+      printf("got data %f, %f, %f, %lu\n", accel.x, accel.y, accel.z, accel.timestamp);
     }
-    usleep(latency_us);
   }
+
+
+  
+
 #if CONFIG_INSPACE_TELEMETRY_RATE != 0
   struct timespec period_start;
   struct timespec next_interval;
