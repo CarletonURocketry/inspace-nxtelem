@@ -1,0 +1,79 @@
+#
+# For a description of the syntax of this configuration file,
+# see the file kconfig-language.txt in the NuttX tools repository.
+#
+
+config INSPACE_MOCKING
+	tristate "Sensor Mocking"
+	depends on BOARDCTL_ROMDISK
+	default n
+	---help---
+		Enable mocking of sensors using test data
+
+if INSPACE_MOCKING
+
+config INSPACE_MOCKING_PROGNAME
+	string "Program name"
+	default "inspace_mock"
+	---help---
+		This is the name of the program that sets up sensor mocking
+
+config INSPACE_MOCKING_PRIORITY
+	int "Mocking setup task priority"
+	default 100
+
+config INSPACE_MOCKING_STACKSIZE
+	int "Mocking setup stack size"
+	default DEFAULT_TASK_STACKSIZE
+
+config INSPACE_MOCKING_MOUNT
+	string "ROMFS mount point"
+	default "/inspace"
+	---help---
+		Where to mount the ROMFS containing the files in the test-data directory
+
+if SENSORS_FAKESENSOR
+menu "Faked Sensors"
+config INSPACE_FAKE_BARO
+	bool "Fake Barometic Sensor"
+	default n
+	---help---
+		Create a fakesensor for barometric data
+
+config INSPACE_FAKE_BARO_FILENAME
+	string "Fake Barometric Sensor Input File"
+	depends on INSPACE_FAKE_BARO
+	default "/inspace/baro.csv"
+	---help---
+		The file to read fake barometric sensor data from
+
+config INSPACE_FAKE_BARO_MAX_BATCH
+	int "The maximum batch size of this sensor"
+	depends on INSPACE_FAKE_BARO
+	default 1
+	---help---
+		The maximum batch size of sensor measurements
+
+config INSPACE_FAKE_ACCEL
+	bool "Fake Acceleration Sensor"
+	default n
+	---help---
+		Create a fakesensor for acceleration data
+
+config INSPACE_FAKE_ACCEL_FILENAME
+	string "Fake Acceleration Sensor Input File"
+	depends on INSPACE_FAKE_ACCEL
+	default "/inspace/accel.csv"
+	---help---
+		The file to read fake acceleration data from
+
+config INSPACE_FAKE_ACCEL_MAX_BATCH
+	int "The maximum batch size of this sensor"
+	depends on INSPACE_FAKE_ACCEL
+	default 1
+	---help---
+		The maximum batch size of sensor measurements
+
+endmenu # Faked Sensors
+endif # SENSORS_FAKESENSOR
+endif
