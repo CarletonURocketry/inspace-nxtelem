@@ -85,6 +85,6 @@ int main(int argc, char **argv) {
     ret = mount_mock_fs();
     if (ret < 0) {
         return ret;
-    } 
+    }
     return register_fakesensors();
 }
