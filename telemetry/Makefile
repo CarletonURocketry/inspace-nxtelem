@@ -16,5 +16,6 @@ CSRCS += $(wildcard src/rocket-state/*.c)
 CSRCS += $(wildcard src/transmission/*.c)
 CSRCS += $(wildcard src/logging/*.c)
 CSRCS += $(wildcard src/packets/*.c)
+CSRCS += $(wildcard src/fusion/*.c)
 
 include $(APPDIR)/Application.mk

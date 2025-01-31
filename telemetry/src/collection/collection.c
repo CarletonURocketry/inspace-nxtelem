@@ -19,12 +19,14 @@
 #define INTERVAL (1e9 / CONFIG_INSPACE_TELEMETRY_RATE)
 #endif /* CONFIG_INSPACE_TELEMETRY_RATE != 0 */
 
+/* Constants related to sensors */
+
 #define ACCEL_MULTI_BUFFER_SIZE 5
 #define BARO_MULTI_BUFFER_SIZE 5
-
 #define NUM_SENSORS 2
 #define SENSOR_ACCEL 0
 #define SENSOR_BARO 1
+
 static uint32_t ms_since(struct timespec *start);
 
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)

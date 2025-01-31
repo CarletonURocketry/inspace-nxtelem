@@ -10,6 +10,7 @@
 #include "collection/collection.h"
 #include "logging/logging.h"
 #include "transmission/transmit.h"
+#include "fusion/fusion.h"
 
 int main(int argc, char **argv) {
 
@@ -21,6 +22,7 @@ int main(int argc, char **argv) {
   pthread_t transmit_thread;
   pthread_t log_thread;
   pthread_t collect_thread;
+  pthread_t fusion_thread;
 
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
   puts("You are running the Carleton University InSpace telemetry system.");
@@ -63,11 +65,20 @@ int main(int argc, char **argv) {
     exit(EXIT_FAILURE);
   }
 
+  err = pthread_create(&fusion_thread, NULL, fusion_main, &state);
+  if (err) {
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+    fprintf(stderr, "Problem starting fusion thread: %d\n", err);
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+    exit(EXIT_FAILURE);
+  }
+
   /* Join on all threads: TODO handle errors */
 
   err = pthread_join(collect_thread, NULL);
   err = pthread_join(transmit_thread, NULL);
   err = pthread_join(log_thread, NULL);
+  err = pthread_join(fusion_thread, NULL);
 
   return err;
 }
