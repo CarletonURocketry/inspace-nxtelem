@@ -5,7 +5,6 @@
 #include <poll.h>
 #include <uORB/uORB.h>
 
-
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
 #include <stdio.h>
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
