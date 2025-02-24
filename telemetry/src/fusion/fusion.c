@@ -4,6 +4,7 @@
 #include <poll.h>
 #include <uORB/uORB.h>
 
+#include "fusion.h"
 
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
 #include <stdio.h>
@@ -28,18 +29,18 @@ static void print_orb_state(struct orb_state *state) {
 static const char fusion_accel_format[] =
   "fusioned accel - timestamp:%" PRIu64 ",x:%hf,y:%hf,z:%hf,temperature:%hf";
 static const char fusion_baro_format[] =
-  "timestamp:%" PRIu64 ",pressure:%hf,temperature:%hf";
+  "fusioned baro - timestamp:%" PRIu64 ",pressure:%hf,temperature:%hf";
 
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
 
 /* UORB declarations for fused sensor data */
-ORB_DEFINE(fusion_accel, struct sensor_accel);
-ORB_DEFINE(fusion_baro, struct sensor_baro);
+ORB_DEFINE(fusion_accel, struct sensor_accel, fusion_accel_format);
+ORB_DEFINE(fusion_baro, struct sensor_baro, fusion_baro_format);
 
 /* Input sensors */
 
-#define ACCEL_MULTI_BUFFER_SIZE 5
-#define BARO_MULTI_BUFFER_SIZE 5
+#define ACCEL_MULTI_BUFFER_SIZE 100
+#define BARO_MULTI_BUFFER_SIZE 100
 #define NUM_SENSORS 2
 #define SENSOR_ACCEL 0
 #define SENSOR_BARO 1
@@ -106,12 +107,14 @@ void *fusion_main(void *arg) {
 
   /* Perform fusion on sensor data endlessly */
 
-  int i = 0;
+  int iter = 0;
   for(;;) {
-    if (i++ % 10 == 0) {
-        printf("sleeping for a second \n");
+    iter++;
+    if (iter % 10 == 0) {
         sleep(1);
+        printf("just slept on read %d\n", iter);
     }
+    printf("polling for new data from the raw sensors\n");
     /* Wait for new data */
     poll(input_sensors, NUM_SENSORS, -1);
     if (input_sensors[SENSOR_ACCEL].revents == POLLIN) {
@@ -144,6 +147,7 @@ void *fusion_main(void *arg) {
           orb_info(baro_meta->o_format, baro_meta->o_name, &baro_data[i]);
 #endif
           orb_publish(ORB_ID(fusion_baro), baro_out, &baro_data[i]);
+          // TODO - hook this up to logging
           /* Do some processing or fusion on this data */
         }
       }

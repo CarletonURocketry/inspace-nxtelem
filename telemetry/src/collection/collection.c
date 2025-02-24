@@ -11,6 +11,7 @@
 
 #include "../rocket-state/rocket-state.h"
 #include "collection.h"
+#include "../fusion/fusion.h"
 
 /* Measurement interval in nanoseconds */
 
@@ -53,8 +54,8 @@ void *collection_main(void *arg) {
   struct timespec start_time;
   rocket_state_t *state = (rocket_state_t *)(arg);
 
-  orb_id_t accel_meta = orb_get_meta("sensor_accel");
-  orb_id_t baro_meta = orb_get_meta("sensor_baro");
+  orb_id_t accel_meta = ORB_ID(fusion_accel);
+  orb_id_t baro_meta = ORB_ID(fusion_baro);
   struct sensor_accel accel_data[ACCEL_MULTI_BUFFER_SIZE];
   struct sensor_baro baro_data[BARO_MULTI_BUFFER_SIZE];
 
