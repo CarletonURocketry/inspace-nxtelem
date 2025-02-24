@@ -107,14 +107,7 @@ void *fusion_main(void *arg) {
 
   /* Perform fusion on sensor data endlessly */
 
-  int iter = 0;
   for(;;) {
-    iter++;
-    if (iter % 10 == 0) {
-        sleep(1);
-        printf("just slept on read %d\n", iter);
-    }
-    printf("polling for new data from the raw sensors\n");
     /* Wait for new data */
     poll(input_sensors, NUM_SENSORS, -1);
     if (input_sensors[SENSOR_ACCEL].revents == POLLIN) {
@@ -147,7 +140,6 @@ void *fusion_main(void *arg) {
           orb_info(baro_meta->o_format, baro_meta->o_name, &baro_data[i]);
 #endif
           orb_publish(ORB_ID(fusion_baro), baro_out, &baro_data[i]);
-          // TODO - hook this up to logging
           /* Do some processing or fusion on this data */
         }
       }

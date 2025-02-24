@@ -10,8 +10,8 @@
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
 
 #include "../rocket-state/rocket-state.h"
-#include "collection.h"
 #include "../fusion/fusion.h"
+#include "collection.h"
 
 /* Measurement interval in nanoseconds */
 
@@ -28,21 +28,6 @@
 #define SENSOR_BARO 1
 
 static uint32_t ms_since(struct timespec *start);
-
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-static void print_orb_state(struct orb_state *state) {
-  if (state == NULL) {
-    printf("State was NULL\n");
-  }
-  else {
-    printf("Maximum Frequency: %d\n", state->max_frequency);
-    printf("Min Batch Interval: %d\n", state->min_batch_interval);
-    printf("Internal Queue Size: %d\n", state->queue_size);
-    printf("Subscribers: %d\n", state->nsubscribers);
-    printf("Generation: %d\n", state->generation);
-  }
-}
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
 
 /*
  * Collection thread which runs to collect data.
@@ -80,16 +65,6 @@ void *collection_main(void *arg) {
   }
   else if (sensor_fds[SENSOR_BARO].fd < 0) {
     fprintf(stderr, "Baro sensor was not opened successfully");
-  }
-  else {
-    struct orb_state orbstate;
-    orb_get_state(sensor_fds[SENSOR_ACCEL].fd, &orbstate);
-    printf("Accel sensor state\n");
-    print_orb_state(&orbstate);
-
-    orb_get_state(sensor_fds[SENSOR_BARO].fd, &orbstate);
-    printf("Baro sensor state\n");
-    print_orb_state(&orbstate);
   }
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
 
@@ -133,16 +108,6 @@ void *collection_main(void *arg) {
     printf("Collecting data...\n");
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
 
-    /* Put data in the state structure */
-
-    err = state_write_lock(state);
-    if (err) {
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-      fprintf(stderr, "Could not acquire state write lock: %d\n", err);
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
-      continue;
-    }
-
     /* Wait for new data */
     poll(sensor_fds, NUM_SENSORS, -1);
     if (sensor_fds[SENSOR_ACCEL].revents == POLLIN) {
@@ -177,6 +142,17 @@ void *collection_main(void *arg) {
         }
       }
     }
+
+    /* Put data in the state structure */
+
+    err = state_write_lock(state);
+    if (err) {
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+      fprintf(stderr, "Could not acquire state write lock: %d\n", err);
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+      continue;
+    }
+
     state->data.temp++; // TODO: remove and replace with real data
 
     state->data.time = ms_since(&start_time); /* Measurement time */
