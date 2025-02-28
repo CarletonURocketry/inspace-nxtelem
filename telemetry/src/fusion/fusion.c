@@ -119,9 +119,6 @@ void *fusion_main(void *arg) {
       }
       else {
         for (int i = 0; i < (len / sizeof(struct sensor_accel)); i++) {
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG) && defined(CONFIG_DEBUG_UORB)
-          orb_info(accel_meta->o_format, accel_meta->o_name, &accel_data[i]);
-#endif
           /* Simply publish the same data we got for now*/
           orb_publish(ORB_ID(fusion_accel), accel_out, &accel_data[i]);
         }
@@ -136,9 +133,6 @@ void *fusion_main(void *arg) {
       }
       else {
         for (int i = 0; i < (len / sizeof(struct sensor_baro)); i++) {
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG) && defined(CONFIG_DEBUG_UORB)
-          orb_info(baro_meta->o_format, baro_meta->o_name, &baro_data[i]);
-#endif
           orb_publish(ORB_ID(fusion_baro), baro_out, &baro_data[i]);
           /* Do some processing or fusion on this data */
         }

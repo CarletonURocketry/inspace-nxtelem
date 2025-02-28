@@ -39,6 +39,11 @@ void *collection_main(void *arg) {
   struct timespec start_time;
   rocket_state_t *state = (rocket_state_t *)(arg);
 
+  /* We want collection to get data for the logging & transmission threads 
+   * because sensors (and uorb) only queue data up to the size of the 
+   * sensor's internal buffer. If we set these large could have the same
+   * effect as using buffers but may be less understandable
+   */
   orb_id_t accel_meta = ORB_ID(fusion_accel);
   orb_id_t baro_meta = ORB_ID(fusion_baro);
   struct sensor_accel accel_data[ACCEL_MULTI_BUFFER_SIZE];
