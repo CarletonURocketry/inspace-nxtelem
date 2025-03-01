@@ -102,10 +102,10 @@ void *logging_main(void *arg)
   FILE *storage_file_1 = NULL;    // File pointer for first logging file
   FILE *storage_file_2 = NULL;    // File pointer for second logging file
   FILE *active_storage_file;      // File pointer for active logging file
-  
+
   struct stat file_info;          // Stat struct to hold fstat return
-  struct timespec base_timespec; // Time that file was last modified
-  struct timespec new_timespec;  // Time to check against base_time to see if 30 seconds has passed
+  struct timespec base_timespec;  // Time that file was last modified
+  struct timespec new_timespec;   // Time to check against base_time to see if 30 seconds has passed
 
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
   printf("Logging thread started.\n");
@@ -121,7 +121,7 @@ void *logging_main(void *arg)
   if (max_flight_log_boot_number < 0)
   {
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-      fprintf(stderr, "Error finding max boot number: return (%d)\n", max_flight_log_boot_number);
+    fprintf(stderr, "Error finding max boot number: return (%d)\n", max_flight_log_boot_number);
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
   }
 
