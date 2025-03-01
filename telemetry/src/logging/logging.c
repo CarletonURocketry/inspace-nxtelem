@@ -9,6 +9,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <ctype.h>
 
 #include <dirent.h>
 #include <time.h>
@@ -47,10 +48,18 @@ int find_max_boot_number(char *file){
     while ((entry = readdir(directory_pointer)) != NULL)
     {
       if (strstr(entry->d_name, file) != NULL) 
-      // Ex.) find /log/elog in /log/elog2. Index should be 8 to get number 2
       {
+        // Ex.) find /log/elog in /log/elog2. Index should be 8 to get number 2
         int index = strlen(file);
         char char_num = entry->d_name[index];
+        if (!isdigit(char_num))
+        {
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+          fprintf(stderr, "Number after logging file does not exist (%s)\n", file);
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+          return -1;
+        }
+
         int boot_number = char_num - '0'; // Convert from character to int using ASCII values
         if (boot_number > max_boot_number)
         {
@@ -70,6 +79,14 @@ int find_max_boot_number(char *file){
 }
 
 /*
+ * Returns double time difference between two timespec structs
+ */
+double timespec_diff(struct timespec *start, struct timespec *end)
+{
+  return (end->tv_sec - start->tv_sec) + (end->tv_nsec - start->tv_nsec) / 1e9;
+}
+
+/*
  * Logging thread which runs to log data to the SD card.
  */
 void *logging_main(void *arg)
@@ -82,17 +99,13 @@ void *logging_main(void *arg)
   char flight_filename[sizeof(CONFIG_INSPACE_TELEMETRY_FLIGHT_FS) + MAX_FILENAME];
   char land_filename[sizeof(CONFIG_INSPACE_TELEMETRY_LANDED_FS) + MAX_FILENAME];
 
-  FILE *storage_file_1 = NULL;    // File descriptors for first logging file
-  FILE *storage_file_2 = NULL;    // File descriptors for second logging file
-  FILE *active_storage_file;      // File descriptor for active logging file
-  struct stat file_info;          // Stat struct to hold fstat return
-
-  time_t base_time;               // Time that file was last modified
-  time_t new_time;                // Time to check against base_time to see if 30 seconds has passed
-
-  struct timespec base_timespec;
-  struct timespec new_timespec;
+  FILE *storage_file_1 = NULL;    // File pointer for first logging file
+  FILE *storage_file_2 = NULL;    // File pointer for second logging file
+  FILE *active_storage_file;      // File pointer for active logging file
   
+  struct stat file_info;          // Stat struct to hold fstat return
+  struct timespec base_timespec; // Time that file was last modified
+  struct timespec new_timespec;  // Time to check against base_time to see if 30 seconds has passed
 
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
   printf("Logging thread started.\n");
@@ -161,9 +174,7 @@ void *logging_main(void *arg)
 
   //Save the time the file was last modified
   base_timespec.tv_sec = file_info.st_mtime;
-
-  // file_info.st_mtim.tv_nsec;
-  // base_time = file_info.st_mtimensec;   Do we need nanosecond precision/Can we support it?
+  base_timespec.tv_nsec = 0;
 
   /* Infinite loop to handle states */
   for (;;)
@@ -202,11 +213,30 @@ void *logging_main(void *arg)
 
       /* Log data */
 
+      /* Store current system time as new_timespec */
+      if (clock_gettime(CLOCK_REALTIME, new_timespec) < 0) // TODO: Is CLOCK_REALTIME the correct option?
+      {
+        err = errno;
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+        fprintf(stderr, "Error during clock_gettime: %d\n", err);
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+      }
+      
+      
       // Sample logging
       uint8_t sample_buf[1] = {1};
       written = fwrite(sample_buf, 1, 1, active_storage_file);
 
-      if (/* 30 seconds passed */)
+      double diff = timespec_diff(&base_timespec, &new_timespec);
+      if (diff < 0)
+      {
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+        fprintf(stderr, "Error during timespec_diff (Negative difference returned): %f\n", diff);
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+      }
+      
+
+      if (diff >= 30.0)
       {
         /* Create new log file */
         for (int i = 0; i < NUM_TIMES_TRY_OPEN; i++) // Matteo recomendeded trying multiple times, in case singular one fails.
@@ -237,6 +267,15 @@ void *logging_main(void *arg)
         }
 
         active_storage_file = storage_file_2;
+
+        /* Store current system time as the new base time */
+        if (clock_gettime(CLOCK_REALTIME, base_timespec) < 0) // TODO: Is CLOCK_REALTIME the correct option?
+        {
+          err = errno;
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+          fprintf(stderr, "Error during clock_gettime: %d\n", err);
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+        }
       }
 
       err = state_read_lock(state); // TODO: handle error
