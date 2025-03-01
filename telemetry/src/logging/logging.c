@@ -33,12 +33,6 @@
 
 #define NUM_TIMES_TRY_OPEN 3
 
-/*
- * Return if length of log filename is less than MAX_FILENAME defined length.
- */
-bool log_filename_length_ok(char *filename){
-  return strlen(filename) < MAX_FILENAME;
-}
 
 int find_max_boot_number(char *file){
   DIR *directory_pointer = opendir("./");
@@ -120,7 +114,7 @@ void *logging_main(void *arg)
 
   snprintf(flight_filename, sizeof(flight_filename), FLIGHT_FNAME_FMT, max_flight_log_boot_number);
 
-  if (!log_filename_length_ok(flight_filename)) //Check log filename length
+  if (strlen(flight_filename) > MAX_FILENAME) // Check log filename length
   {
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
     fprintf(stderr, "Log file's name (%s) is longer than the maximum size of characters (%d)\n", flight_filename, MAX_FILENAME);
