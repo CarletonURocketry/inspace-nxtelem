@@ -33,8 +33,8 @@ static void print_orb_state(struct orb_state *state) {
 }
 
 /* Sizes of buffers for getting new data from uORB */
-#define ACCEL_MULTI_BUFFER_SIZE 10
-#define BARO_MULTI_BUFFER_SIZE 10
+#define ACCEL_MULTI_BUFFER_SIZE 1
+#define BARO_MULTI_BUFFER_SIZE 1
 
 struct uorb_inputs {
   struct pollfd accel;
@@ -43,6 +43,7 @@ struct uorb_inputs {
 #define NUM_SENSORS sizeof(struct uorb_inputs) / sizeof(struct pollfd)
 
 static uint32_t ms_since(struct timespec *start);
+static void update_state(rocket_state_t *state, struct sensor_baro *baro_data);
 
 /*
  * Collection thread which runs to collect data.
@@ -130,7 +131,6 @@ void *collection_main(void *arg) {
     }
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
 
-    /* Collect data; TODO */
 
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
     printf("Collecting data...\n");
@@ -165,41 +165,10 @@ void *collection_main(void *arg) {
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG) && defined(CONFIG_DEBUG_UORB)
           orb_info(baro_meta->o_format, baro_meta->o_name, &baro_data[i]);
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+          update_state(state, &baro_data[i]);
         }
       }
     }
-
-    /* Put data in the state structure */
-
-    err = state_write_lock(state);
-    if (err) {
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-      fprintf(stderr, "Could not acquire state write lock: %d\n", err);
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
-      continue;
-    }
-
-    state->data.temp++; // TODO: remove and replace with real data
-
-    state->data.time = ms_since(&start_time); /* Measurement time */
-
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-    printf("Measurement time: %lu ms\n", state->data.time);
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
-
-    err = state_unlock(state);
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-    if (err) {
-      fprintf(stderr, "Could not release state write lock: %d\n", err);
-    }
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
-
-    err = state_signal_change(state);
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-    if (err) {
-      fprintf(stderr, "Could not signal state change: %d\n", err);
-    }
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
 
     /* Decide whether to move to lift-off state. TODO: real logic */
 
@@ -251,4 +220,37 @@ static uint32_t ms_since(struct timespec *start) {
   }
 
   return diff.tv_sec * 1000 + (diff.tv_nsec / 1e6);
+}
+
+
+static void update_state(rocket_state_t *state, struct sensor_baro *baro_data) {
+    /* Put data in the state structure */
+    int err = state_write_lock(state);
+    if (err) {
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+      fprintf(stderr, "Could not acquire state write lock: %d\n", err);
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+      return;
+    }
+
+    state->data.temp = baro_data->temperature * 1000; /* Convert to millidegrees */
+    state->data.time = baro_data->timestamp; /* Measurement time */
+
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+    printf("Measurement time: %lu ms\n", state->data.time);
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+
+    err = state_unlock(state);
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+    if (err) {
+      fprintf(stderr, "Could not release state write lock: %d\n", err);
+    }
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+
+    err = state_signal_change(state);
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+    if (err) {
+      fprintf(stderr, "Could not signal state change: %d\n", err);
+    }
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
 }
