@@ -2,8 +2,6 @@
 #include <time.h>
 #include <nuttx/sensors/sensor.h>
 #include <sys/ioctl.h>
-#include <poll.h>
-#include <uORB/uORB.h>
 
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
 #include <stdio.h>
@@ -11,6 +9,7 @@
 
 #include "../rocket-state/rocket-state.h"
 #include "../fusion/fusion.h"
+#include "../sensors/sensors.h"
 #include "collection.h"
 
 /* Measurement interval in nanoseconds */
@@ -19,28 +18,9 @@
 #define INTERVAL (1e9 / CONFIG_INSPACE_TELEMETRY_RATE)
 #endif /* CONFIG_INSPACE_TELEMETRY_RATE != 0 */
 
-static void print_orb_state(struct orb_state *state) {
-  if (state == NULL) {
-    printf("State was NULL\n");
-  }
-  else {
-    printf("Maximum Frequency: %d\n", state->max_frequency);
-    printf("Min Batch Interval: %d\n", state->min_batch_interval);
-    printf("Internal Queue Size: %d\n", state->queue_size);
-    printf("Subscribers: %d\n", state->nsubscribers);
-    printf("Generation: %d\n", state->generation);
-  }
-}
-
 /* Sizes of buffers for getting new data from uORB */
 #define ACCEL_MULTI_BUFFER_SIZE 1
 #define BARO_MULTI_BUFFER_SIZE 1
-
-struct uorb_inputs {
-  struct pollfd accel;
-  struct pollfd baro;
-};
-#define NUM_SENSORS sizeof(struct uorb_inputs) / sizeof(struct pollfd)
 
 static uint32_t ms_since(struct timespec *start);
 static void update_state(rocket_state_t *state, struct sensor_baro *baro_data);
@@ -55,49 +35,12 @@ void *collection_main(void *arg) {
   struct timespec start_time;
   rocket_state_t *state = (rocket_state_t *)(arg);
 
-  /* We want collection to get data for the logging & transmission threads 
-   * because sensors (and uorb) only queue data up to the size of the 
-   * sensor's internal buffer. If we set these large could have the same
-   * effect as using buffers but may be less understandable
-   */
-  orb_id_t accel_meta = ORB_ID(fusion_accel);
-  orb_id_t baro_meta = ORB_ID(fusion_baro);
+  struct uorb_inputs sensors;
+  clear_uorb_inputs(&sensors);
+  setup_sensor(&sensors.accel, ORB_ID(fusion_accel));
+  setup_sensor(&sensors.baro, ORB_ID(fusion_baro));
   struct sensor_accel accel_data[ACCEL_MULTI_BUFFER_SIZE];
   struct sensor_baro baro_data[BARO_MULTI_BUFFER_SIZE];
-
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-  if (accel_meta == NULL) {
-    fprintf(stderr, "Could not get accel metadata");
-  }
-  if (baro_meta == NULL) {
-    fprintf(stderr, "Could not get baro metadata");
-  }
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
-
-  struct uorb_inputs sensors;
-  sensors.accel.fd = orb_subscribe_multi(accel_meta, 0);
-  sensors.accel.events = POLLIN;
-  sensors.baro.fd = orb_subscribe_multi(baro_meta, 0);
-  sensors.baro.events = POLLIN;
-
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-  if (sensors.accel.fd < 0) {
-    fprintf(stderr, "Accel sensor was not opened successfully");
-  }
-  else if (sensors.baro.fd < 0) {
-    fprintf(stderr, "Baro sensor was not opened successfully");
-  }
-  else {
-    struct orb_state orbstate;
-    orb_get_state(sensors.accel.fd, &orbstate);
-    printf("\nAccel sensor state\n");
-    print_orb_state(&orbstate);
-
-    orb_get_state(sensors.baro.fd, &orbstate);
-    printf("\nBaro sensor state\n");
-    print_orb_state(&orbstate);
-  }
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
 
 #if CONFIG_INSPACE_TELEMETRY_RATE != 0
   struct timespec period_start;
@@ -137,36 +80,24 @@ void *collection_main(void *arg) {
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
 
     /* Wait for new data */
-    poll((struct pollfd*)&sensors, NUM_SENSORS, -1);
-    if (sensors.accel.revents == POLLIN) {
-      int len = orb_copy_multi(sensors.accel.fd, accel_data, sizeof(accel_data));
-      if (len < 0) {
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-        fprintf(stderr, "Collection: Error reading from uORB data: %d\n", len);
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
-      }
-      else {
-        for (int i = 0; i < (len / sizeof(struct sensor_accel)); i++) {
+    poll_sensors(&sensors);
+    int len = get_sensor_data(&sensors.accel, accel_data, sizeof(accel_data));
+    if (len > 0) {
+      for (int i = 0; i < (len / sizeof(struct sensor_accel)); i++) {
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG) && defined(CONFIG_DEBUG_UORB)
-          orb_info(accel_meta->o_format, accel_meta->o_name, &accel_data[i]);
+        struct orb_metadata *meta = ORB_ID(fusion_accel);
+        orb_info(meta->o_format, meta->o_name, &accel_data[i]);
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
-        }
+        update_state(state, &accel_data[i]);
       }
-    }
-    if (sensors.baro.revents == POLLIN) {
-      int len = orb_copy_multi(sensors.baro.fd, baro_data, sizeof(baro_data));
-      if (len < 0) {
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-        fprintf(stderr, "Collection: Error reading from uORB data: %d\n", len);
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
-      }
-      else {
-        for (int i = 0; i < (len / sizeof(struct sensor_baro)); i++) {
+    } 
+    len = get_sensor_data(&sensors.baro, baro_data, sizeof(baro_data));
+    if (len > 0) {
+      for (int i = 0; i < (len / sizeof(struct sensor_baro)); i++) {
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG) && defined(CONFIG_DEBUG_UORB)
-          orb_info(baro_meta->o_format, baro_meta->o_name, &baro_data[i]);
+        struct orb_metadata *meta = ORB_ID(fusion_baro);
+        orb_info(meta->o_format, meta->o_name, &baro_data[i]);
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
-          update_state(state, &baro_data[i]);
-        }
       }
     }
 
