@@ -103,18 +103,31 @@ int blk_len(blk_hdr_t *b) {
   }
 }
 
-/* Prepare a block to be included with a packet
- * @param p The header of the packet to be sent, initialized
- * @param b The block to be sent, initialized
- * @param mission_time The number of milliseconds since the start of the mission
- * @return 0 if the block can now be included with the packet, 1 otherwise
+/**
+ * Add a block to a packet, both with initialized headers
+ * 
+ * @param packet The packet to add the block to with an initialized header in the first sizeof(pkt_hdr_t) bytes
+ * @param len The length of the packet including the header
+ * @param b_header The initialized block header to add to the packet
+ * @param b_body The initialized block body to add to the packet
+ * @param mission_time The mission time
+ * @return 0 if the block was successfully added, 1 if the block cannot be added to the packet
  */
-int pkt_add_blk(pkt_hdr_t *p, blk_hdr_t *b, void *blk, uint32_t mission_time) {
-  p->blocks++;
-  if (has_offset(b)) {
-    return calc_offset(mission_time, p->timestamp,
-                       &((offset_blk *)blk)->time_offset);
+int pkt_add_blk(uint8_t *packet, uint8_t len, blk_hdr_t *b_header, uint8_t *b_body, uint32_t mission_time) {
+  pkt_hdr_t *p_header = (pkt_hdr_t *)packet;
+  if (len < sizeof(pkt_hdr_t)) {
+    return 1;
+  } 
+  if ((len + blk_len(b_header) + sizeof(blk_hdr_t)) > PACKET_MAX_SIZE) {
+    return 1;
   }
+  if (has_offset(b_header) && (!calc_offset(mission_time, p_header->timestamp, &((offset_blk *)b_body)->time_offset))) {
+    return 1;
+  }
+  memcpy((packet + len), b_header, sizeof(blk_hdr_t)); 
+  len += sizeof(b_header);
+  memcpy((packet + len), b_body, blk_len(b_header));
+  p_header->blocks++;
   return 0;
 }
 
