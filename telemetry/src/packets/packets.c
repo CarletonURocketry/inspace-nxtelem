@@ -37,9 +37,9 @@ static int calc_offset(uint32_t mission_time, uint16_t abs_timestamp,
  * @param b The block header
  * @return 1 if the block has an offset, 0 otherwise
  */
-static int has_offset(blk_hdr_t *b) {
+static int has_offset(enum block_type_e type) {
   /* All blocks have offsets right now */
-  switch ((enum block_type_e)b->type) {
+  switch (type) {
   default:
     return 1;
   }
@@ -71,8 +71,8 @@ void blk_hdr_init(blk_hdr_t *b, const enum block_type_e type) {
  * @param b The header of the block to get the length of
  * @return The length of the block that follows this header
  */
-int blk_len(blk_hdr_t *b) {
-  switch ((enum block_type_e)b->type) {
+size_t blk_len(enum block_type_e type) {
+  switch (type) {
   case DATA_TEMP:
     return sizeof(struct temp_blk_t);
     break;
@@ -111,24 +111,44 @@ int blk_len(blk_hdr_t *b) {
  * @param b_header The initialized block header to add to the packet
  * @param b_body The initialized block body to add to the packet
  * @param mission_time The mission time
- * @return 0 if the block was successfully added, 1 if the block cannot be added to the packet
+ * @return The number of bytes added or 0 if the block cannot be added to the packet
  */
-int pkt_add_blk(uint8_t *packet, uint8_t len, blk_hdr_t *b_header, uint8_t *b_body, uint32_t mission_time) {
+size_t pkt_add_blk(uint8_t *packet, uint8_t len, blk_hdr_t *b_header, uint8_t *b_body, uint32_t mission_time) {
   pkt_hdr_t *p_header = (pkt_hdr_t *)packet;
   if (len < sizeof(pkt_hdr_t)) {
-    return 1;
+    return 0;
   } 
   if ((len + blk_len(b_header) + sizeof(blk_hdr_t)) > PACKET_MAX_SIZE) {
-    return 1;
+    return 0;
   }
   if (has_offset(b_header) && (!calc_offset(mission_time, p_header->timestamp, &((offset_blk *)b_body)->time_offset))) {
-    return 1;
+    return 0;
   }
   memcpy((packet + len), b_header, sizeof(blk_hdr_t)); 
   len += sizeof(b_header);
   memcpy((packet + len), b_body, blk_len(b_header));
   p_header->blocks++;
-  return 0;
+  return sizeof(blk_hdr_t) + blk_len(b_header);
+}
+
+uint8_t *pkt_allocate_block(uint8_t *packet, uint8_t *write_pointer, enum block_type_e type, uint32_t mission_time) {
+  pkt_hdr_t *header = (pkt_hdr_t *)packet;
+  size_t packet_size = packet - write_pointer;
+  size_t block_size = sizeof(blk_hdr_t) + blk_len(type);
+
+  if (packet_size < sizeof(pkt_hdr_t)) {
+    return NULL;
+  }
+  if ((packet_size + block_size) > PACKET_MAX_SIZE) {
+    return NULL;
+  }
+  if (has_offset(type)) {
+    uint8_t *block_body = write_pointer + sizeof(blk_hdr_t); 
+    if (!calc_offset(mission_time, header->timestamp, &((offset_blk *)block_body)->time_offset)) {
+      return NULL;
+    }
+  } 
+  return write_pointer + block_size;
 }
 
 /*
@@ -150,4 +170,17 @@ void temp_blk_init(struct temp_blk_t *b, const int32_t temperature) {
   b->temperature = temperature;
 }
 
+/*
+ * Construct a acceleration block
+ * @param b The acceleration block to initialize
+ * @param x_axis Linear acceleration in the x-axis measured in centimetres per second
+ * @param y_axis Linear acceleration in the y-axis measured in centimetres per second
+ * @param z_axis Linear acceleration in the z-axis measured in centimetres per second
+ */
+void accel_blk_init(struct accel_blk_t *b, const int16_t x_axis,
+                    const int16_t y_axis, const int16_t z_axis) {
+  b->x = x_axis;
+  b->y = y_axis;
+  b->z = z_axis;
+}
 /* TODO: other block types */
