@@ -103,6 +103,26 @@ size_t blk_len(enum block_type_e type) {
   }
 }
 
+/* Initialize a packet with a header and return a pointer to the first byte of its body
+ * @param packet The packet to initialize
+ * @param packet_num The sequence number of the packet
+ * @param mission_time The mission time of the packet
+ * @returns A pointer to the first byte of the packet body
+ */
+uint8_t *init_pkt(uint8_t *packet, uint8_t packet_num, uint32_t mission_time) {
+  pkt_hdr_t *header = (pkt_hdr_t *)packet;
+  pkt_hdr_init(header, packet_num, mission_time);
+  return packet + sizeof(header);
+}
+
+/*
+ * Creates a block in a packet if it is possible to do so
+ * @param packet The packet to add the block to
+ * @param write_pointer The current write location in the packet
+ * @param type The type of block to add
+ * @param mission_time The measurement time of the block will be created
+ * @return A pointer to the block that was created, or NULL if a packet cannot be added
+ */
 uint8_t *pkt_create_blk(uint8_t *packet, uint8_t *write_pointer, enum block_type_e type, uint32_t mission_time) {
   pkt_hdr_t *header = (pkt_hdr_t *)packet;
   size_t packet_size = packet - write_pointer;
@@ -120,7 +140,7 @@ uint8_t *pkt_create_blk(uint8_t *packet, uint8_t *write_pointer, enum block_type
     if (!calc_offset(mission_time, header->timestamp, &((offset_blk *)block_body)->time_offset)) {
       return NULL;
     }
-  } 
+  }
   write_pointer += block_size;
   return block;
 }
@@ -142,6 +162,15 @@ void alt_blk_init(struct alt_blk_t *b, const int32_t altitude) {
  */
 void temp_blk_init(struct temp_blk_t *b, const int32_t temperature) {
   b->temperature = temperature;
+}
+
+/*
+ * Construct a pressure block
+ * @param b The pressure block to initialize
+ * @param pressure The pressure measured in Pascals
+ */
+void pres_blk_init(struct pres_blk_t *b, const int32_t pressure) {
+  b->pressure = pressure;
 }
 
 /*
