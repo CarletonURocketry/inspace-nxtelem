@@ -47,13 +47,13 @@ int setup_sensor(struct pollfd *sensor, orb_id_t meta) {
  * @param size The size of the data parameter in bytes
  * @return The number of bytes read from the sensor or 0 if there was none to read
  */
-int get_sensor_data(struct pollfd *sensor, void *data, size_t size) {
+ssize_t get_sensor_data(struct pollfd *sensor, void *data, size_t size) {
     /*
      * If the sensor wasn't set up right, POLLIN won't get set, meaning there's no need to avoid using
      * the sensor if its metadata or fd weren't set up properly
      */
     if (sensor->revents == POLLIN) {
-      int len = orb_copy_multi(sensor->fd, data, size);
+      ssize_t len = orb_copy_multi(sensor->fd, data, size);
       if (len < 0) {
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
         fprintf(stderr, "Collection: Error reading from uORB data: %d\n", len);
