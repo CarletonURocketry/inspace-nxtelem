@@ -64,7 +64,7 @@ void blk_hdr_init(blk_hdr_t *b, const enum block_type_e type);
 
 int blk_len(blk_hdr_t *b);
 
-int pkt_add_blk(uint8_t *packet, uint8_t len, blk_hdr_t *b_header, uint8_t *b_body, uint32_t mission_time);
+uint8_t *pkt_create_blk(uint8_t *packet, uint8_t *write_pointer, enum block_type_e type, uint32_t mission_time);
 
 /* A data block containing information about altitude. */
 struct alt_blk_t {

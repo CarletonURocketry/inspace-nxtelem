@@ -103,38 +103,11 @@ size_t blk_len(enum block_type_e type) {
   }
 }
 
-/**
- * Add a block to a packet, both with initialized headers
- * 
- * @param packet The packet to add the block to with an initialized header in the first sizeof(pkt_hdr_t) bytes
- * @param len The length of the packet including the header
- * @param b_header The initialized block header to add to the packet
- * @param b_body The initialized block body to add to the packet
- * @param mission_time The mission time
- * @return The number of bytes added or 0 if the block cannot be added to the packet
- */
-size_t pkt_add_blk(uint8_t *packet, uint8_t len, blk_hdr_t *b_header, uint8_t *b_body, uint32_t mission_time) {
-  pkt_hdr_t *p_header = (pkt_hdr_t *)packet;
-  if (len < sizeof(pkt_hdr_t)) {
-    return 0;
-  } 
-  if ((len + blk_len(b_header) + sizeof(blk_hdr_t)) > PACKET_MAX_SIZE) {
-    return 0;
-  }
-  if (has_offset(b_header) && (!calc_offset(mission_time, p_header->timestamp, &((offset_blk *)b_body)->time_offset))) {
-    return 0;
-  }
-  memcpy((packet + len), b_header, sizeof(blk_hdr_t)); 
-  len += sizeof(b_header);
-  memcpy((packet + len), b_body, blk_len(b_header));
-  p_header->blocks++;
-  return sizeof(blk_hdr_t) + blk_len(b_header);
-}
-
-uint8_t *pkt_allocate_block(uint8_t *packet, uint8_t *write_pointer, enum block_type_e type, uint32_t mission_time) {
+uint8_t *pkt_create_blk(uint8_t *packet, uint8_t *write_pointer, enum block_type_e type, uint32_t mission_time) {
   pkt_hdr_t *header = (pkt_hdr_t *)packet;
   size_t packet_size = packet - write_pointer;
   size_t block_size = sizeof(blk_hdr_t) + blk_len(type);
+  uint8_t *block = write_pointer;
 
   if (packet_size < sizeof(pkt_hdr_t)) {
     return NULL;
@@ -148,7 +121,8 @@ uint8_t *pkt_allocate_block(uint8_t *packet, uint8_t *write_pointer, enum block_
       return NULL;
     }
   } 
-  return write_pointer + block_size;
+  write_pointer += block_size;
+  return block;
 }
 
 /*

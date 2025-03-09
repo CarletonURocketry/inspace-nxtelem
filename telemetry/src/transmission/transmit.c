@@ -31,9 +31,11 @@ void *transmit_main(void *arg) {
 
   /* Packet variables. */
 
-  uint8_t packet[PACKET_MAX_SIZE]; /* Array of bytes for packet */
-  uint32_t seq_num = 0;            /* Packet numbering */
-  uint32_t packet_size;            /* The packet size after encoding */
+  uint8_t packet[PACKET_MAX_SIZE];     /* Array of bytes for packet */
+  uint8_t *write_pointer;              /* Location in packet buffer */
+  uint32_t seq_num = 0;                /* Packet numbering */
+
+  pkt_hdr_init((pkt_hdr_t *)packet, seq_num++, );
 
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
   printf("Transmit thread started.\n");
@@ -64,24 +66,26 @@ void *transmit_main(void *arg) {
 
     /* Wait for new data */
     poll_sensors(&sensors);
-    int len = get_sensor_data(&sensors.accel, accel_data, sizeof(accel_data));
-    if (len > 0) {
-      for (int i = 0; i < (len / sizeof(struct sensor_accel)); i++) {
-        // Make and add a new block
-        // TODO - make a new block here and add it 
+    // Get data together, so we can block on transmit and not lose the data we're currently using
+    // Could also ask for the minimum of the free space in the size of the buffer to save effort
+    ssize_t accel_len = get_sensor_data(&sensors.accel, accel_data, sizeof(accel_data));
+    ssize_t baro_len = get_sensor_data(&sensors.baro, baro_data, sizeof(baro_data));
+    if (accel_len > 0) {
+      for (int i = 0; i < (accel_len / sizeof(struct sensor_accel)); i++) {
+        uint8_t *block = pkt_alloc_blk(packet, write_pointer, DATA_ACCEL_ABS, accel_data[i].timestamp);
+        // No more space, transmit
+        if (block == NULL) {
+          transmit(radio, packet, write_pointer - packet);
+        }
+
       }
     } 
-    len = get_sensor_data(&sensors.baro, baro_data, sizeof(baro_data));
-    if (len > 0) {
-      for (int i = 0; i < (len / sizeof(struct sensor_baro)); i++) {
+    if (baro_len > 0) {
+      for (int i = 0; i < (baro_len / sizeof(struct sensor_baro)); i++) {
         // Make and add a new block
         // TODO - make a new block here and add it
       }
     }
-    
-    /* Transmit radio data */
-    transmit(radio, packet, packet_size);
-
   }
 
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
