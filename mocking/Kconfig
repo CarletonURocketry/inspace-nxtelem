@@ -5,7 +5,7 @@
 
 config INSPACE_MOCKING
 	tristate "Sensor Mocking"
-	depends on BOARDCTL_ROMDISK
+	select BOARDCTL_ROMDISK
 	default n
 	---help---
 		Enable mocking of sensors using test data
