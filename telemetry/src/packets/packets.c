@@ -1,8 +1,10 @@
 #include <string.h>
 
-#include <stdio.h>
-
 #include "packets.h"
+
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+#include <stdio.h>
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
 
 /* Get the absolute timestamp that should be used for a packet created
  * at the given mission time
@@ -33,10 +35,6 @@ static int calc_offset(uint32_t mission_time, uint16_t abs_timestamp,
     return 0;
   }
   return 1;
-}
-
-static uint32_t expand_abs_timestamp(uint16_t abs_timestamp) {
-  return abs_timestamp * 30 * 1000;
 }
 
 /* Check if a block has an offset that needs to be set
@@ -73,7 +71,7 @@ void blk_hdr_init(blk_hdr_t *b, const enum block_type_e type) {
   b->type = type;
 }
 
-/* Return the length of a block of this type's body, excluding the header
+/* Return the length of a block of this type's body
  * @param type The type of block to get the length of
  * @return The number of bytes in the block body
  */
@@ -140,20 +138,20 @@ uint8_t *pkt_create_blk(uint8_t *packet, uint8_t *block, enum block_type_e type,
 
   if (packet_size < sizeof(pkt_hdr_t)) {
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-    fprintf(stderr, "Packet is too small to contain a header\n");
+    /*fprintf(stderr, "Packet is too small to contain a header\n");*/
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
     return NULL;
   }
   if ((packet_size + block_size) > PACKET_MAX_SIZE) {
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-    fprintf(stderr, "Packet is too large to contain another block, packet size is %d, block size is %d\n", packet_size, block_size);
+    /*fprintf(stderr, "Packet is too large to contain another block, packet size is %d, block size is %d\n", packet_size, block_size);*/
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
     return NULL;
   }
   if (has_offset(type)) {
     if (calc_offset(mission_time, header->timestamp, &((offset_blk *)block_body(block))->time_offset)) {
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-      fprintf(stderr, "Could not fit time into packet, time was %d and packet header had %d\n", mission_time, expand_abs_timestamp(header->timestamp));
+      /*fprintf(stderr, "Could not fit time into packet, time was %d and packet header had %d\n", mission_time, 30000 * header->timestamp );*/
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
       return NULL;
     }

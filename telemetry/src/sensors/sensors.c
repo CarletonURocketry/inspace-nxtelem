@@ -58,10 +58,33 @@ ssize_t get_sensor_data(struct pollfd *sensor, void *data, size_t size) {
       ssize_t len = orb_copy_multi(sensor->fd, data, size);
       if (len < 0) {
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-        fprintf(stderr, "Collection: Error reading from uORB data: %d\n", len);
+        fprintf(stderr, "Collection: Error reading from uORB data: %ld\n", len);
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
       }
       return len;
     }
     return 0;
+}
+
+/**
+ * Clears the uorb_inputs struct to make no sensors get polled on accidentally. After this,
+ * should be fine to only set up a the desired sensors and poll everything
+ *
+ * @param sensors The uorb_inputs struct to clear
+ */
+void clear_uorb_inputs(struct uorb_inputs *sensors) {
+  struct pollfd *sensor_array = (struct pollfd *)sensors;
+  for (int i = 0; i < NUM_SENSORS; i++) {
+    sensor_array[i].fd = -1;
+    sensor_array[i].events = 0;
+  }
+}
+
+/**
+ * Polls on all sensors in the uorb_inputs struct
+ *
+ * @param sensors The uorb_inputs struct to poll on
+ */
+void poll_sensors(struct uorb_inputs *sensors) {
+    poll((struct pollfd *)sensors, NUM_SENSORS, -1);
 }

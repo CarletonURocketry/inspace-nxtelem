@@ -24,7 +24,7 @@
 
 #define err_to_ptr(err) ((void *)((err)))
 
-static size_t log(FILE *storage, uint8_t *packet, size_t packet_size);
+static size_t log_packet(FILE *storage, uint8_t *packet, size_t packet_size);
 static uint8_t *create_block(FILE *storage, uint8_t *packet, uint8_t *block, uint32_t *seq_num, enum block_type_e type, uint32_t mission_time);
 static uint32_t us_to_ms(uint64_t us) {
   return (uint32_t)(us / 1000);
@@ -36,10 +36,9 @@ static uint32_t us_to_ms(uint64_t us) {
 void *logging_main(void *arg) {
 
   int err;
-  size_t written;
   enum flight_state_e flight_state;
   rocket_state_t *state = ((rocket_state_t *)(arg));
-  uint32_t version = 0;
+
   char flight_filename[sizeof(CONFIG_INSPACE_TELEMETRY_FLIGHT_FS) +
                        MAX_FILENAME];
   char land_filename[sizeof(CONFIG_INSPACE_TELEMETRY_LANDED_FS) + MAX_FILENAME];
@@ -209,7 +208,7 @@ static uint8_t *create_block(FILE *storage, uint8_t *packet, uint8_t *block, uin
   uint8_t *next_block = pkt_create_blk(packet, block, type, mission_time);
   if (next_block == NULL) {
     if (block != packet) {
-      log(storage, packet, block - packet);
+      log_packet(storage, packet, block - packet);
       *seq_num += 1;
     }
     // We can delay setting up the header and just let the addition of the first block fail
@@ -217,20 +216,21 @@ static uint8_t *create_block(FILE *storage, uint8_t *packet, uint8_t *block, uin
     next_block = pkt_create_blk(packet, block, type, mission_time);
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
     if (next_block == NULL) {
-      fprintf(stderr, "Error adding block to packet after transmission, should not be possible\n");
+      fprintf(stderr, "Error adding block to packet after logging, should not be possible\n");
     }
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
   }
   return next_block;
 }
 
-static size_t log(FILE *storage, uint8_t *packet, size_t packet_size) {
-      size_t written = fwrite(packet, 1, packet_size, storage);
+static size_t log_packet(FILE *storage, uint8_t *packet, size_t packet_size) {
+  size_t written = fwrite(packet, 1, packet_size, storage);
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-      printf("Logged %u bytes\n", written);
+  printf("Logged %lu bytes\n", written);
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
-      if (written == 0) {
-        // TODO: Handle error (might happen if file got too large, start
-        // another file)
-      }
+  if (written == 0) {
+    // TODO: Handle error (might happen if file got too large, start
+    // another file)
+  }
+  return written;
 }

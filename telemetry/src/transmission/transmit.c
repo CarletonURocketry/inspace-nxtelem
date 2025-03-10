@@ -28,8 +28,6 @@ void *transmit_main(void *arg) {
 
   int err;
   int radio; /* Radio device file descriptor */
-  uint32_t version = 0;
-  rocket_state_t *state = (rocket_state_t *)(arg);
 
   /* Packet variables. */
 
@@ -150,7 +148,7 @@ static ssize_t transmit(int radio, uint8_t *packet, size_t packet_size) {
   }
   usleep(500000);
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-  printf("Completed transmission of packet #%lu of %ld bytes.\n", ((pkt_hdr_t *)packet)->packet_num,
+  printf("Completed transmission of packet #%u of %ld bytes.\n", ((pkt_hdr_t *)packet)->packet_num,
           packet_size);
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
   return written;

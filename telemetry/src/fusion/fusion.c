@@ -28,8 +28,6 @@ ORB_DEFINE(fusion_baro, struct sensor_baro, fusion_baro_format);
 
 
 void *fusion_main(void *arg) {
-  int err;
-
   /* Input sensors, may want to directly read instead */
   struct uorb_inputs sensors;
   clear_uorb_inputs(&sensors);

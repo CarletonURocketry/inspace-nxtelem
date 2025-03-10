@@ -19,7 +19,6 @@
 #endif /* CONFIG_INSPACE_TELEMETRY_RATE != 0 */
 
 static uint32_t ms_since(struct timespec *start);
-static void update_state(rocket_state_t *state, struct sensor_baro *baro_data);
 
 /*
  * Collection thread which runs to collect data.
@@ -70,19 +69,14 @@ void *collection_main(void *arg) {
     }
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
 
-
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-    printf("Collecting data...\n");
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
-
     /* Wait for new data */
     poll_sensors(&sensors);
     int len = get_sensor_data(&sensors.accel, accel_data, sizeof(accel_data));
     if (len > 0) {
       for (int i = 0; i < (len / sizeof(struct sensor_accel)); i++) {
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG) && defined(CONFIG_DEBUG_UORB)
-        struct orb_metadata *meta = ORB_ID(fusion_accel);
-        /*orb_info(meta->o_format, meta->o_name, &accel_data[i]);*/
+        /*const struct orb_metadata *meta = ORB_ID(fusion_accel);
+        orb_info(meta->o_format, meta->o_name, &accel_data[i]);*/
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
       }
     } 
@@ -90,8 +84,8 @@ void *collection_main(void *arg) {
     if (len > 0) {
       for (int i = 0; i < (len / sizeof(struct sensor_baro)); i++) {
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG) && defined(CONFIG_DEBUG_UORB)
-        struct orb_metadata *meta = ORB_ID(fusion_baro);
-        /*orb_info(meta->o_format, meta->o_name, &baro_data[i]);*/
+        /*const struct orb_metadata *meta = ORB_ID(fusion_baro);
+        orb_info(meta->o_format, meta->o_name, &baro_data[i]);*/
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
       }
     }
