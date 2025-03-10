@@ -29,11 +29,13 @@ int setup_sensor(struct pollfd *sensor, orb_id_t meta) {
     struct orb_state state;
     orb_get_state(sensor->fd, &state);
     printf("Setup successful for sensor %s\n", meta->o_name);
+    /* Not always useful
     printf("Maximum Frequency: %d\n", state.max_frequency);
     printf("Min Batch Interval: %d\n", state.min_batch_interval);
     printf("Internal Queue Size: %d\n", state.queue_size);
     printf("Subscribers: %d\n", state.nsubscribers);
     printf("Generation: %d\n", state.generation);
+    */
   }
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
   return 0;
