@@ -5,7 +5,6 @@
 #include <poll.h>
 #include <sys/ioctl.h>
 
-
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
 #include <stdio.h>
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
@@ -225,4 +224,54 @@ static uint32_t ms_since(struct timespec *start) {
   }
 
   return diff.tv_sec * 1000 + (diff.tv_nsec / 1e6);
+}
+
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
+#define MAX_TIME 30
+#define FILENAME "test.txt"
+
+enum CurrentBuffer {
+  PING,
+  PONG
+};
+
+typedef struct buffer
+{
+  char *filename;
+  int* fd;
+  enum CurrentBuffer curr;
+} buffer_t;
+
+void init(buffer_t *buff){
+  buff->filename = FILENAME;
+  buff->fd = open(buff->filename);
+}
+
+int swap_buffer(buffer_t *buff)
+{
+  int ret;
+  if (buff->curr == PING)
+  {
+    buff->curr = PONG;
+    ret = 0;
+  }
+  else if (buff->curr == PONG)
+  {
+    buff->curr = PING;
+    ret = 0;
+  }
+  else
+  {
+    /* Undefined */
+    ret = -1;
+  }
+
+  return ret;
+}
+
+int check_if_time_passed(int *fd, int time_sec){
+
 }
