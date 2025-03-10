@@ -82,9 +82,8 @@ void *collection_main(void *arg) {
       for (int i = 0; i < (len / sizeof(struct sensor_accel)); i++) {
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG) && defined(CONFIG_DEBUG_UORB)
         struct orb_metadata *meta = ORB_ID(fusion_accel);
-        orb_info(meta->o_format, meta->o_name, &accel_data[i]);
+        /*orb_info(meta->o_format, meta->o_name, &accel_data[i]);*/
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
-        update_state(state, &accel_data[i]);
       }
     } 
     len = get_sensor_data(&sensors.baro, baro_data, sizeof(baro_data));
@@ -92,7 +91,7 @@ void *collection_main(void *arg) {
       for (int i = 0; i < (len / sizeof(struct sensor_baro)); i++) {
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG) && defined(CONFIG_DEBUG_UORB)
         struct orb_metadata *meta = ORB_ID(fusion_baro);
-        orb_info(meta->o_format, meta->o_name, &baro_data[i]);
+        /*orb_info(meta->o_format, meta->o_name, &baro_data[i]);*/
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
       }
     }
@@ -147,37 +146,4 @@ static uint32_t ms_since(struct timespec *start) {
   }
 
   return diff.tv_sec * 1000 + (diff.tv_nsec / 1e6);
-}
-
-
-static void update_state(rocket_state_t *state, struct sensor_baro *baro_data) {
-    /* Put data in the state structure */
-    int err = state_write_lock(state);
-    if (err) {
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-      fprintf(stderr, "Could not acquire state write lock: %d\n", err);
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
-      return;
-    }
-
-    state->data.temp = baro_data->temperature * 1000; /* Convert to millidegrees */
-    state->data.time = baro_data->timestamp; /* Measurement time */
-
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-    printf("Measurement time: %lu ms\n", state->data.time);
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
-
-    err = state_unlock(state);
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-    if (err) {
-      fprintf(stderr, "Could not release state write lock: %d\n", err);
-    }
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
-
-    err = state_signal_change(state);
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-    if (err) {
-      fprintf(stderr, "Could not signal state change: %d\n", err);
-    }
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
 }
