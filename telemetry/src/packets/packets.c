@@ -158,6 +158,7 @@ uint8_t *pkt_create_blk(uint8_t *packet, uint8_t *block, enum block_type_e type,
       return NULL;
     }
   }
+  blk_hdr_init((blk_hdr_t *)block, type);
   return block + block_size;
 }
 

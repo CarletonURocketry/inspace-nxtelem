@@ -17,9 +17,7 @@
 
 #define err_to_ptr(err) ((void *)((err)))
 
-static uint32_t construct_packet(struct rocket_t *data, uint8_t *pkt,
-                                 uint32_t seq_num);
-static int transmit(int radio, uint8_t *packet, uint32_t packet_size);
+static ssize_t transmit(int radio, uint8_t *packet, size_t packet_size);
 static uint8_t *create_block(int radio, uint8_t *packet, uint8_t *block, uint32_t *seq_num, enum block_type_e type, uint32_t mission_time);
 static uint32_t us_to_ms(uint64_t us) {
   return (uint32_t)(us / 1000);
@@ -102,7 +100,7 @@ void *transmit_main(void *arg) {
 }
 
 /**
- * Creates and sets up a block
+ * Create a block and set it up, or transmit and make a new packet if a block can't be added
  *
  * @param radio The radio to write the packet to when full
  * @param packet The packet to write to
@@ -114,7 +112,6 @@ void *transmit_main(void *arg) {
  */
 static uint8_t *create_block(int radio, uint8_t *packet, uint8_t *block, uint32_t *seq_num, enum block_type_e type, uint32_t mission_time) {
   uint8_t *next_block = pkt_create_blk(packet, block, type, mission_time);
-  // No more space, transmit, then try to add again
   if (next_block == NULL) {
     if (block != packet) {
       transmit(radio, packet, block - packet);
@@ -129,7 +126,6 @@ static uint8_t *create_block(int radio, uint8_t *packet, uint8_t *block, uint32_
     }
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
   }
-  blk_hdr_init((blk_hdr_t *)block, type);
   return next_block;
 }
 
@@ -141,7 +137,7 @@ static uint8_t *create_block(int radio, uint8_t *packet, uint8_t *block, uint32_
  * @param packet_size The size of the packet to transmit
  * @return The number of bytes written or a negative error code
  */
-static int transmit(int radio, uint8_t *packet, uint32_t packet_size) {
+static ssize_t transmit(int radio, uint8_t *packet, size_t packet_size) {
   ssize_t written = write(radio, packet, packet_size);
   int err = 0;
   if (written == -1) {
