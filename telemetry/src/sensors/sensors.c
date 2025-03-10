@@ -43,7 +43,7 @@ int setup_sensor(struct pollfd *sensor, orb_id_t meta) {
  * Gets data from the sensor if the POLLIN event has occured
  * 
  * @param sensor A pollfd struct with a valid or invalid file descriptor
- * @param data Where to store the data retrieved from the sensor
+ * @param data An array of uORB data structs of the type this sensor uses
  * @param size The size of the data parameter in bytes
  * @return The number of bytes read from the sensor or 0 if there was none to read
  */
