@@ -3,7 +3,7 @@
 
 /**
  * Set up a pollfd structure for a uORB sensor
- * 
+ *
  * @param sensor A pollfd struct that will be initialized with a uORB fd and for POLLIN events
  * @param meta The metadata for the topic the sensor will be subscribed to
  * @return 0 on success or a negative error code
@@ -41,7 +41,7 @@ int setup_sensor(struct pollfd *sensor, orb_id_t meta) {
 
 /**
  * Gets data from the sensor if the POLLIN event has occured
- * 
+ *
  * @param sensor A pollfd struct with a valid or invalid file descriptor
  * @param data An array of uORB data structs of the type this sensor uses
  * @param size The size of the data parameter in bytes
