@@ -9,6 +9,8 @@
 
 #include "../packets/packets.h"
 #include "../rocket-state/rocket-state.h"
+#include "../sensors/sensors.h"
+#include "../fusion/fusion.h"
 #include "transmit.h"
 
 /* Cast an error to a void pointer */
@@ -17,13 +19,13 @@
 
 static uint32_t construct_packet(struct rocket_t *data, uint8_t *pkt,
                                  uint32_t seq_num);
+static int transmit(int radio, uint8_t *packet, uint32_t packet_size);
 
 /* Main thread for data transmission over radio. */
 void *transmit_main(void *arg) {
 
   int err;
   int radio; /* Radio device file descriptor */
-  ssize_t written;
   uint32_t version = 0;
   rocket_state_t *state = (rocket_state_t *)(arg);
 
@@ -52,45 +54,34 @@ void *transmit_main(void *arg) {
 
   for (;;) {
 
-    err = state_wait_for_change(state, &version); // TODO: handle error
+    
+    struct uorb_inputs sensors;
+    clear_uorb_inputs(&sensors);
+    setup_sensor(&sensors.accel, ORB_ID(fusion_accel));
+    setup_sensor(&sensors.baro, ORB_ID(fusion_baro));
+    struct sensor_accel accel_data[ACCEL_FUSION_BUFFER_SIZE];
+    struct sensor_baro baro_data[BARO_FUSION_BUFFER_SIZE];
 
-    err = state_read_lock(state); // TODO: handle error
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-    if (err) {
-      fprintf(stderr, "Error acquiring read lock: %d\n", err);
+    /* Wait for new data */
+    poll_sensors(&sensors);
+    int len = get_sensor_data(&sensors.accel, accel_data, sizeof(accel_data));
+    if (len > 0) {
+      for (int i = 0; i < (len / sizeof(struct sensor_accel)); i++) {
+        // Make and add a new block
+        // TODO - make a new block here and add it 
+      }
+    } 
+    len = get_sensor_data(&sensors.baro, baro_data, sizeof(baro_data));
+    if (len > 0) {
+      for (int i = 0; i < (len / sizeof(struct sensor_baro)); i++) {
+        // Make and add a new block
+        // TODO - make a new block here and add it
+      }
     }
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
-
-    /* Encode radio data into packet. */
-
-    packet_size = construct_packet(&state->data, packet, seq_num);
-    err = state_unlock(state); // TODO: handle error
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-    if (err) {
-      fprintf(stderr, "Error releasing read lock: %d\n", err);
-    }
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
-
-    seq_num++; /* Increment sequence numbering */
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-    printf("Constructed packet #%lu of size %lu bytes\n", seq_num, packet_size);
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
-
+    
     /* Transmit radio data */
+    transmit(radio, packet, packet_size);
 
-    written = write(radio, packet, packet_size);
-    if (written == -1) {
-      err = errno;
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-      fprintf(stderr, "Error transmitting: %d\n", err);
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
-      // TODO: handle error in errno
-    }
-    usleep(500000);
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-    printf("Completed transmission of packet #%lu of %ld bytes.\n", seq_num,
-           packet_size);
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
   }
 
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
@@ -103,7 +94,8 @@ void *transmit_main(void *arg) {
   pthread_exit(err_to_ptr(err));
 }
 
-/* Construct a packet from the rocket state data.
+/** Construct a packet from the rocket state data.
+ *
  * @param data The rocket data to encode
  * @param pkt The packet buffer to encode the data in
  * @param seq_num The sequence number of the packet
@@ -139,4 +131,31 @@ static uint32_t construct_packet(struct rocket_t *data, uint8_t *pkt,
   /* Update packet header length with the size of all written bytes */
 
   return size;
+}
+
+/**
+ * Transmits a packet over the radio with a fake delay
+ * 
+ * @param radio The radio to transmit to
+ * @param packet The completed packet to transmit
+ * @param packet_size The size of the packet to transmit
+ * @return The number of bytes written or a negative error code
+ */
+static int transmit(int radio, uint8_t *packet, uint32_t packet_size) {
+  ssize_t written = write(radio, packet, packet_size);
+  int err = 0;
+  if (written == -1) {
+    err = errno;
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+    fprintf(stderr, "Error transmitting: %d\n", err);
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+    // TODO: handle error in errno
+    return -err;
+  }
+  usleep(500000);
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+  printf("Completed transmission of packet #%lu of %ld bytes.\n", (pkt_hdr_t *)packet->packet_num, 
+          packet_size);
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+  return written;
 }

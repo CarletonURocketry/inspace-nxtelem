@@ -18,10 +18,6 @@
 #define INTERVAL (1e9 / CONFIG_INSPACE_TELEMETRY_RATE)
 #endif /* CONFIG_INSPACE_TELEMETRY_RATE != 0 */
 
-/* Sizes of buffers for getting new data from uORB */
-#define ACCEL_MULTI_BUFFER_SIZE 1
-#define BARO_MULTI_BUFFER_SIZE 1
-
 static uint32_t ms_since(struct timespec *start);
 static void update_state(rocket_state_t *state, struct sensor_baro *baro_data);
 
@@ -39,8 +35,8 @@ void *collection_main(void *arg) {
   clear_uorb_inputs(&sensors);
   setup_sensor(&sensors.accel, ORB_ID(fusion_accel));
   setup_sensor(&sensors.baro, ORB_ID(fusion_baro));
-  struct sensor_accel accel_data[ACCEL_MULTI_BUFFER_SIZE];
-  struct sensor_baro baro_data[BARO_MULTI_BUFFER_SIZE];
+  struct sensor_accel accel_data[ACCEL_FUSION_BUFFER_SIZE];
+  struct sensor_baro baro_data[BARO_FUSION_BUFFER_SIZE];
 
 #if CONFIG_INSPACE_TELEMETRY_RATE != 0
   struct timespec period_start;
