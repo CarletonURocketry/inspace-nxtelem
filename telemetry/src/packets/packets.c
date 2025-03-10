@@ -1,5 +1,7 @@
 #include <string.h>
 
+#include <stdio.h>
+
 #include "packets.h"
 
 /* Get the absolute timestamp that should be used for a packet created
@@ -67,39 +69,32 @@ void blk_hdr_init(blk_hdr_t *b, const enum block_type_e type) {
   b->type = type;
 }
 
-/* Return the length of the block that this header preceeds
- * @param b The header of the block to get the length of
- * @return The length of the block that follows this header
+/* Return the length of a block of this type's body, excluding the header
+ * @param type The type of block to get the length of
+ * @return The number of bytes in the block body
  */
-size_t blk_len(enum block_type_e type) {
+size_t blk_body_len(enum block_type_e type) {
   switch (type) {
   case DATA_TEMP:
     return sizeof(struct temp_blk_t);
-    break;
   case DATA_HUMIDITY:
     return sizeof(struct hum_blk_t);
-    break;
   case DATA_VOLTAGE:
     return sizeof(struct volt_blk_t);
-    break;
   case DATA_LAT_LONG:
     return sizeof(struct coord_blk_t);
-    break;
   case DATA_PRESSURE:
     return sizeof(struct pres_blk_t);
-    break;
   case DATA_ANGULAR_VEL:
     return sizeof(struct ang_vel_blk_t);
-    break;
   case DATA_ACCEL_REL:
     return sizeof(struct accel_blk_t);
-    break;
+  case DATA_ACCEL_ABS:
+    return sizeof(struct accel_blk_t);
   case DATA_ALT_LAUNCH:
     return sizeof(struct alt_blk_t);
-    break;
   default:
     return 0;
-    break;
   }
 }
 
@@ -112,7 +107,11 @@ size_t blk_len(enum block_type_e type) {
 uint8_t *init_pkt(uint8_t *packet, uint8_t packet_num, uint32_t mission_time) {
   pkt_hdr_t *header = (pkt_hdr_t *)packet;
   pkt_hdr_init(header, packet_num, mission_time);
-  return packet + sizeof(header);
+  return packet + sizeof(pkt_hdr_t);
+}
+
+uint8_t *block_body(uint8_t *block) {
+  return block + sizeof(blk_hdr_t);
 }
 
 /*
@@ -123,25 +122,27 @@ uint8_t *init_pkt(uint8_t *packet, uint8_t packet_num, uint32_t mission_time) {
  * @param mission_time The measurement time of the block will be created
  * @return A pointer to the block that was created, or NULL if a packet cannot be added
  */
-uint8_t *pkt_create_blk(uint8_t *packet, uint8_t *write_pointer, enum block_type_e type, uint32_t mission_time) {
+uint8_t *pkt_create_blk(uint8_t *packet, uint8_t **write_pointer, enum block_type_e type, uint32_t mission_time) {
   pkt_hdr_t *header = (pkt_hdr_t *)packet;
-  size_t packet_size = packet - write_pointer;
-  size_t block_size = sizeof(blk_hdr_t) + blk_len(type);
-  uint8_t *block = write_pointer;
+  size_t packet_size = *write_pointer - packet;
+  size_t block_size = sizeof(blk_hdr_t) + blk_body_len(type);
+  uint8_t *block = *write_pointer;
 
   if (packet_size < sizeof(pkt_hdr_t)) {
+    fprintf(stderr, "Packet is too small to contain a header\n");
     return NULL;
   }
   if ((packet_size + block_size) > PACKET_MAX_SIZE) {
+    fprintf(stderr, "Packet is too large to contain a block, packet size is %d, block size is %d\n", packet_size, block_size);
     return NULL;
   }
   if (has_offset(type)) {
-    uint8_t *block_body = write_pointer + sizeof(blk_hdr_t); 
-    if (!calc_offset(mission_time, header->timestamp, &((offset_blk *)block_body)->time_offset)) {
+    if (calc_offset(mission_time, header->timestamp, &((offset_blk *)block_body(block))->time_offset)) {
+      fprintf(stderr, "Could not fit time into packet, time was %d and packet header had %d\n", mission_time, header->timestamp);
       return NULL;
     }
   }
-  write_pointer += block_size;
+  *write_pointer += block_size;
   return block;
 }
 
