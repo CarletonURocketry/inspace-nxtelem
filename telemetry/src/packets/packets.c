@@ -35,6 +35,10 @@ static int calc_offset(uint32_t mission_time, uint16_t abs_timestamp,
   return 1;
 }
 
+static uint32_t expand_abs_timestamp(uint16_t abs_timestamp) {
+  return abs_timestamp * 30 * 1000;
+}
+
 /* Check if a block has an offset that needs to be set
  * @param b The block header
  * @return 1 if the block has an offset, 0 otherwise
@@ -110,40 +114,51 @@ uint8_t *init_pkt(uint8_t *packet, uint8_t packet_num, uint32_t mission_time) {
   return packet + sizeof(pkt_hdr_t);
 }
 
+/**
+ * Return the location of the block's body
+ * 
+ * @param block The block to get the body of
+ * @return The first byte after the block's header
+ */
 uint8_t *block_body(uint8_t *block) {
   return block + sizeof(blk_hdr_t);
 }
 
-/*
+/**
  * Creates a block in a packet if it is possible to do so
- * @param packet The packet to add the block to
- * @param write_pointer The current write location in the packet
+ * 
+ * @param packet The packet to add a block to
+ * @param block Where to add the block, if one were able to be added
  * @param type The type of block to add
- * @param mission_time The measurement time of the block will be created
- * @return A pointer to the block that was created, or NULL if a packet cannot be added
+ * @param mission_time If the block type has an offset, set the offset using this time
+ * @returns The location to add the next block, or NULL if the block could not be added
  */
-uint8_t *pkt_create_blk(uint8_t *packet, uint8_t **write_pointer, enum block_type_e type, uint32_t mission_time) {
+uint8_t *pkt_create_blk(uint8_t *packet, uint8_t *block, enum block_type_e type, uint32_t mission_time) {
   pkt_hdr_t *header = (pkt_hdr_t *)packet;
-  size_t packet_size = *write_pointer - packet;
+  size_t packet_size = block - packet;
   size_t block_size = sizeof(blk_hdr_t) + blk_body_len(type);
-  uint8_t *block = *write_pointer;
 
   if (packet_size < sizeof(pkt_hdr_t)) {
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
     fprintf(stderr, "Packet is too small to contain a header\n");
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
     return NULL;
   }
   if ((packet_size + block_size) > PACKET_MAX_SIZE) {
-    fprintf(stderr, "Packet is too large to contain a block, packet size is %d, block size is %d\n", packet_size, block_size);
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+    fprintf(stderr, "Packet is too large to contain another block, packet size is %d, block size is %d\n", packet_size, block_size);
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
     return NULL;
   }
   if (has_offset(type)) {
     if (calc_offset(mission_time, header->timestamp, &((offset_blk *)block_body(block))->time_offset)) {
-      fprintf(stderr, "Could not fit time into packet, time was %d and packet header had %d\n", mission_time, header->timestamp);
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+      fprintf(stderr, "Could not fit time into packet, time was %d and packet header had %d\n", mission_time, expand_abs_timestamp(header->timestamp));
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
       return NULL;
     }
   }
-  *write_pointer += block_size;
-  return block;
+  return block + block_size;
 }
 
 /*
