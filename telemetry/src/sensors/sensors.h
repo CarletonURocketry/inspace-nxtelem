@@ -14,12 +14,12 @@ struct uorb_inputs {
 #define NUM_SENSORS sizeof(struct uorb_inputs) / sizeof(struct pollfd)
 
 int setup_sensor(struct pollfd *sensor, orb_id_t meta);
-int get_sensor_data(struct pollfd *sensor, void *data, size_t size);
+ssize_t get_sensor_data(struct pollfd *sensor, void *data, size_t size);
 
 /**
  * Clears the uorb_inputs struct to make no sensors get polled on accidentally. After this,
  * should be fine to only set up a the desired sensors and poll everything
- * 
+ *
  * @param sensors The uorb_inputs struct to clear
  */
 static void clear_uorb_inputs(struct uorb_inputs *sensors) {
@@ -32,7 +32,7 @@ static void clear_uorb_inputs(struct uorb_inputs *sensors) {
 
 /**
  * Polls on all sensors in the uorb_inputs struct
- * 
+ *
  * @param sensors The uorb_inputs struct to poll on
  */
 static void poll_sensors(struct uorb_inputs *sensors) {

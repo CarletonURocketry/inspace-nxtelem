@@ -62,7 +62,7 @@ typedef struct {
 
 void blk_hdr_init(blk_hdr_t *b, const enum block_type_e type);
 
-int blk_len(blk_hdr_t *b);
+size_t blk_len(enum block_type_e type);
 
 uint8_t *init_pkt(uint8_t *packet, uint8_t packet_num, uint32_t mission_time);
 uint8_t *pkt_create_blk(uint8_t *packet, uint8_t *write_pointer, enum block_type_e type, uint32_t mission_time);

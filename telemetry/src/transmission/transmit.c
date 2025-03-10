@@ -20,6 +20,7 @@
 static uint32_t construct_packet(struct rocket_t *data, uint8_t *pkt,
                                  uint32_t seq_num);
 static int transmit(int radio, uint8_t *packet, uint32_t packet_size);
+static uint8_t *next_block(int radio, uint8_t *packet, uint8_t *write_pointer, uint32_t *seq_num, enum block_type_e type, uint32_t mission_time);
 
 /* Main thread for data transmission over radio. */
 void *transmit_main(void *arg) {
@@ -68,16 +69,16 @@ void *transmit_main(void *arg) {
     ssize_t baro_len = get_sensor_data(&sensors.baro, baro_data, sizeof(baro_data));
     if (accel_len > 0) {
       for (int i = 0; i < (accel_len / sizeof(struct sensor_accel)); i++) {
-        struct accel_blk_t *block = (struct accel_blk_t *)next_block(radio, packet, write_pointer, &seq_num, DATA_ACCEL_ABS, accel_data[i].time);
+        struct accel_blk_t *block = (struct accel_blk_t *)next_block(radio, packet, write_pointer, &seq_num, DATA_ACCEL_ABS, accel_data[i].timestamp);
         accel_blk_init(block, accel_data[i].x, accel_data[i].y, accel_data[i].z);
       }
     }
     if (baro_len > 0) {
       for (int i = 0; i < (baro_len / sizeof(struct sensor_baro)); i++) {
-        struct pres_blk_t *block = (struct pres_blk_t*)next_block(radio, packet, write_pointer, &seq_num, DATA_PRESSURE, baro_data[i].time);
-        pres_blk_init(block, baro_data[i].pressure);
-        struct temp_blk_t *block = (struct temp_blk_t*)next_block(radio, packet, write_pointer, &seq_num, DATA_TEMP, baro_data[i].time);
-        temp_blk_init(block, baro_data[i].temperature);
+        struct pres_blk_t *pres_block = (struct pres_blk_t*)next_block(radio, packet, write_pointer, &seq_num, DATA_PRESSURE, baro_data[i].timestamp);
+        pres_blk_init(pres_block, baro_data[i].pressure);
+        struct temp_blk_t *temp_block = (struct temp_blk_t*)next_block(radio, packet, write_pointer, &seq_num, DATA_TEMP, baro_data[i].timestamp);
+        temp_blk_init(temp_block, baro_data[i].temperature);
       }
     }
   }
@@ -151,7 +152,7 @@ static uint8_t *next_block(int radio, uint8_t *packet, uint8_t *write_pointer, u
             *seq_num += 1;
           }
           // We can delay setting up the header and just let the addition of the first block fail
-          write_pointer = init_packet(packet, seq_num, mission_time);
+          write_pointer = init_pkt(packet, seq_num, mission_time);
           uint8_t *block = pkt_create_blk(packet, write_pointer, type, mission_time);
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
           if (block == NULL) {
@@ -182,7 +183,7 @@ static int transmit(int radio, uint8_t *packet, uint32_t packet_size) {
   }
   usleep(500000);
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-  printf("Completed transmission of packet #%lu of %ld bytes.\n", (pkt_hdr_t *)packet->packet_num, 
+  printf("Completed transmission of packet #%lu of %ld bytes.\n", ((pkt_hdr_t *)packet)->packet_num,
           packet_size);
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
   return written;
