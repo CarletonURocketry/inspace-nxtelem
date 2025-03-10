@@ -131,7 +131,7 @@ uint8_t *block_body(uint8_t *block) {
  * @param block Where to add the block, if one were able to be added
  * @param type The type of block to add
  * @param mission_time If the block type has an offset, set the offset using this time
- * @returns The location to add the next block, or NULL if the block could not be added
+ * @returns The location to add the next block, or NULL if the block can not be added
  */
 uint8_t *pkt_create_blk(uint8_t *packet, uint8_t *block, enum block_type_e type, uint32_t mission_time) {
   pkt_hdr_t *header = (pkt_hdr_t *)packet;
