@@ -37,7 +37,8 @@ void *logging_main(void *arg) {
 
   int err;
   enum flight_state_e flight_state;
-  rocket_state_t *state = ((rocket_state_t *)(arg));
+  struct logging_args *unpacked_args = (struct logging_args *)(arg);
+  rocket_state_t *state = unpacked_args->state;
 
   char flight_filename[sizeof(CONFIG_INSPACE_TELEMETRY_FLIGHT_FS) +
                        MAX_FILENAME];

@@ -28,7 +28,8 @@ void *collection_main(void *arg) {
   int err;
   enum flight_state_e flight_state;
   struct timespec start_time;
-  rocket_state_t *state = (rocket_state_t *)(arg);
+  struct collection_args *unpacked_args = (struct collection_args *)(arg);
+  rocket_state_t *state = unpacked_args->state;
 
   struct uorb_inputs sensors;
   clear_uorb_inputs(&sensors);

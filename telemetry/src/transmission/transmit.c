@@ -29,6 +29,8 @@ void *transmit_main(void *arg) {
   int err;
   int radio; /* Radio device file descriptor */
 
+  struct transmit_args *unpacked_args = (struct transmit_args *)arg;
+
   /* Packet variables. */
 
   uint8_t packet[PACKET_MAX_SIZE];     /* Array of bytes for packet */
