@@ -22,34 +22,32 @@ static const char fusion_baro_format[] =
 ORB_DEFINE(fusion_accel, struct sensor_accel, fusion_accel_format);
 ORB_DEFINE(fusion_baro, struct sensor_baro, fusion_baro_format);
 
-/* Input sensors */
+/* Buffers for inputs, best to match to the size of the internal sensor buffers */
+#define ACCEL_INPUT_BUFFER_SIZE 5
+#define BARO_INPUT_BUFFER_SIZE 5
 
-#define ACCEL_MULTI_BUFFER_SIZE 5
-#define BARO_MULTI_BUFFER_SIZE 5
 
 void *fusion_main(void *arg) {
-  int err;
-
   /* Input sensors, may want to directly read instead */
   struct uorb_inputs sensors;
   clear_uorb_inputs(&sensors);
   setup_sensor(&sensors.accel, orb_get_meta("sensor_accel"));
   setup_sensor(&sensors.baro, orb_get_meta("sensor_baro"));
-  struct sensor_accel accel_data[ACCEL_MULTI_BUFFER_SIZE];
-  struct sensor_baro baro_data[BARO_MULTI_BUFFER_SIZE];
+  struct sensor_accel accel_data[ACCEL_INPUT_BUFFER_SIZE];
+  struct sensor_baro baro_data[BARO_INPUT_BUFFER_SIZE];
 
   /* Output sensors */ 
 
   /* Currently publishing blank data to start, might be better to try and advertise only on first fusioned data */
   struct sensor_accel output_accel = {.x = 0, .y = 0, .z = 0, .temperature = 0, .timestamp = orb_absolute_time()};
   struct sensor_baro output_baro = {.pressure = 0, .temperature = 0, .timestamp = orb_absolute_time()};
-  int accel_out = orb_advertise_multi_queue(ORB_ID(fusion_accel), &output_accel, NULL, 1);
+  int accel_out = orb_advertise_multi_queue(ORB_ID(fusion_accel), &output_accel, NULL, ACCEL_FUSION_BUFFER_SIZE);
   if (accel_out < 0) {
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
     fprintf(stderr, "Fusion could not advertise accel topic: %d\n", accel_out);
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
   }
-  int baro_out = orb_advertise_multi_queue(ORB_ID(fusion_baro), &output_baro, NULL, 1);
+  int baro_out = orb_advertise_multi_queue(ORB_ID(fusion_baro), &output_baro, NULL, BARO_FUSION_BUFFER_SIZE);
   if (baro_out < 0) {
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
     fprintf(stderr, "Fusion could not advertise baro topic: %d\n", baro_out);

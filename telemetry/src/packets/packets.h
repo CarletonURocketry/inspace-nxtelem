@@ -57,14 +57,17 @@ typedef struct {
 
 /* Base type for blocks with a time offset */
 typedef struct {
+  /* The offset from the absolute time in the header in milliseconds */
   int16_t time_offset;
 } offset_blk;
 
 void blk_hdr_init(blk_hdr_t *b, const enum block_type_e type);
 
-int blk_len(blk_hdr_t *b);
+size_t blk_body_len(enum block_type_e type);
 
-int pkt_add_blk(pkt_hdr_t *p, blk_hdr_t *b, void *blk, uint32_t mission_time);
+uint8_t *block_body(uint8_t *block);
+uint8_t *init_pkt(uint8_t *packet, uint8_t packet_num, uint32_t mission_time);
+uint8_t *pkt_create_blk(uint8_t *packet, uint8_t *block, enum block_type_e type, uint32_t mission_time);
 
 /* A data block containing information about altitude. */
 struct alt_blk_t {
