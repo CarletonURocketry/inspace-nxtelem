@@ -117,11 +117,14 @@ void packet_buffer_init(packet_buffer_t *buffer) {
 packet_node_t *packet_buffer_get_empty(packet_buffer_t *buffer) {
     packet_node_t *packet;
     packet = packet_queue_lpop(&buffer->empty_queue);
+    if (!packet) {
+        packet_queue_rpop(&buffer->full_queue);
+    }
     if (packet) {
-        return packet;
+        packet->end = packet->packet;
     }
     // Take from the end, since that should be the oldest packet
-    return packet_queue_rpop(&buffer->full_queue);
+    return packet;
 }
 
 /**

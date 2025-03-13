@@ -11,6 +11,8 @@ typedef struct packet_node packet_node_t;
 struct packet_node {
     /* A packet that can be written directly to the radio or storage medium */
     uint8_t packet[PACKET_MAX_SIZE];
+    /* Points to the end of a packet, where the blocks stop */
+    uint8_t *end;
     /* The next node in the packet queue */
     packet_node_t *next;
     /* The previous node in the packet queue */
