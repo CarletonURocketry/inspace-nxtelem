@@ -30,13 +30,16 @@ void *collection_main(void *arg) {
   struct timespec start_time;
   struct collection_args *unpacked_args = (struct collection_args *)(arg);
   rocket_state_t *state = unpacked_args->state;
+  packet_buffer_t *logging_buffer = unpacked_args->logging_buffer;
+  packet_buffer_t *transmit_buffer = unpacked_args->transmit_buffer;
 
   struct uorb_inputs sensors;
   clear_uorb_inputs(&sensors);
-  setup_sensor(&sensors.accel, ORB_ID(fusion_accel));
-  setup_sensor(&sensors.baro, ORB_ID(fusion_baro));
-  struct sensor_accel accel_data[ACCEL_FUSION_BUFFER_SIZE];
-  struct sensor_baro baro_data[BARO_FUSION_BUFFER_SIZE];
+  setup_sensor(&sensors.accel, orb_get_meta("sensor_accel"));
+  setup_sensor(&sensors.baro, orb_get_meta("sensor_baro"));
+  setup_sensor(&sensors.mag, orb_get_meta("sensor_mag"));
+  setup_sensor(&sensors.gyro, org_get_meta("sensor_gyro"));
+  setup_sensor(&sensors.gnss, orb_get_meta("sensor_gnss"));
 
 #if CONFIG_INSPACE_TELEMETRY_RATE != 0
   struct timespec period_start;
