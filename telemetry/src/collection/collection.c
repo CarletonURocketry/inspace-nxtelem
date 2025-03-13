@@ -18,9 +18,12 @@
 #define INTERVAL (1e9 / CONFIG_INSPACE_TELEMETRY_RATE)
 #endif /* CONFIG_INSPACE_TELEMETRY_RATE != 0 */
 
+/* Cast an error to a void pointer */
+
+#define err_to_ptr(err) ((void *)((err)))
+
 static uint32_t ms_since(struct timespec *start);
 static uint8_t *alloc_block(packet_buffer_t *buffer, packet_node_t **node, enum block_type_e type, uint32_t mission_time);
-
 static uint32_t us_to_ms(uint64_t us) {
   return (uint32_t)(us / 1000);
 }
@@ -42,6 +45,12 @@ void *collection_main(void *arg) {
   packet_node_t *logging_packet = packet_buffer_get_empty(logging_buffer);
   packet_buffer_t *transmit_buffer = unpacked_args->transmit_buffer;
   packet_node_t *transmit_packet = packet_buffer_get_empty(transmit_buffer);
+  if (!logging_packet || !transmit_packet) {
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+    fprintf(stderr, "Could not get an initial empty packet for collection\n");
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+    pthread_exit(err_to_ptr(-ENOMEM));
+  }
 
   struct uorb_inputs sensors;
   union uorb_data sensor_data[UORB_BUFFER_SIZE];
@@ -102,7 +111,7 @@ void *collection_main(void *arg) {
         }
       }
     }
-    data_len = get_sensor_data(&sensors.accel, sensor_data, sizeof(struct sensor_baro) * UORB_BUFFER_SIZE);
+    data_len = get_sensor_data(&sensors.baro, sensor_data, sizeof(struct sensor_baro) * UORB_BUFFER_SIZE);
     if (data_len > 0) {
       struct sensor_baro *baro_data = (struct sensor_baro *)sensor_data;
       for (int i = 0; i < (data_len / sizeof(struct sensor_baro)); i++) {
@@ -111,7 +120,7 @@ void *collection_main(void *arg) {
           pres_blk_init((struct pres_blk_t*)block_body(block), baro_data[i].pressure);
         }
 
-        block = alloc_block(logging_buffer, &logging_packet, DATA_ACCEL_ABS, us_to_ms(baro_data[i].timestamp));
+        block = alloc_block(logging_buffer, &logging_packet, DATA_PRESSURE, us_to_ms(baro_data[i].timestamp));
         if (block) {
           pres_blk_init((struct pres_blk_t*)block_body(block), baro_data[i].pressure);
         }
@@ -187,14 +196,26 @@ static uint8_t *alloc_block(packet_buffer_t *buffer, packet_node_t **node, enum 
     packet_buffer_put_full(buffer, *node);
     (*node) = packet_buffer_get_empty(buffer);
     if (*node == NULL) {
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+      fprintf(stderr, "Couldn't get an empty packet - not enough packets in buffer\n");
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
       return NULL;
     }
+
     // Leave seq num up to the logger/transmitter (don't know if or in what order packets get transmitted)
     (*node)->end = init_pkt((*node)->packet, 0, mission_time);
     next_block = pkt_create_blk((*node)->packet, (*node)->end, type, mission_time);
+    if (next_block == NULL) {
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+      fprintf(stderr, "Couldn't add a block to a new packet\n");
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+      return NULL;
+    }
   }
   uint8_t *write_to = (*node)->end;
   (*node)->end = next_block;
-
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+  printf("Allocated %ld bytes for type %d in packet %p, current size %ld\n", next_block - write_to, type, (*node)->packet, (*node)->end - (*node)->packet);
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
   return write_to;
 }

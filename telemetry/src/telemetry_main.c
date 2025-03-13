@@ -44,6 +44,21 @@ int main(int argc, char **argv) {
     exit(EXIT_FAILURE);
   }
 
+  err = packet_buffer_init(&transmit_buffer);
+  if (err) {
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+    fprintf(stderr, "Could not initialize transmit buffer: %d\n", err);
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+    exit(EXIT_FAILURE);
+  }
+  
+  err = packet_buffer_init(&logging_buffer);
+  if (err) {
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+    fprintf(stderr, "Could not initialize logging buffer: %d\n", err);
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+    exit(EXIT_FAILURE);
+  }
   /* Start all threads */
 
   struct collection_args collect_thread_args = {.state = &state, .transmit_buffer = &transmit_buffer, .logging_buffer = &logging_buffer};

@@ -42,7 +42,7 @@ typedef struct {
     struct packet_queue empty_queue;
 } packet_buffer_t;
 
-void packet_buffer_init(packet_buffer_t *buffer); 
+int packet_buffer_init(packet_buffer_t *buffer);
 packet_node_t *packet_buffer_get_empty(packet_buffer_t *buffer);
 packet_node_t *packet_buffer_get_full(packet_buffer_t *buffer);
 void packet_buffer_put_empty(packet_buffer_t *buffer, packet_node_t *node);

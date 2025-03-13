@@ -10,7 +10,7 @@
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
 
 
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+#if defined(CONFIG_DEBUG_UORB)
 /* Format strings for fusioned data, useful for printing debug data using orb_info() */
 static const char fusion_accel_format[] =
   "fusioned accel - timestamp:%" PRIu64 ",x:%hf,y:%hf,z:%hf,temperature:%hf";
