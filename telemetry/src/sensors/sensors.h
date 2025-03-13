@@ -5,7 +5,6 @@
 #include <poll.h>
 
 /* Used for polling on multiple sensors at once. Don't set up the ones you don't want to use */
-
 struct uorb_inputs {
   struct pollfd accel;
   struct pollfd baro;
@@ -15,7 +14,6 @@ struct uorb_inputs {
 };
 
 /* A buffer that can hold any of the types of data created by the sensors in uorb_inputs */
-
 union uorb_data {
   struct sensor_accel accel;
   struct sensor_baro baro;

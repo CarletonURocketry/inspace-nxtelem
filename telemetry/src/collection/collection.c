@@ -20,6 +20,9 @@
 
 static uint32_t ms_since(struct timespec *start);
 
+
+#define UORB_BUFFER_SIZE 5
+
 /*
  * Collection thread which runs to collect data.
  */
@@ -30,10 +33,17 @@ void *collection_main(void *arg) {
   struct timespec start_time;
   struct collection_args *unpacked_args = (struct collection_args *)(arg);
   rocket_state_t *state = unpacked_args->state;
+
   packet_buffer_t *logging_buffer = unpacked_args->logging_buffer;
+  packet_node_t *logging_packet = packet_buffer_get_empty(logging_buffer);
+  uint8_t logging_seq_num = 0;
   packet_buffer_t *transmit_buffer = unpacked_args->transmit_buffer;
+  packet_node_t *transmit_packet = packet_buffer_get_empty(transmit_buffer);
+  uint8_t transmit_seq_num = 0;
 
   struct uorb_inputs sensors;
+  union uorb_data sensor_data[UORB_BUFFER_SIZE];
+
   clear_uorb_inputs(&sensors);
   setup_sensor(&sensors.accel, orb_get_meta("sensor_accel"));
   setup_sensor(&sensors.baro, orb_get_meta("sensor_baro"));
@@ -75,22 +85,26 @@ void *collection_main(void *arg) {
 
     /* Wait for new data */
     poll_sensors(&sensors);
-    int len = get_sensor_data(&sensors.accel, accel_data, sizeof(accel_data));
-    if (len > 0) {
-      for (int i = 0; i < (len / sizeof(struct sensor_accel)); i++) {
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG) && defined(CONFIG_DEBUG_UORB)
-        /*const struct orb_metadata *meta = ORB_ID(fusion_accel);
-        orb_info(meta->o_format, meta->o_name, &accel_data[i]);*/
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+    ssize_t data_len = get_sensor_data(&sensors.accel, sensor_data, sizeof(struct sensor_accel) * UORB_BUFFER_SIZE);
+    if (data_len > 0) {
+      struct sensor_accel *accel_data = (struct sensor_accel *)sensor_data;
+      for (int i = 0; i < (data_len / sizeof(struct sensor_accel)); i++) {
+        uint8_t *block = alloc_block(transmit_buffer, &transmit_packet, DATA_ACCEL_ABS, transmit_seq_num, us_to_ms(accel_data[i].timestamp));
+        accel_blk_init((struct accel_blk_t*)block_body(block), accel_data[i].x, accel_data[i].y, accel_data[i].z);
+
+        block = alloc_block(logging_buffer, &logging_packet, DATA_ACCEL_ABS, logging_seq_num, us_to_ms(accel_data[i].timestamp));
+        accel_blk_init((struct accel_blk_t*)block_body(block), accel_data[i].x, accel_data[i].y, accel_data[i].z);
       }
-    } 
-    len = get_sensor_data(&sensors.baro, baro_data, sizeof(baro_data));
-    if (len > 0) {
-      for (int i = 0; i < (len / sizeof(struct sensor_baro)); i++) {
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG) && defined(CONFIG_DEBUG_UORB)
-        /*const struct orb_metadata *meta = ORB_ID(fusion_baro);
-        orb_info(meta->o_format, meta->o_name, &baro_data[i]);*/
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+    }
+    data_len = get_sensor_data(&sensors.accel, sensor_data, sizeof(struct sensor_baro) * UORB_BUFFER_SIZE);
+    if (data_len > 0) {
+      struct sensor_baro *baro_data = (struct sensor_baro *)sensor_data;
+      for (int i = 0; i < (data_len / sizeof(struct sensor_baro)); i++) {
+        uint8_t *block = alloc_block(transmit_buffer, &transmit_packet, DATA_PRESSURE, transmit_seq_num, us_to_ms(baro_data[i].timestamp));
+        pres_blk_init(block, baro_data[i].pressure);
+
+        block = alloc_block(logging_buffer, &logging_packet, DATA_ACCEL_ABS, logging_seq_num, us_to_ms(baro_data[i].timestamp));
+        pres_blk_init(block, baro_data[i].pressure);
       }
     }
 
@@ -144,4 +158,30 @@ static uint32_t ms_since(struct timespec *start) {
   }
 
   return diff.tv_sec * 1000 + (diff.tv_nsec / 1e6);
+}
+
+/**
+ * Allocates a block in the current node or a block in a new node if the current node is full
+ * 
+ * @param buffer The buffer to get a new, empty node from and place full nodes in
+ * @param node The current node being worked on
+ * @param type The type of block being allocated
+ * @param seq_num The sequence number of the packet
+ * @param mission_time The time of the measurement, if this block type has one
+ * @return The location to write the requested type of block
+ */
+static uint8_t *alloc_block(packet_buffer_t *buffer, packet_node_t **node, enum block_type_e type, uint32_t *seq_num, uint32_t mission_time) {
+  // The last byte of the packet will be where the block is allocated, but we need to know where it will end to update (*node)->end
+  uint8_t *next_block = pkt_create_blk((*node)->packet, (*node)->end, type, mission_time);
+  // Can't add to this packet, it's full or we can just assume its done being asssembled
+  if (next_block == NULL) {
+    packet_buffer_put_full(buffer, node);
+    (*node) = packet_buffer_get_empty(buffer);
+    (*node)->end = init_pkt((*node)->packet, ++(*seq_num), mission_time);
+    next_block = pkt_create_blk((*node)->packet, (*node)->end, type, mission_time);
+  }
+  uint8_t *write_to = (*node)->end;
+  (*node)->end = next_block;
+
+  return write_to;
 }
