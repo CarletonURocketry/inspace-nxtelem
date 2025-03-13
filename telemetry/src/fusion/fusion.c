@@ -16,11 +16,13 @@ static const char fusion_accel_format[] =
   "fusioned accel - timestamp:%" PRIu64 ",x:%hf,y:%hf,z:%hf,temperature:%hf";
 static const char fusion_baro_format[] =
   "fusioned baro - timestamp:%" PRIu64 ",pressure:%hf,temperature:%hf";
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
-
-/* UORB declarations for fused sensor data */
 ORB_DEFINE(fusion_accel, struct sensor_accel, fusion_accel_format);
 ORB_DEFINE(fusion_baro, struct sensor_baro, fusion_baro_format);
+#else
+/* UORB declarations for fused sensor data */
+ORB_DEFINE(fusion_accel, struct sensor_accel);
+ORB_DEFINE(fusion_baro, struct sensor_baro);
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
 
 /* Buffers for inputs, best to match to the size of the internal sensor buffers */
 #define ACCEL_INPUT_BUFFER_SIZE 5
