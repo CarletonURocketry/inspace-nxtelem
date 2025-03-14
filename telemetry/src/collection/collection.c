@@ -1,5 +1,6 @@
 #include <pthread.h>
 #include <time.h>
+#include <math.h>
 #include <nuttx/sensors/sensor.h>
 #include <sys/ioctl.h>
 
@@ -241,6 +242,13 @@ static uint8_t *alloc_block(packet_buffer_t *buffer, packet_node_t **node, enum 
 }
 
 /**
+ * Convert millibar to pascals
+ */
+static float pascals(float millibar) {
+  return millibar * 100;
+}
+
+/**
  * Add a pressure block to the packet being assembled
  * 
  * @param buffer A buffer of packet nodes, in case the current packet can't be added to
@@ -250,8 +258,15 @@ static uint8_t *alloc_block(packet_buffer_t *buffer, packet_node_t **node, enum 
 static void add_pres_blk(packet_buffer_t *buffer, packet_node_t **node, struct sensor_baro *baro_data) {
   uint8_t *block = alloc_block(buffer, node, DATA_PRESSURE, us_to_ms(baro_data->timestamp));
   if (block) {
-    pres_blk_init((struct pres_blk_t*)block_body(block), baro_data->pressure);
+    pres_blk_init((struct pres_blk_t*)block_body(block), pascals(baro_data->pressure));
   }
+}
+
+/**
+ * Convert a degrees celsius to millidegrees
+ */
+static float millidegrees(float celsius) {
+  return celsius * 1000;
 }
 
 /**
@@ -264,7 +279,7 @@ static void add_pres_blk(packet_buffer_t *buffer, packet_node_t **node, struct s
 static void add_temp_blk(packet_buffer_t *buffer, packet_node_t **node, struct sensor_baro *baro_data) {
   uint8_t *block = alloc_block(buffer, node, DATA_TEMP, us_to_ms(baro_data->timestamp));
   if (block) {
-    temp_blk_init((struct temp_blk_t*)block_body(block), baro_data->temperature);
+    temp_blk_init((struct temp_blk_t*)block_body(block), millidegrees(baro_data->temperature));
   }
 }
 
@@ -285,6 +300,13 @@ static void baro_handler(void *ctx, uint8_t *data) {
 }
 
 /**
+ * Convert meters per second squared to centimeters per second squared
+ */
+static float cm_per_sec_squared(float meters_per_sec_squared) {
+  return meters_per_sec_squared * 100;
+}
+
+/**
  * Add an acceleration block to the packet being assembled
  * 
  * @param buffer A buffer of packet nodes, in case the current packet can't be added to
@@ -294,7 +316,7 @@ static void baro_handler(void *ctx, uint8_t *data) {
 static void add_accel_blk(packet_buffer_t *buffer, packet_node_t **node, struct sensor_accel *accel_data) {
   uint8_t *block = alloc_block(buffer, node, DATA_ACCEL_ABS, us_to_ms(accel_data->timestamp));
   if (block) {
-    accel_blk_init((struct accel_blk_t*)block_body(block), accel_data->x, accel_data->y, accel_data->z);
+    accel_blk_init((struct accel_blk_t*)block_body(block), cm_per_sec_squared(accel_data->x), cm_per_sec_squared(accel_data->y), cm_per_sec_squared(accel_data->z));
   }
 }
 
@@ -311,11 +333,99 @@ static void accel_handler(void *ctx, uint8_t *data) {
   add_accel_blk(context->transmit_buffer, &context->transmit_packet, accel_data);
 }
 
+/**
+ * A uorb_data_callback_t function - adds magnetometer data to the required packets
+ *  
+ * @param ctx Context information, type processing_context_t
+ * @param data magnetometer data to add, type struct sensor_mag
+ */
 static void mag_handler(void *ctx, uint8_t *data) {
+  // TODO - currently no definition for magnetometer data in packet spec
 }
 
+
+/**
+ * Convert a radian to a tenth of a degree
+ */
+static float tenth_degree(float radian) {
+  return radian * 18 / M_PI;
+}
+
+/**
+ * Add an gyro block to the packet being assembled
+ * 
+ * @param buffer A buffer of packet nodes, in case the current packet can't be added to
+ * @param node The packet currently being assembled
+ * @param gyro_data The gyro data to add
+ */
+static void add_gyro_blk(packet_buffer_t *buffer, packet_node_t **node, struct sensor_gyro *gyro_data) {
+  uint8_t *block = alloc_block(buffer, node, DATA_ANGULAR_VEL, us_to_ms(gyro_data->timestamp));
+  if (block) {
+    ang_vel_blk_init((struct ang_vel_blk_t*)block_body(block), tenth_degree(gyro_data->x), tenth_degree(gyro_data->y), tenth_degree(gyro_data->z));
+  }
+}
+
+/**
+ * A uorb_data_callback_t function - adds gyro data to the required packets
+ *  
+ * @param ctx Context information, type processing_context_t
+ * @param data Acceleration data to add, type struct sensor_gyro
+ */
 static void gyro_handler(void *ctx, uint8_t *data) {
+  struct sensor_gyro *gyro_data = (struct sensor_gyro*)data;
+  processing_context_t *context = (processing_context_t *)ctx;
+  add_gyro_blk(context->logging_buffer, &context->logging_packet, gyro_data);
+  add_gyro_blk(context->transmit_buffer, &context->transmit_packet, gyro_data);
+}
+
+/**
+ * Convert a degree to a tenth of a microdegree
+ */
+static float point_one_microdegrees(float degrees) {
+  return 1E7f * degrees;
+}
+
+/**
+ * Add an gnss block to the packet being assembled
+ * 
+ * @param buffer A buffer of packet nodes, in case the current packet can't be added to
+ * @param node The packet currently being assembled
+ * @param gnss_data The gnss data to add
+ */
+static void add_gnss_block(packet_buffer_t *buffer, packet_node_t **node, struct sensor_gnss *gnss_data) {
+  uint8_t *block = alloc_block(buffer, node, DATA_LAT_LONG, us_to_ms(gnss_data->timestamp));
+  if (block) {
+    coord_blk_init((struct coord_blk_t*)block_body(block), point_one_microdegrees(gnss_data->latitude), point_one_microdegrees(gnss_data->longitude));
+  }
+}
+
+/**
+ * Convert meters to millimeters
+ */
+static float millimeters(float meters) {
+  return meters * 1000;
+}
+
+/**
+ * Add a mean sea level altitude block to the packet being assembled
+ * 
+ * @param buffer A buffer of packet nodes, in case the current packet can't be added to
+ * @param node The packet currently being assembled
+ * @param alt_data The altitude data to add
+ */
+static void add_msl_block(packet_buffer_t *buffer, packet_node_t **node, struct sensor_gnss *alt_data) {
+  uint8_t *block = alloc_block(buffer, node, DATA_ALT_SEA, us_to_ms(alt_data->timestamp));
+  if (block) {
+    alt_blk_init((struct alt_blk_t*)block_body(block), millimeters(alt_data->altitude));
+  }
 }
 
 static void gnss_handler(void *ctx, uint8_t *data) {
+  struct sensor_gnss *gnss_data = (struct sensor_gnss*)data;
+  processing_context_t *context = (processing_context_t *)ctx;
+  add_gnss_block(context->logging_buffer, &context->logging_packet, gnss_data);
+  add_msl_block(context->logging_buffer, &context->logging_packet, gnss_data);
+
+  add_gnss_block(context->transmit_buffer, &context->transmit_packet, gnss_data);
+  add_msl_block(context->transmit_buffer, &context->transmit_packet, gnss_data);
 }
