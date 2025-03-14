@@ -105,7 +105,7 @@ static packet_node_t* packet_queue_rpop(struct packet_queue *queue) {
  * @param queue Pointer to the queue structure
  * @param node Pointer to the node to add
  */
-static void packet_queue_lpush(struct packet_queue *queue, packet_node_t *node) {
+static void packet_queue_push(struct packet_queue *queue, packet_node_t *node) {
     pthread_mutex_lock(&queue->lock);
     node->next = queue->head;
     node->prev = NULL;
@@ -115,27 +115,6 @@ static void packet_queue_lpush(struct packet_queue *queue, packet_node_t *node) 
         queue->tail = node;
     }
     queue->head = node;
-    pthread_cond_signal(&queue->not_empty);
-    pthread_mutex_unlock(&queue->lock);
-}
-
-/**
- * Add a node to the end of the queue.
- * 
- * @param queue Pointer to the queue structure
- * @param node Pointer to the node to add
- */
-static void packet_queue_rpush(struct packet_queue *queue, packet_node_t *node) {
-    pthread_mutex_lock(&queue->lock);
-    node->prev = queue->tail;
-    node->next = NULL;
-    if (queue->tail) {
-        queue->tail->next = node;
-    } else {
-        queue->head = node;
-    }
-    queue->tail = node;
-    
     pthread_cond_signal(&queue->not_empty);
     pthread_mutex_unlock(&queue->lock);
 }
@@ -156,7 +135,7 @@ int packet_buffer_init(packet_buffer_t *buffer) {
         return -err;
     }
     for (int i = 0; i < PACKET_QUEUE_NUM_BUFFERS; i++) {
-        packet_queue_lpush(&buffer->empty_queue, &buffer->buffers[i]);
+        packet_queue_push(&buffer->empty_queue, &buffer->buffers[i]);
     }
     return 0;
 }
@@ -206,7 +185,7 @@ packet_node_t *packet_buffer_get_full(packet_buffer_t *buffer) {
  * @param node The empty or used packet which can now be overwritten
  */
 void packet_buffer_put_empty(packet_buffer_t *buffer, packet_node_t *node) {
-    packet_queue_lpush(&buffer->empty_queue, node);
+    packet_queue_push(&buffer->empty_queue, node);
 }
 
 /**
@@ -225,5 +204,5 @@ void packet_buffer_put_full(packet_buffer_t *buffer, packet_node_t *node) {
         printf("node is NULL\n");
     }
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
-    packet_queue_lpush(&buffer->full_queue, node);
+    packet_queue_push(&buffer->full_queue, node);
 }

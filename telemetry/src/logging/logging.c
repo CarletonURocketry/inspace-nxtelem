@@ -25,10 +25,6 @@
 #define err_to_ptr(err) ((void *)((err)))
 
 static size_t log_packet(FILE *storage, uint8_t *packet, size_t packet_size);
-static uint8_t *create_block(FILE *storage, uint8_t *packet, uint8_t *block, uint32_t *seq_num, enum block_type_e type, uint32_t mission_time);
-static uint32_t us_to_ms(uint64_t us) {
-  return (uint32_t)(us / 1000);
-}
 
 /*
  * Logging thread which runs to log data to the SD card.
