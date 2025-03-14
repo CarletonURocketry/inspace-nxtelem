@@ -2,6 +2,7 @@
 
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
 #include <stdio.h>
+//#define PACKET_BUFFERING_DEBUG
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
 
 
@@ -59,9 +60,9 @@ static packet_node_t* packet_queue_wait_lpop(struct packet_queue *queue) {
     pthread_mutex_lock(&queue->lock);
 
     while (queue->head == NULL) {
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+#if defined(PACKET_BUFFERING_DEBUG)
         printf("Waiting for a full packet\n");
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+#endif /* defined(PACKET_BUFFERING_DEBUG) */
         pthread_cond_wait(&queue->not_empty, &queue->lock);
     }
 
@@ -150,17 +151,17 @@ packet_node_t *packet_buffer_get_empty(packet_buffer_t *buffer) {
     packet_node_t *packet;
     packet = packet_queue_lpop(&buffer->empty_queue);
     if (!packet) {
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+#if defined(PACKET_BUFFERING_DEBUG)
         printf("No empty packets to write into, getting a full packet to overwrite\n");
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+#endif /* defined(PACKET_BUFFERING_DEBUG) */
         packet = packet_queue_rpop(&buffer->full_queue);
     }
     if (packet) {
         packet->end = packet->packet;
     }
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+#if defined(PACKET_BUFFERING_DEBUG)
     printf("Got an packet from the buffer at address %p to write into\n", packet); 
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+#endif /* defined(PACKET_BUFFERING_DEBUG) */
     // Take from the end, since that should be the oldest packet
     return packet;
 }
@@ -172,9 +173,9 @@ packet_node_t *packet_buffer_get_empty(packet_buffer_t *buffer) {
  * @return A packet that has 0 or more bytes in it
  */
 packet_node_t *packet_buffer_get_full(packet_buffer_t *buffer) {
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+#if defined(PACKET_BUFFERING_DEBUG)
     printf("Getting a full packet from the buffer\n");
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+#endif /* defined(PACKET_BUFFERING_DEBUG) */
     return packet_queue_wait_lpop(&buffer->full_queue);
 }
 
@@ -195,7 +196,7 @@ void packet_buffer_put_empty(packet_buffer_t *buffer, packet_node_t *node) {
  * @param node The full packet that is ready to be used by other parts of the system
  */
 void packet_buffer_put_full(packet_buffer_t *buffer, packet_node_t *node) {
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+#if defined(PACKET_BUFFERING_DEBUG)
     printf("Putting a full packet back into the buffer: ");
     if (node != NULL) {
         printf("packet of length %d\n", node->end - node->packet);
@@ -203,6 +204,6 @@ void packet_buffer_put_full(packet_buffer_t *buffer, packet_node_t *node) {
     else {
         printf("node is NULL\n");
     }
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+#endif /* defined(PACKET_BUFFERING_DEBUG) */
     packet_queue_push(&buffer->full_queue, node);
 }

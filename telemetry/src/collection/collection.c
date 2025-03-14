@@ -113,11 +113,11 @@ void *collection_main(void *arg) {
     /* Wait for new data */
     poll_sensors(&sensors);
 
-    for_all_data(accel_handler, &context, &sensors.accel, (uint8_t *)sensor_data, sizeof(struct sensor_accel) * BATCH_READ_SIZE, sizeof(struct sensor_accel));
-    for_all_data(baro_handler, &context, &sensors.baro, (uint8_t *)sensor_data, sizeof(struct sensor_baro) * BATCH_READ_SIZE, sizeof(struct sensor_baro));
-    for_all_data(mag_handler, &context, &sensors.mag, (uint8_t *)sensor_data, sizeof(struct sensor_mag) * BATCH_READ_SIZE, sizeof(struct sensor_mag));
-    for_all_data(gyro_handler, &context, &sensors.gyro, (uint8_t *)sensor_data, sizeof(struct sensor_gyro) * BATCH_READ_SIZE, sizeof(struct sensor_gyro));
-    for_all_data(gnss_handler, &context, &sensors.gnss, (uint8_t *)sensor_data, sizeof(struct sensor_gnss) * BATCH_READ_SIZE, sizeof(struct sensor_gnss));
+    read_until_empty(accel_handler, &context, &sensors.accel, (uint8_t *)sensor_data, sizeof(struct sensor_accel) * BATCH_READ_SIZE, sizeof(struct sensor_accel));
+    read_until_empty(baro_handler, &context, &sensors.baro, (uint8_t *)sensor_data, sizeof(struct sensor_baro) * BATCH_READ_SIZE, sizeof(struct sensor_baro));
+    read_until_empty(mag_handler, &context, &sensors.mag, (uint8_t *)sensor_data, sizeof(struct sensor_mag) * BATCH_READ_SIZE, sizeof(struct sensor_mag));
+    read_until_empty(gyro_handler, &context, &sensors.gyro, (uint8_t *)sensor_data, sizeof(struct sensor_gyro) * BATCH_READ_SIZE, sizeof(struct sensor_gyro));
+    read_until_empty(gnss_handler, &context, &sensors.gnss, (uint8_t *)sensor_data, sizeof(struct sensor_gnss) * BATCH_READ_SIZE, sizeof(struct sensor_gnss));
 
     /* Decide whether to move to lift-off state. TODO: real logic */
 
@@ -185,11 +185,14 @@ static uint8_t *alloc_block(packet_buffer_t *buffer, packet_node_t **node, enum 
   uint8_t *next_block = pkt_create_blk((*node)->packet, (*node)->end, type, mission_time);
   // Can't add to this packet, it's full or we can just assume its done being asssembled
   if (next_block == NULL) {
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+    printf("Completed a packet length %d\n", (*node)->end - (*node)->packet);
+#endif
     packet_buffer_put_full(buffer, *node);
     (*node) = packet_buffer_get_empty(buffer);
     if (*node == NULL) {
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-      fprintf(stderr, "Couldn't get an empty packet - not enough packets in buffer\n");
+      fprintf(stderr, "Couldn't get an empty packet or overwrite a full one - not enough packets in buffer\n");
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
       return NULL;
     }

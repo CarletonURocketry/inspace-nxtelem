@@ -100,7 +100,7 @@ void poll_sensors(struct uorb_inputs *sensors) {
  * @param elem_size The size of this type's elements
  * @return The number of bytes read from the sensors
  */
-void for_all_data(uorb_data_callback_t handler, void* handler_context, struct pollfd *sensor, uint8_t *buf, size_t size, size_t elem_size) {
+void read_until_empty(uorb_data_callback_t handler, void* handler_context, struct pollfd *sensor, uint8_t *buf, size_t size, size_t elem_size) {
   if (sensor->revents == POLLIN) {
     ssize_t len = 0;
     do {
