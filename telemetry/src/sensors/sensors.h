@@ -26,20 +26,18 @@ union uorb_data {
 #define NUM_SENSORS sizeof(struct uorb_inputs) / sizeof(struct pollfd)
 
 /**
- * A function pointer to a function that will perform operations on single reads of uORB data
+ * A function pointer to a function that will perform operations on single pieces of uORB data
  *
- * @param context Context given to the callback from the user
- * @param sensor_type The type of the sensor the data is from
- * @param buf A buffer at least the size of the struct that the type of sensor uses
- * @param bufsize The size of the buffer in bytes
+ * @param context Context given to the callback by the program using this interface
+ * @param element The element to perform processing on, where the length is implied by knowing the type of element
  */
-typedef void (*uorb_data_callback_t)(void* context, uint8_t* buf, size_t bufsize);
+typedef void (*uorb_data_callback_t)(void* context, uint8_t* element);
 
 int setup_sensor(struct pollfd *sensor, orb_id_t meta);
 ssize_t get_sensor_data(struct pollfd *sensor, void *data, size_t size);
 void clear_uorb_inputs(struct uorb_inputs *sensors);
 void poll_sensors(struct uorb_inputs *sensors);
-void for_all_data(uorb_data_callback_t handler, void* handler_context, struct pollfd *sensor, uint8_t *buf, size_t size);
+void for_all_data(uorb_data_callback_t handler, void* handler_context, struct pollfd *sensor, uint8_t *buf, size_t size, size_t elem_size);
 
 #endif // _INSPACE_SENSORS_H_
 

@@ -22,13 +22,28 @@
 
 #define err_to_ptr(err) ((void *)((err)))
 
+typedef struct {
+  packet_buffer_t *logging_buffer;
+  packet_node_t *logging_packet;
+
+  packet_buffer_t *transmit_buffer;
+  packet_node_t *transmit_packet;
+} processing_context_t;
+
 static uint32_t ms_since(struct timespec *start);
 static uint8_t *alloc_block(packet_buffer_t *buffer, packet_node_t **node, enum block_type_e type, uint32_t mission_time);
+static void baro_handler(void *ctx, uint8_t *data);
+static void accel_handler(void *ctx, uint8_t *data);
+static void mag_handler(void *ctx, uint8_t *data);
+static void gnss_handler(void *ctx, uint8_t *data);
+static void gyro_handler(void *ctx, uint8_t *data);
+
 static uint32_t us_to_ms(uint64_t us) {
   return (uint32_t)(us / 1000);
 }
 
-#define UORB_BUFFER_SIZE 5
+/* How many measurements to read from sensors at a time (match to size of internal buffers) */
+#define BATCH_READ_SIZE 5
 
 /*
  * Collection thread which runs to collect data.
@@ -41,11 +56,12 @@ void *collection_main(void *arg) {
   struct collection_args *unpacked_args = (struct collection_args *)(arg);
   rocket_state_t *state = unpacked_args->state;
 
-  packet_buffer_t *logging_buffer = unpacked_args->logging_buffer;
-  packet_node_t *logging_packet = packet_buffer_get_empty(logging_buffer);
-  packet_buffer_t *transmit_buffer = unpacked_args->transmit_buffer;
-  packet_node_t *transmit_packet = packet_buffer_get_empty(transmit_buffer);
-  if (!logging_packet || !transmit_packet) {
+  processing_context_t context;
+  context.logging_buffer = unpacked_args->logging_buffer;
+  context.logging_packet = packet_buffer_get_empty(context.logging_buffer);
+  context.transmit_buffer = unpacked_args->transmit_buffer;
+  context.transmit_packet = packet_buffer_get_empty(context.transmit_buffer);
+  if (!context.logging_packet || !context.transmit_packet) {
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
     fprintf(stderr, "Could not get an initial empty packet for collection\n");
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
@@ -53,7 +69,7 @@ void *collection_main(void *arg) {
   }
 
   struct uorb_inputs sensors;
-  union uorb_data sensor_data[UORB_BUFFER_SIZE];
+  union uorb_data sensor_data[BATCH_READ_SIZE];
 
   clear_uorb_inputs(&sensors);
   setup_sensor(&sensors.accel, orb_get_meta("sensor_accel"));
@@ -96,36 +112,12 @@ void *collection_main(void *arg) {
 
     /* Wait for new data */
     poll_sensors(&sensors);
-    ssize_t data_len = get_sensor_data(&sensors.accel, sensor_data, sizeof(struct sensor_accel) * UORB_BUFFER_SIZE);
-    if (data_len > 0) {
-      struct sensor_accel *accel_data = (struct sensor_accel *)sensor_data;
-      for (int i = 0; i < (data_len / sizeof(struct sensor_accel)); i++) {
-        uint8_t *block = alloc_block(transmit_buffer, &transmit_packet, DATA_ACCEL_ABS, us_to_ms(accel_data[i].timestamp));
-        if (block) {
-          accel_blk_init((struct accel_blk_t*)block_body(block), accel_data[i].x, accel_data[i].y, accel_data[i].z);
-        }
 
-        block = alloc_block(logging_buffer, &logging_packet, DATA_ACCEL_ABS, us_to_ms(accel_data[i].timestamp));
-        if (block) {
-          accel_blk_init((struct accel_blk_t*)block_body(block), accel_data[i].x, accel_data[i].y, accel_data[i].z);
-        }
-      }
-    }
-    data_len = get_sensor_data(&sensors.baro, sensor_data, sizeof(struct sensor_baro) * UORB_BUFFER_SIZE);
-    if (data_len > 0) {
-      struct sensor_baro *baro_data = (struct sensor_baro *)sensor_data;
-      for (int i = 0; i < (data_len / sizeof(struct sensor_baro)); i++) {
-        uint8_t *block = alloc_block(transmit_buffer, &transmit_packet, DATA_PRESSURE, us_to_ms(baro_data[i].timestamp));
-        if (block) {
-          pres_blk_init((struct pres_blk_t*)block_body(block), baro_data[i].pressure);
-        }
-
-        block = alloc_block(logging_buffer, &logging_packet, DATA_PRESSURE, us_to_ms(baro_data[i].timestamp));
-        if (block) {
-          pres_blk_init((struct pres_blk_t*)block_body(block), baro_data[i].pressure);
-        }
-      }
-    }
+    for_all_data(accel_handler, &context, &sensors.accel, (uint8_t *)sensor_data, sizeof(struct sensor_accel) * BATCH_READ_SIZE, sizeof(struct sensor_accel));
+    for_all_data(baro_handler, &context, &sensors.baro, (uint8_t *)sensor_data, sizeof(struct sensor_baro) * BATCH_READ_SIZE, sizeof(struct sensor_baro));
+    for_all_data(mag_handler, &context, &sensors.mag, (uint8_t *)sensor_data, sizeof(struct sensor_mag) * BATCH_READ_SIZE, sizeof(struct sensor_mag));
+    for_all_data(gyro_handler, &context, &sensors.gyro, (uint8_t *)sensor_data, sizeof(struct sensor_gyro) * BATCH_READ_SIZE, sizeof(struct sensor_gyro));
+    for_all_data(gnss_handler, &context, &sensors.gnss, (uint8_t *)sensor_data, sizeof(struct sensor_gnss) * BATCH_READ_SIZE, sizeof(struct sensor_gnss));
 
     /* Decide whether to move to lift-off state. TODO: real logic */
 
@@ -218,4 +210,84 @@ static uint8_t *alloc_block(packet_buffer_t *buffer, packet_node_t **node, enum 
   //printf("Allocated %ld bytes for type %d in packet %p, current size %ld\n", next_block - write_to, type, (*node)->packet, (*node)->end - (*node)->packet);
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
   return write_to;
+}
+
+/**
+ * Add a pressure block to the packet being assembled
+ * 
+ * @param buffer A buffer of packet nodes, in case the current packet can't be added to
+ * @param node The packet currently being assembled
+ * @param baro_data The baro data to add
+ */
+static void add_pres_blk(packet_buffer_t *buffer, packet_node_t **node, struct sensor_baro *baro_data) {
+  uint8_t *block = alloc_block(buffer, node, DATA_PRESSURE, us_to_ms(baro_data->timestamp));
+  if (block) {
+    pres_blk_init((struct pres_blk_t*)block_body(block), baro_data->pressure);
+  }
+}
+
+/**
+ * Add a temperature block to the packet being assembled
+ * 
+ * @param buffer A buffer of packet nodes, in case the current packet can't be added to
+ * @param node The packet currently being assembled
+ * @param baro_data The baro data to add
+ */
+static void add_temp_blk(packet_buffer_t *buffer, packet_node_t **node, struct sensor_baro *baro_data) {
+  uint8_t *block = alloc_block(buffer, node, DATA_TEMP, us_to_ms(baro_data->timestamp));
+  if (block) {
+    temp_blk_init((struct temp_blk_t*)block_body(block), baro_data->temperature);
+  }
+}
+
+/**
+ * A uorb_data_callback_t function - adds barometric data to the required packets
+ * 
+ * @param ctx Context information, type processing_context_t
+ * @param data Barometric data to add, type struct sensor_baro
+ */
+static void baro_handler(void *ctx, uint8_t *data) {
+  struct sensor_baro *baro_data = (struct sensor_baro*)data;
+  processing_context_t *context = (processing_context_t *)ctx;
+  add_pres_blk(context->logging_buffer, &context->logging_packet, baro_data);
+  add_temp_blk(context->logging_buffer, &context->logging_packet, baro_data);
+
+  add_pres_blk(context->transmit_buffer, &context->transmit_packet, baro_data);
+  add_temp_blk(context->transmit_buffer, &context->transmit_packet, baro_data);
+}
+
+/**
+ * Add an acceleration block to the packet being assembled
+ * 
+ * @param buffer A buffer of packet nodes, in case the current packet can't be added to
+ * @param node The packet currently being assembled
+ * @param accel_data The accel data to add
+ */
+static void add_accel_blk(packet_buffer_t *buffer, packet_node_t **node, struct sensor_accel *accel_data) {
+  uint8_t *block = alloc_block(buffer, node, DATA_ACCEL_ABS, us_to_ms(accel_data->timestamp));
+  if (block) {
+    accel_blk_init((struct accel_blk_t*)block_body(block), accel_data->x, accel_data->y, accel_data->z);
+  }
+}
+
+/**
+ * A uorb_data_callback_t function - adds acceleration data to the required packets
+ *  
+ * @param ctx Context information, type processing_context_t
+ * @param data Acceleration data to add, type struct sensor_accel
+ */
+static void accel_handler(void *ctx, uint8_t *data) {
+  struct sensor_accel *accel_data = (struct sensor_accel*)data;
+  processing_context_t *context = (processing_context_t *)ctx;
+  add_accel_blk(context->logging_buffer, &context->logging_packet, accel_data);
+  add_accel_blk(context->transmit_buffer, &context->transmit_packet, accel_data);
+}
+
+static void mag_handler(void *ctx, uint8_t *data) {
+}
+
+static void gyro_handler(void *ctx, uint8_t *data) {
+}
+
+static void gnss_handler(void *ctx, uint8_t *data) {
 }

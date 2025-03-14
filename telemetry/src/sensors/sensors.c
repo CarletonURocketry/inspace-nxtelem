@@ -97,12 +97,14 @@ void poll_sensors(struct uorb_inputs *sensors) {
  * @param sensor The sensor to check for data
  * @param buf The buffer to read data into, should be at least as large as the structure this sensor uses
  * @param size The size of the buffer in bytes
+ * @param elem_size The size of this type's elements
  * @return The number of bytes read from the sensors
  */
-void for_all_data(uorb_data_callback_t handler, void* handler_context, struct pollfd *sensor, uint8_t *buf, size_t size) {
+void for_all_data(uorb_data_callback_t handler, void* handler_context, struct pollfd *sensor, uint8_t *buf, size_t size, size_t elem_size) {
   if (sensor->revents == POLLIN) {
     ssize_t len = 0;
     do {
+      // Do while allows us to check for a read error in only one place
       ssize_t len = orb_copy_multi(sensor->fd, buf, size);
       if (len < 0) {
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
@@ -110,7 +112,10 @@ void for_all_data(uorb_data_callback_t handler, void* handler_context, struct po
         return;
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
       }
-      handler(handler_context, buf, len);
+      // Since we read at most size bytes, we know we won't go over the size of the read buffer
+      for (int i = 0; i < (len / elem_size); i++) {
+        handler(handler_context, buf + (i * elem_size));
+      }
     } while(len > 0);
   }
 }
