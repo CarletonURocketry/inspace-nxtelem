@@ -1,5 +1,10 @@
 #include "buffering.h"
 
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+#include <stdio.h>
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+
+
 /**
  * Initialize a packet queue. Must be performed before using the queue
  * 
@@ -8,6 +13,14 @@
  */
 static int packet_queue_init(struct packet_queue *queue) {
     int err = pthread_mutex_init(&queue->lock, NULL);
+    if (err) {
+        return err;
+    }
+    err = pthread_cond_init(&queue->not_empty, NULL);
+    if (err) {
+        pthread_mutex_destroy(&queue->lock);
+        return err;
+    }
     queue->head = NULL;
     queue->tail = NULL;
     return err;
@@ -36,6 +49,34 @@ static packet_node_t* packet_queue_lpop(struct packet_queue *queue) {
 }
 
 /**
+ * Remove and return the first node from the queue, block if there are no nodes
+ * 
+ * @param queue Pointer to the queue
+ * @return Pointer to the removed node
+ */
+static packet_node_t* packet_queue_wait_lpop(struct packet_queue *queue) {
+    packet_node_t *node = NULL;
+    pthread_mutex_lock(&queue->lock);
+
+    while (queue->head == NULL) {
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+        printf("Waiting for a full packet\n");
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+        pthread_cond_wait(&queue->not_empty, &queue->lock);
+    }
+
+    node = queue->head;
+    queue->head = node->next;
+    if (queue->head) {
+        queue->head->prev = NULL;
+    } else {
+        queue->tail = NULL;
+    }
+    pthread_mutex_unlock(&queue->lock);
+    return node;
+}
+
+/**
  * Remove and return the last node from the queue
  * 
  * @param queue Pointer to the queue
@@ -52,6 +93,7 @@ static packet_node_t* packet_queue_rpop(struct packet_queue *queue) {
         } else {
             queue->head = NULL;
         }
+        node->next = node->prev = NULL;
     }
     pthread_mutex_unlock(&queue->lock);
     return node;
@@ -73,6 +115,7 @@ static void packet_queue_lpush(struct packet_queue *queue, packet_node_t *node) 
         queue->tail = node;
     }
     queue->head = node;
+    pthread_cond_signal(&queue->not_empty);
     pthread_mutex_unlock(&queue->lock);
 }
 
@@ -92,6 +135,8 @@ static void packet_queue_rpush(struct packet_queue *queue, packet_node_t *node) 
         queue->head = node;
     }
     queue->tail = node;
+    
+    pthread_cond_signal(&queue->not_empty);
     pthread_mutex_unlock(&queue->lock);
 }
 
@@ -111,7 +156,7 @@ int packet_buffer_init(packet_buffer_t *buffer) {
         return -err;
     }
     for (int i = 0; i < PACKET_QUEUE_NUM_BUFFERS; i++) {
-        packet_queue_rpush(&buffer->empty_queue, &buffer->buffers[i]);
+        packet_queue_lpush(&buffer->empty_queue, &buffer->buffers[i]);
     }
     return 0;
 }
@@ -142,16 +187,16 @@ packet_node_t *packet_buffer_get_empty(packet_buffer_t *buffer) {
 }
 
 /**
- * Takes a full packet from the buffer
+ * Takes a full packet from the buffer, or blocks until there is one
  * 
  * @param buffer The buffer to get the packet from
- * @return A packet or NULL if there are no full packets in the buffer
+ * @return A packet that has 0 or more bytes in it
  */
 packet_node_t *packet_buffer_get_full(packet_buffer_t *buffer) {
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
     printf("Getting a full packet from the buffer\n");
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
-    return packet_queue_lpop(&buffer->full_queue);
+    return packet_queue_wait_lpop(&buffer->full_queue);
 }
 
 /**

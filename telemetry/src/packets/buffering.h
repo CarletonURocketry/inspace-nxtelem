@@ -2,7 +2,6 @@
 #define _INSPACE_PACKET_QUEUE_H_
 
 #include <pthread.h>
-#include <stdbool.h>
 #include "packets.h"
 
 typedef struct packet_node packet_node_t;
@@ -23,6 +22,8 @@ struct packet_node {
 struct packet_queue {
     /* A lock for concurrency */
     pthread_mutex_t lock;
+    /* Allows consumers to wait on new packets */
+    pthread_cond_t not_empty;
     /* The first node in the queue */
     packet_node_t *head;
     /* The last node in the queue */
