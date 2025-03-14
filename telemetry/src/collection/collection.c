@@ -215,7 +215,7 @@ static uint8_t *alloc_block(packet_buffer_t *buffer, packet_node_t **node, enum 
   uint8_t *write_to = (*node)->end;
   (*node)->end = next_block;
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-  printf("Allocated %ld bytes for type %d in packet %p, current size %ld\n", next_block - write_to, type, (*node)->packet, (*node)->end - (*node)->packet);
+  //printf("Allocated %ld bytes for type %d in packet %p, current size %ld\n", next_block - write_to, type, (*node)->packet, (*node)->end - (*node)->packet);
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
   return write_to;
 }
