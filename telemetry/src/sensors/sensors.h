@@ -38,6 +38,7 @@ ssize_t get_sensor_data(struct pollfd *sensor, void *data, size_t size);
 void clear_uorb_inputs(struct uorb_inputs *sensors);
 void poll_sensors(struct uorb_inputs *sensors);
 void read_until_empty(uorb_data_callback_t handler, void* handler_context, struct pollfd *sensor, uint8_t *buf, size_t size, size_t elem_size);
+ssize_t read_once(uorb_data_callback_t handler, void* handler_context, struct pollfd *sensor, uint8_t *buf, size_t size, size_t elem_size);
 
 #endif // _INSPACE_SENSORS_H_
 
