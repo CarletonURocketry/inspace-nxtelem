@@ -41,7 +41,11 @@ static void gyro_handler(void *ctx, uint8_t *data);
 #define us_to_ms(us) (us / 1000)
 
 /* How many measurements to read from sensors at a time (match to size of internal buffers) */
-#define BATCH_READ_SIZE 5
+#define ACCEL_READ_SIZE 5
+#define BARO_READ_SIZE 5
+#define MAG_READ_SIZE 5
+#define GNSS_READ_SIZE 5
+#define GYRO_READ_SIZE 5
 
 /*
  * Collection thread which runs to collect data.
@@ -67,14 +71,19 @@ void *collection_main(void *arg) {
   }
 
   struct uorb_inputs sensors;
-  union uorb_data sensor_data[BATCH_READ_SIZE];
-
   clear_uorb_inputs(&sensors);
   setup_sensor(&sensors.accel, orb_get_meta("sensor_accel"));
   setup_sensor(&sensors.baro, orb_get_meta("sensor_baro"));
   setup_sensor(&sensors.mag, orb_get_meta("sensor_mag"));
   setup_sensor(&sensors.gyro, orb_get_meta("sensor_gyro"));
   setup_sensor(&sensors.gnss, orb_get_meta("sensor_gnss"));
+
+  /* Separate buffers use more memory but allow us to process in pieces while still reading only once */
+  struct sensor_accel accel_data[ACCEL_READ_SIZE];
+  struct sensor_baro baro_data[BARO_READ_SIZE];
+  struct sensor_mag mag_data[MAG_READ_SIZE];
+  struct sensor_gyro gyro_data[GYRO_READ_SIZE];
+  struct sensor_gnss gnss_data[GNSS_READ_SIZE];
 
 #if CONFIG_INSPACE_TELEMETRY_RATE != 0
   struct timespec period_start;
@@ -111,11 +120,29 @@ void *collection_main(void *arg) {
     /* Wait for new data */
     poll_sensors(&sensors);
 
-    read_until_empty(accel_handler, &context, &sensors.accel, (uint8_t *)sensor_data, sizeof(struct sensor_accel) * BATCH_READ_SIZE, sizeof(struct sensor_accel));
-    read_until_empty(baro_handler, &context, &sensors.baro, (uint8_t *)sensor_data, sizeof(struct sensor_baro) * BATCH_READ_SIZE, sizeof(struct sensor_baro));
-    read_until_empty(mag_handler, &context, &sensors.mag, (uint8_t *)sensor_data, sizeof(struct sensor_mag) * BATCH_READ_SIZE, sizeof(struct sensor_mag));
-    read_until_empty(gyro_handler, &context, &sensors.gyro, (uint8_t *)sensor_data, sizeof(struct sensor_gyro) * BATCH_READ_SIZE, sizeof(struct sensor_gyro));
-    read_until_empty(gnss_handler, &context, &sensors.gnss, (uint8_t *)sensor_data, sizeof(struct sensor_gnss) * BATCH_READ_SIZE, sizeof(struct sensor_gnss));
+    /* Read data all at once to avoid as much locking as possible */
+    uint8_t *accel_end = get_sensor_data_end(&sensors.accel, accel_data, sizeof(accel_data));
+    uint8_t *baro_end = get_sensor_data_end(&sensors.baro, baro_data, sizeof(baro_data));
+    uint8_t *mag_end = get_sensor_data_end(&sensors.mag, mag_data, sizeof(mag_data));
+    uint8_t *gyro_end = get_sensor_data_end(&sensors.gyro, gyro_data, sizeof(gyro_data));
+    uint8_t *gnss_end = get_sensor_data_end(&sensors.gnss, gnss_data, sizeof(gnss_data));
+
+    uint8_t *accel_start = (uint8_t *)accel_data;
+    uint8_t *baro_start = (uint8_t *)baro_data;
+    uint8_t *mag_start = (uint8_t *)mag_data;
+    uint8_t *gyro_start = (uint8_t *)gyro_data;
+    uint8_t *gnss_start = (uint8_t *)gnss_data;
+
+    /* Process one piece of data of each type at a time to get a more even mix of things in the packets */
+    int processed;
+    do {
+      processed = 0;
+      processed += process_one(accel_handler, &context, &accel_start, accel_end, sizeof(struct sensor_accel));
+      processed += process_one(baro_handler, &context, &baro_start, baro_end, sizeof(struct sensor_baro));
+      processed += process_one(mag_handler, &context, &mag_start, mag_end, sizeof(struct sensor_mag));
+      processed += process_one(gyro_handler, &context, &gyro_start, gyro_end, sizeof(struct sensor_gyro));
+      processed += process_one(gnss_handler, &context, &gnss_start, gnss_end, sizeof(struct sensor_gnss));
+    } while (processed);
 
     /* Decide whether to move to lift-off state. TODO: real logic */
 
@@ -184,7 +211,7 @@ static uint8_t *alloc_block(packet_buffer_t *buffer, packet_node_t **node, enum 
   // Can't add to this packet, it's full or we can just assume its done being asssembled
   if (next_block == NULL) {
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-    printf("Completed a packet length %d\n", (*node)->end - (*node)->packet);
+    printf("Completed a packet length %ld\n", (*node)->end - (*node)->packet);
 #endif
     packet_buffer_put_full(buffer, *node);
     (*node) = packet_buffer_get_empty(buffer);

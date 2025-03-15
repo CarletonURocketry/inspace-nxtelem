@@ -34,11 +34,11 @@ union uorb_data {
 typedef void (*uorb_data_callback_t)(void* context, uint8_t* element);
 
 int setup_sensor(struct pollfd *sensor, orb_id_t meta);
-ssize_t get_sensor_data(struct pollfd *sensor, void *data, size_t size);
+ssize_t get_sensor_data(struct pollfd *sensor, uint8_t *data, size_t size);
+uint8_t *get_sensor_data_end(struct pollfd *sensor, uint8_t* data, size_t size);
 void clear_uorb_inputs(struct uorb_inputs *sensors);
 void poll_sensors(struct uorb_inputs *sensors);
-void read_until_empty(uorb_data_callback_t handler, void* handler_context, struct pollfd *sensor, uint8_t *buf, size_t size, size_t elem_size);
-ssize_t read_once(uorb_data_callback_t handler, void* handler_context, struct pollfd *sensor, uint8_t *buf, size_t size, size_t elem_size);
+void foreach_measurement(uorb_data_callback_t handler, void* handler_context, uint8_t *buf, size_t size, size_t elem_size);
+int process_one(uorb_data_callback_t handler, void* handler_context, uint8_t **data_start, uint8_t *data_end, size_t elem_size);
 
 #endif // _INSPACE_SENSORS_H_
-
