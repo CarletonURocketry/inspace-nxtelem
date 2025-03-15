@@ -38,9 +38,7 @@ static void mag_handler(void *ctx, uint8_t *data);
 static void gnss_handler(void *ctx, uint8_t *data);
 static void gyro_handler(void *ctx, uint8_t *data);
 
-static uint32_t us_to_ms(uint64_t us) {
-  return (uint32_t)(us / 1000);
-}
+#define us_to_ms(us) (us / 1000)
 
 /* How many measurements to read from sensors at a time (match to size of internal buffers) */
 #define BATCH_READ_SIZE 5
