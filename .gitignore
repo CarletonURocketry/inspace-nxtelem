@@ -6,3 +6,4 @@
 /Kconfig
 Make.dep
 .built
+.vscode/
