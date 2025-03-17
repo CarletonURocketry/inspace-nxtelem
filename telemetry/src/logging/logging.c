@@ -123,7 +123,7 @@ int switch_active_log_file(FILE **active_storage_file, FILE **storage_file_1, FI
     {    
       for (int i = 0; i < NUM_TIMES_TRY_OPEN; i++) // Matteo recomendeded trying multiple times, in case singular one fails.
       {
-        *storage_file_2 = fopen(flight_filename2, "rb+"); // Create file
+        *storage_file_2 = fopen(*flight_filename2, "rb+"); // Create file
         if (*storage_file_2 == NULL)
         {
           err = errno;
@@ -277,8 +277,6 @@ void *logging_main(void *arg)
 
   //Save the time the file was last modified
   base_timespec = (struct timespec){file_info.st_mtime, 0};
-  // base_timespec.tv_sec = file_info.st_mtime;
-  // base_timespec.tv_nsec = 0;
 
   /* Infinite loop to handle states */
   for (;;)
@@ -293,16 +291,6 @@ void *logging_main(void *arg)
       // TODO: figure out fail conditions
     }
 
-//     err = fstat(fileno(active_storage_file), &file_info);
-//     if (err)
-//     {
-//       err = errno;
-// #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-//       fprintf(stderr, "Error using fstat: %d\n", err);
-// #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
-//       fclose(active_storage_file);
-//     }
-
     switch (flight_state)
     {
     case STATE_IDLE:
@@ -311,67 +299,6 @@ void *logging_main(void *arg)
       // Switch between files every 30 seconds
 
       /* Store current system time in new_timespec */
-//       if (clock_gettime(CLOCK_REALTIME, &new_timespec) < 0) // TODO: Is CLOCK_REALTIME the correct option?
-//       {
-//         err = errno;
-// #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-//         fprintf(stderr, "Error during clock_gettime: %d\n", err);
-// #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
-//       }
-//
-//       double time_diff = timespec_diff(&new_timespec, &base_timespec);
-//       if (time_diff < 0)
-//       {
-// #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-//         fprintf(stderr, "Error during timespec_diff (Negative difference returned): %f\n", time_diff);
-// #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
-//       }
-//
-//       if (time_diff >= 30.0)
-//       {
-//         if (active_storage_file == storage_file_1)
-//         {
-//           /* Create new log file */
-//           for (int i = 0; i < NUM_TIMES_TRY_OPEN; i++) // Matteo recomendeded trying multiple times, in case singular one fails.
-//           {
-//             storage_file_2 = fopen(flight_filename2, "rb+"); // Create file
-//             if (storage_file_2 == NULL)
-//             {
-//               err = errno;
-// #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-//               fprintf(stderr, "Error opening log file 2 '%s': %d\n", flight_filename2, err);
-// #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
-//
-//               // TODO: check errno values
-//               usleep(1 * 1000); // Sleep for 1 millisecond before trying again
-//               continue;
-//             }
-//
-//             break;
-//           }
-//
-//           if (storage_file_2 == NULL)
-//           {
-//             err = errno;
-//             pthread_exit(err_to_ptr(err)); // TODO: fail more gracefully
-//           }
-//
-//           active_storage_file = storage_file_2;
-//
-//           /* Store current system time as the new base time */
-//           if (clock_gettime(CLOCK_REALTIME, &base_timespec) < 0) // TODO: Is CLOCK_REALTIME the correct option?
-//           {
-//             err = errno;
-// #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-//             fprintf(stderr, "Error during clock_gettime: %d\n", err);
-// #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
-//           }
-//         }
-//         else if (active_storage_file == storage_file_2)
-//         {
-//           active_storage_file = storage_file_1;
-//         }
-//       }
 
     case STATE_AIRBORNE:
     {
@@ -387,12 +314,6 @@ void *logging_main(void *arg)
         fprintf(stderr, "Error during state_wait_for_change: %d\n", err);
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
       }
-
-      /* Log data */
-
-      // Sample logging
-      // uint8_t sample_buf[1] = {1};
-      // written = fwrite(sample_buf, 1, 1, active_storage_file);
 
       /* Store current system time as new_timespec */
       if (clock_gettime(CLOCK_REALTIME, &new_timespec) < 0) // TODO: Is CLOCK_REALTIME the correct option?
@@ -424,35 +345,6 @@ void *logging_main(void *arg)
           pthread_exit(err_to_ptr(err)); // TODO: fail more gracefully
         }
 
-//         /* Create new log file */
-//         for (int i = 0; i < NUM_TIMES_TRY_OPEN; i++) // Matteo recomendeded trying multiple times, in case singular one fails.
-//         {
-//           // storage_file_2 = open(flight_filename2, O_CREAT | O_APPEND, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH); // Create file
-//           storage_file_2 = fopen(flight_filename2, "rb+"); // Create file
-//           if (storage_file_2 == NULL)
-//           {
-//             err = errno;
-// #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-//             fprintf(stderr, "Error opening log file 2 '%s': %d\n", flight_filename2, err);
-// #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
-//
-//             // TODO: check errno values
-//
-//             usleep(1 * 1000); // Sleep for 1 millisecond before trying again
-//             continue;
-//           }
-//
-//           break;
-//         }
-//
-//         if (storage_file_2 == NULL)
-//         {
-//           err = errno;
-//           pthread_exit(err_to_ptr(err)); // TODO: fail more gracefully
-//         }
-//
-//         active_storage_file = storage_file_2;
-
         /* Set Base time to current system time */
         if (clock_gettime(CLOCK_REALTIME, &base_timespec) < 0) // TODO: Is CLOCK_REALTIME the correct option?
         {
@@ -471,6 +363,8 @@ void *logging_main(void *arg)
         fprintf(stderr, "Error during state_read_lock: %d\n", err);
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
       }
+
+      /* Log data */
 
       written = fwrite(&state->data, sizeof(state->data), 1, active_storage_file);
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
@@ -577,26 +471,14 @@ void *logging_main(void *arg)
         fprintf(stderr, "Error during state_set_flightstate: %d\n", err);
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
       }
-      
     }
     }
   }
 
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-  if (close(active_storage_file) != 0)
-  {
-    err = errno;
-    fprintf(stderr, "Failed to close flight logfile handle: %d\n", err);
-  }
-#else
-  close(active_storage_file);
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+  /* Teardown */
+  teardown(storage_file_1, storage_file_2, extract_storage_file);
+
   pthread_exit(err_to_ptr(err));
-
-
-/* Teardown */
-  teardown(storage_file_1, storage_file_2, extract_storage_file)
-
 }
 
 void teardown(FILE *flight_log_1, FILE* flight_log_2, FILE* extraction_log)
