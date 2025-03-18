@@ -7,7 +7,7 @@
 
 /* The maximum size a packet can be in bytes. */
 
-#define PACKET_MAX_SIZE 256
+#define PACKET_MAX_SIZE 255
 
 /* The maximum size a block can be in bytes. */
 
