@@ -6,3 +6,8 @@
 /Kconfig
 Make.dep
 .built
+*/data.img
+*/data_romfs.h
+*.gcda
+*.gcno
+.vscode
