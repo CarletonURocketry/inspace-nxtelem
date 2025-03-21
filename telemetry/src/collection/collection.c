@@ -425,6 +425,12 @@ static void add_msl_block(packet_buffer_t *buffer, packet_node_t **node, struct 
   }
 }
 
+/**
+ * A uorb_data_callback_t function - adds gnss data to the required packets
+ *  
+ * @param ctx Context information, type processing_context_t
+ * @param data Acceleration data to add, type struct sensor_gnss
+ */
 static void gnss_handler(void *ctx, uint8_t *data) {
   struct sensor_gnss *gnss_data = (struct sensor_gnss*)data;
   processing_context_t *context = (processing_context_t *)ctx;
