@@ -334,13 +334,37 @@ static void accel_handler(void *ctx, uint8_t *data) {
 }
 
 /**
+ * Convert gauss to milligauss
+ */
+static float milligauss(float gauss) {
+  return gauss * 1000;
+}
+
+/**
+ * Add a magnetometer block to the packet being assembled
+ * 
+ * @param buffer A buffer of packet nodes, in case the current packet can't be added to
+ * @param node The packet currently being assembled
+ * @param mag_data The magnetic field data to add
+ */
+static void add_mag_blk(packet_buffer_t *buffer, packet_node_t **node, struct sensor_mag *mag_data) {
+  uint8_t *block = alloc_block(buffer, node, DATA_MAGNETIC, us_to_ms(mag_data->timestamp));
+  if (block) {
+    mag_blk_init((struct mag_blk_t*)block_body(block), milligauss(mag_data->x), milligauss(mag_data->y), milligauss(mag_data->z));
+  }
+}
+
+/**
  * A uorb_data_callback_t function - adds magnetometer data to the required packets
  *  
  * @param ctx Context information, type processing_context_t
  * @param data magnetometer data to add, type struct sensor_mag
  */
 static void mag_handler(void *ctx, uint8_t *data) {
-  // TODO - currently no definition for magnetometer data in packet spec
+  struct sensor_mag *mag_data = (struct sensor_mag*)data;
+  processing_context_t *context = (processing_context_t *)ctx;
+  add_mag_blk(context->logging_buffer, &context->logging_packet, mag_data);
+  add_mag_blk(context->transmit_buffer, &context->transmit_packet, mag_data);
 }
 
 
