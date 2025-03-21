@@ -39,9 +39,40 @@ static void mag_handler(void *ctx, uint8_t *data);
 static void gnss_handler(void *ctx, uint8_t *data);
 static void gyro_handler(void *ctx, uint8_t *data);
 
+/* Convert microseconds to milliseconds */
+
 #define us_to_ms(us) (us / 1000)
 
+/* Convert millibar to pascals */
+
+#define pascals(millibar) (millibar * 100)
+
+/* Convert meters to millimeters */
+
+#define millimeters(meters) (meters * 1000)
+
+/* Convert a degree to a tenth of a microdegree */
+
+#define point_one_microdegrees(degrees) (1E7f * degrees)
+
+/* Convert a radian to a tenth of a degree */
+
+#define tenth_degree(radian) (radian * 18 / M_PI)
+
+/* Convert gauss to milligauss */
+
+#define milligauss(gauss) (gauss * 1000)
+
+/* Convert meters per second squared to centimeters per second squared */
+
+#define cm_per_sec_squared(meters_per_sec_squared) (meters_per_sec_squared * 100)
+
+/* Convert a degrees celsius to millidegrees */
+
+#define millidegrees(celsius) (celsius * 1000)
+
 /* How many measurements to read from sensors at a time (match to size of internal buffers) */
+
 #define ACCEL_READ_SIZE 5
 #define BARO_READ_SIZE 5
 #define MAG_READ_SIZE 5
@@ -242,13 +273,6 @@ static uint8_t *alloc_block(packet_buffer_t *buffer, packet_node_t **node, enum 
 }
 
 /**
- * Convert millibar to pascals
- */
-static float pascals(float millibar) {
-  return millibar * 100;
-}
-
-/**
  * Add a pressure block to the packet being assembled
  * 
  * @param buffer A buffer of packet nodes, in case the current packet can't be added to
@@ -260,13 +284,6 @@ static void add_pres_blk(packet_buffer_t *buffer, packet_node_t **node, struct s
   if (block) {
     pres_blk_init((struct pres_blk_t*)block_body(block), pascals(baro_data->pressure));
   }
-}
-
-/**
- * Convert a degrees celsius to millidegrees
- */
-static float millidegrees(float celsius) {
-  return celsius * 1000;
 }
 
 /**
@@ -300,13 +317,6 @@ static void baro_handler(void *ctx, uint8_t *data) {
 }
 
 /**
- * Convert meters per second squared to centimeters per second squared
- */
-static float cm_per_sec_squared(float meters_per_sec_squared) {
-  return meters_per_sec_squared * 100;
-}
-
-/**
  * Add an acceleration block to the packet being assembled
  * 
  * @param buffer A buffer of packet nodes, in case the current packet can't be added to
@@ -334,13 +344,6 @@ static void accel_handler(void *ctx, uint8_t *data) {
 }
 
 /**
- * Convert gauss to milligauss
- */
-static float milligauss(float gauss) {
-  return gauss * 1000;
-}
-
-/**
  * Add a magnetometer block to the packet being assembled
  * 
  * @param buffer A buffer of packet nodes, in case the current packet can't be added to
@@ -365,14 +368,6 @@ static void mag_handler(void *ctx, uint8_t *data) {
   processing_context_t *context = (processing_context_t *)ctx;
   add_mag_blk(context->logging_buffer, &context->logging_packet, mag_data);
   add_mag_blk(context->transmit_buffer, &context->transmit_packet, mag_data);
-}
-
-
-/**
- * Convert a radian to a tenth of a degree
- */
-static float tenth_degree(float radian) {
-  return radian * 18 / M_PI;
 }
 
 /**
@@ -403,13 +398,6 @@ static void gyro_handler(void *ctx, uint8_t *data) {
 }
 
 /**
- * Convert a degree to a tenth of a microdegree
- */
-static float point_one_microdegrees(float degrees) {
-  return 1E7f * degrees;
-}
-
-/**
  * Add an gnss block to the packet being assembled
  * 
  * @param buffer A buffer of packet nodes, in case the current packet can't be added to
@@ -421,13 +409,6 @@ static void add_gnss_block(packet_buffer_t *buffer, packet_node_t **node, struct
   if (block) {
     coord_blk_init((struct coord_blk_t*)block_body(block), point_one_microdegrees(gnss_data->latitude), point_one_microdegrees(gnss_data->longitude));
   }
-}
-
-/**
- * Convert meters to millimeters
- */
-static float millimeters(float meters) {
-  return meters * 1000;
 }
 
 /**
