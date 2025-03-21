@@ -156,6 +156,7 @@ uint8_t *pkt_create_blk(uint8_t *packet, uint8_t *block, enum block_type_e type,
       return NULL;
     }
   }
+  header->blocks++;
   blk_hdr_init((blk_hdr_t *)block, type);
   return block + block_size;
 }
@@ -223,6 +224,20 @@ void coord_blk_init(struct coord_blk_t *b, const int32_t lat,
  */
 void ang_vel_blk_init(struct ang_vel_blk_t *b, const int16_t x_axis,
                       const int16_t y_axis, const int16_t z_axis) {
+  b->x = x_axis;
+  b->y = y_axis;
+  b->z = z_axis;
+}
+
+/*
+ * Construct a magnetic field block
+ * @param b The magnetic field block to initialize
+ * @param x_axis The magnetic field in the x-axis measured in milligauss
+ * @param y_axis The magnetic field in the y-axis measured in milligauss
+ * @param z_axis The magnetic field in the z-axis measured in milligauss
+ */
+void mag_blk_init(struct mag_blk_t *b, const int16_t x_axis,
+                  const int16_t y_axis, const int16_t z_axis) {
   b->x = x_axis;
   b->y = y_axis;
   b->z = z_axis;
