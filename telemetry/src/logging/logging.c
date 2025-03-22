@@ -34,146 +34,12 @@
 
 #define NUM_TIMES_TRY_OPEN 3
 
-/*
- * Logging Pseudocode:
- *
- * Find previous max boot number
- * Create file names with boot number that is max boot number + 1
- * Open file 1
- * Set the active file to file 1
- * Get base time to the last modification time of file 1 (would be creation time)
- *
- * Enter loop:
- *   Get flight state
- *   If in IDLE state: Want to switch between two files every 30 seconds until launch
- *      Get the current time
- *      If current time - base time >= 30 seconds:
- *        Switch to other file
- *        If active file == file 1:
- *          Open file 2
- *          Switch active file to file 2
- *        Else if active file == file 2:
- *          Switch active file to file 1
+// Private Functions 
 
- *   Else if in AIRBORNE state:
- *      Wait for data to change
- *      Log data to active file
- *      Set new_timespec to current system time
- *      
- * 
- *   Else if in LANDED state:
- *      Create file name for extraction file based on previous max boot number
- *      Open extraction file
- *      Copy from the active file to the extraction file
- *      Close extraction file
- *      Go to IDLE state
- *      
- * Teardown
- *  Close files
- *  Exit thread
- */
-
-int find_max_boot_number(char *file){
-  DIR *directory_pointer = opendir("./");
-  struct dirent *entry;
-
-  int max_boot_number = 0;
-
-  if (directory_pointer != NULL)
-  {
-    while ((entry = readdir(directory_pointer)) != NULL)
-    {
-      if (strstr(entry->d_name, file) != NULL) 
-      {
-        // Ex.) find /log/elog in /log/elog2. Index should be 8 to get number 2
-        int index = strlen(file);
-        char char_num = entry->d_name[index];
-        if (!isdigit(char_num))
-        {
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-          fprintf(stderr, "Number after logging file does not exist (%s)\n", file);
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
-          return -1;
-        }
-
-        int boot_number = char_num - '0'; // Convert from character to int using ASCII values
-        if (boot_number > max_boot_number)
-        {
-          max_boot_number = boot_number;
-        }
-      }
-    }
-
-    (void)closedir(directory_pointer);
-    return max_boot_number;
-  }
-  else
-  {
-    perror("Couldn't open the directory: "); 
-    return -1;
-  }
-}
-
-int switch_active_log_file(FILE **active_storage_file, FILE **storage_file_1, FILE **storage_file_2, char **flight_filename2)
-{
-  int err;
-  if (*active_storage_file == *storage_file_1)
-  {
-    if (*storage_file_2 == NULL)
-    {    
-      for (int i = 0; i < NUM_TIMES_TRY_OPEN; i++) // Matteo recomendeded trying multiple times, in case singular one fails.
-      {
-        *storage_file_2 = fopen(flight_filename2, "rb+"); // Create file
-        if (*storage_file_2 == NULL)
-        {
-          err = errno;
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-          fprintf(stderr, "Error opening log file 2 '%s': %d\n", *flight_filename2, err);
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
-
-          // TODO: check errno values
-          usleep(1 * 1000); // Sleep for 1 millisecond before trying again
-          continue;
-        }
-
-        break;
-      }
-
-      if (*storage_file_2 == NULL)
-      {
-        return -1;
-      }
-
-      *active_storage_file = *storage_file_2;
-    }
-
-    else 
-    {
-      *active_storage_file = *storage_file_1;
-    }
-  }
-
-  // If file_2 is currently active, that means file_1 was opened successfully, so just switch the pointer
-  else if (*active_storage_file == *storage_file_2)
-  {
-    if (*storage_file_1 == NULL)
-    {
-      return -1;
-    }
-
-    *active_storage_file = *storage_file_1;
-  }
-  
-  return 0;
-}
-
-/*
- * Returns double time difference between two timespec structs
- */
-double timespec_diff(struct timespec *end, struct timespec *start)
-{
-  return (end->tv_sec - start->tv_sec) + (end->tv_nsec - start->tv_nsec) / 1e9;
-}
+static int find_max_boot_number(char *file);
+static int switch_active_log_file(FILE **active_storage_file, FILE *storage_file_1, FILE *storage_file_2, char *flight_filename2);
+static double timespec_diff(struct timespec *new_time, struct timespec *old_time);
+static int try_open_file(FILE **file_to_open, char *filename, char *open_option);
 
 /*
  * Logging thread which runs to log data to the SD card.
@@ -277,8 +143,6 @@ void *logging_main(void *arg)
 
   //Save the time the file was last modified
   base_timespec = (struct timespec){file_info.st_mtime, 0};
-  // base_timespec.tv_sec = file_info.st_mtime;
-  // base_timespec.tv_nsec = 0;
 
   /* Infinite loop to handle states */
   for (;;)
@@ -293,91 +157,12 @@ void *logging_main(void *arg)
       // TODO: figure out fail conditions
     }
 
-//     err = fstat(fileno(active_storage_file), &file_info);
-//     if (err)
-//     {
-//       err = errno;
-// #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-//       fprintf(stderr, "Error using fstat: %d\n", err);
-// #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
-//       fclose(active_storage_file);
-//     }
-
     switch (flight_state)
     {
     case STATE_IDLE:
       /* Purposeful fall-through */
       
       // Switch between files every 30 seconds
-
-      /* Store current system time in new_timespec */
-//       if (clock_gettime(CLOCK_REALTIME, &new_timespec) < 0) // TODO: Is CLOCK_REALTIME the correct option?
-//       {
-//         err = errno;
-// #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-//         fprintf(stderr, "Error during clock_gettime: %d\n", err);
-// #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
-//       }
-//
-//       double time_diff = timespec_diff(&new_timespec, &base_timespec);
-//       if (time_diff < 0)
-//       {
-// #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-//         fprintf(stderr, "Error during timespec_diff (Negative difference returned): %f\n", time_diff);
-// #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
-//       }
-//
-//       if (time_diff >= 30.0)
-//       {
-//         if (active_storage_file == storage_file_1)
-//         {
-//           /* Create new log file */
-//           for (int i = 0; i < NUM_TIMES_TRY_OPEN; i++) // Matteo recomendeded trying multiple times, in case singular one fails.
-//           {
-//             storage_file_2 = fopen(flight_filename2, "rb+"); // Create file
-//             if (storage_file_2 == NULL)
-//             {
-//               err = errno;
-// #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-//               fprintf(stderr, "Error opening log file 2 '%s': %d\n", flight_filename2, err);
-// #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
-//
-//               // TODO: check errno values
-//               usleep(1 * 1000); // Sleep for 1 millisecond before trying again
-//               continue;
-//             }
-//
-//             break;
-//           }
-//
-//           if (storage_file_2 == NULL)
-//           {
-//             err = errno;
-//             pthread_exit(err_to_ptr(err)); // TODO: fail more gracefully
-//           }
-//
-//           active_storage_file = storage_file_2;
-//
-//           /* Store current system time as the new base time */
-//           if (clock_gettime(CLOCK_REALTIME, &base_timespec) < 0) // TODO: Is CLOCK_REALTIME the correct option?
-//           {
-//             err = errno;
-// #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-//             fprintf(stderr, "Error during clock_gettime: %d\n", err);
-// #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
-//           }
-//         }
-//         else if (active_storage_file == storage_file_2)
-//         {
-//           active_storage_file = storage_file_1;
-//         }
-//       }
-
-    case STATE_AIRBORNE:
-    {
-      /* Infinite loop to log data */
-
-      /* Wait for the data to have a change */
 
       err = state_wait_for_change(state, &version);
       if (err)
@@ -387,12 +172,6 @@ void *logging_main(void *arg)
         fprintf(stderr, "Error during state_wait_for_change: %d\n", err);
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
       }
-
-      /* Log data */
-
-      // Sample logging
-      // uint8_t sample_buf[1] = {1};
-      // written = fwrite(sample_buf, 1, 1, active_storage_file);
 
       /* Store current system time as new_timespec */
       if (clock_gettime(CLOCK_REALTIME, &new_timespec) < 0) // TODO: Is CLOCK_REALTIME the correct option?
@@ -582,27 +361,8 @@ void *logging_main(void *arg)
     }
   }
 
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-  if (close(active_storage_file) != 0)
-  {
-    err = errno;
-    fprintf(stderr, "Failed to close flight logfile handle: %d\n", err);
-  }
-#else
-  close(active_storage_file);
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
-  pthread_exit(err_to_ptr(err));
-
-
-/* Teardown */
-  teardown(storage_file_1, storage_file_2, extract_storage_file)
-
-}
-
-void teardown(FILE *flight_log_1, FILE* flight_log_2, FILE* extraction_log)
-{
-  int err;
-  if (fclose(flight_log_1) != 0)
+  /* Close files that may be open */
+  if (fclose(storage_file_1) != 0)
   {
     err = errno;
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
@@ -610,7 +370,7 @@ void teardown(FILE *flight_log_1, FILE* flight_log_2, FILE* extraction_log)
 #endif
   }
 
-  if (fclose(flight_log_2) != 0)
+  if (fclose(storage_file_2) != 0)
   {
     err = errno;
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
@@ -618,11 +378,164 @@ void teardown(FILE *flight_log_1, FILE* flight_log_2, FILE* extraction_log)
 #endif
   }
 
-  if (fclose(extraction_log) != 0)
+  pthread_exit(err_to_ptr(err));
+}
+
+
+
+/****************************************************/
+/*                Helper Functions                  */
+/****************************************************/
+
+/**
+ * Attempt to open file given filename and flag option multiple times. Once opened, update active file pointer.
+ *
+ * @param active_file_pointer The pointer to the file to update
+ * @param filename The file name of the file to open
+ * @param open_option The string option passed to fopen (r, rb, rb+, etc)
+ * @return 0 if succesful, else error from errno
+ */
+static int try_open_file(FILE** active_file_pointer, char* filename, char* open_option){
+  int err = 0;
+  for (int i = 0; i < NUM_TIMES_TRY_OPEN; i++) // Matteo recomendeded trying multiple times, in case singular one fails.
   {
-    err = errno;
+    *active_file_pointer = fopen(filename, open_option);
+    if (*active_file_pointer == NULL)
+    {
+      err = errno;
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-    fprintf(stderr, "Failed to close extraction logfile handle: %d\n", err);
-#endif
+      fprintf(stderr, "Error (Attempt %d) opening '%s' file: %d\n", i, filename, err);
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+
+      // TODO: check errno values
+      usleep(1 * 1000); // Sleep for 1 millisecond before trying again
+    }
+    else
+    {
+      break;
+    }
   }
+
+  return err;
+}
+
+/**
+ * Find max boot number of logging files that already exist
+ *
+ * @param filename The format string name that will be checked
+ * @return The maximum boot number found of previous files, -1 if error 
+ **/
+static int find_max_boot_number(char *filename)
+{
+  int max_boot_number = 0;
+
+  DIR *directory_pointer = opendir("./");
+  if (directory_pointer == NULL)
+  {
+    perror("Couldn't open the directory: ");
+    return -1;
+  }
+  
+  struct dirent *entry;
+  while ((entry = readdir(directory_pointer)) != NULL)
+  {
+    if (strstr(entry->d_name, filename) != NULL)
+    {
+      int boot_number, file_number;
+      int vars_filled = sscanf(filename, FLIGHT_FNAME_FMT, &boot_number, &file_number);
+
+      if (vars_filled != 2)
+      {
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+        fprintf(stderr, "Error during sscanf: 2 values not filled");
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+      }
+
+      if (boot_number > max_boot_number)
+      {
+        max_boot_number = boot_number;
+      }
+    }
+  }
+
+  (void)closedir(directory_pointer);
+  return max_boot_number;
+}
+
+/**
+ * Switch the active file pointer for the ping pong buffer
+ *
+ * @param active_storage_file The active log file pointer
+ * @param storage_file_1 The pointer to the first log file
+ * @param storage_file_2 The pointer to the second log file
+ * @param flight_filename2 The name of the second log file
+ * @return 0 if succesful, -1 on error
+ **/
+static int switch_active_log_file(FILE **active_storage_file, FILE *storage_file_1, FILE *storage_file_2, char *flight_filename2)
+{
+  int err = 0; 
+
+  /* Make sure we aren't dereferencing null pointer later */
+  if (*active_storage_file == NULL)
+  {
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+    fprintf(stderr, "Error in switch_active_log_file: active_storage_file is NULL");
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+    return -1;
+  }
+  
+  if (*active_storage_file == storage_file_1)
+  {
+    if (storage_file_2 != NULL){
+      *active_storage_file = storage_file_2;
+      return err;
+    }
+
+    /* If reach here, file 2 is not opened yet, so open it*/
+    err = try_open_file(&storage_file_2, flight_filename2, "rb+");
+    if (err < 0 || storage_file_2 == NULL)
+    {
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+      fprintf(stderr, "Error (%d) trying to open %s", err, flight_filename2);
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+      return -1;
+    }
+
+    *active_storage_file = storage_file_2;
+  }
+
+  // If file_2 is currently active, that means file_1 was opened successfully, so just switch the pointer
+  else if (*active_storage_file == storage_file_2)
+  {
+    if (storage_file_1 == NULL)
+    {
+      return -1;
+    }
+
+    *active_storage_file = storage_file_1;
+  }
+
+  /* Roll active log file pointer back to beginning */
+  err = fseek(*active_storage_file, 0, SEEK_SET);
+  if (err)
+  {
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+    fprintf(stderr, "Couldn't seek active file back to start: %d", err);
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+  }
+
+  return err;
+}
+
+
+/**
+ * Returns double time difference between two timespec structs
+ *
+ * @param new_time The newer (larger) time 
+ * @param old_time The older (smaller) time
+ * @return The difference between the two times
+ **/
+static double timespec_diff(struct timespec *new_time, struct timespec *old_time)
+{
+  return (new_time->tv_sec - old_time->tv_sec) + (new_time->tv_nsec - old_time->tv_nsec) / 1e9;
 }
