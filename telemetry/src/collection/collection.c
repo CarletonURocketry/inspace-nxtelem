@@ -54,7 +54,6 @@ void *collection_main(void *arg) {
 
   int err;
   enum flight_state_e flight_state;
-  struct timespec start_time;
   struct collection_args *unpacked_args = (struct collection_args *)(arg);
   rocket_state_t *state = unpacked_args->state;
 
@@ -85,28 +84,13 @@ void *collection_main(void *arg) {
   struct sensor_gyro gyro_data[GYRO_READ_SIZE];
   struct sensor_gnss gnss_data[GNSS_READ_SIZE];
 
-#if CONFIG_INSPACE_TELEMETRY_RATE != 0
-  struct timespec period_start;
-  struct timespec next_interval;
-#endif /* CONFIG_INSPACE_TELEMETRY_RATE != 0 */
-
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
   printf("Collection thread started.\n");
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
 
-  /* Get startup time */
-
-  clock_gettime(CLOCK_MONOTONIC, &start_time);
-
   /* Measure data forever */
 
   for (;;) {
-
-#if CONFIG_INSPACE_TELEMETRY_RATE != 0
-    /* Get the start of this measurement period */
-
-    clock_gettime(CLOCK_MONOTONIC, &period_start);
-#endif /* CONFIG_INSPACE_TELEMETRY_RATE != 0 */
 
     /* Get the current flight state */
 
@@ -160,40 +144,9 @@ void *collection_main(void *arg) {
     case STATE_LANDED:
       break; /* Do nothing, just continue collecting */
     }
-
-#if CONFIG_INSPACE_TELEMETRY_RATE != 0
-    /* Once operations are complete, wait until the next measuring period */
-
-    next_interval.tv_nsec = (INTERVAL - (ms_since(&period_start) * 1e6));
-
-    clock_nanosleep(CLOCK_MONOTONIC, 0, &next_interval, NULL);
-#endif /* CONFIG_INSPACE_TELEMETRY_RATE != 0 */
   }
 
   pthread_exit(0);
-}
-
-/*
- * Get the time difference from start until now in milliseconds.
- * @param start The start time.
- * @return The time elapsed since start in milliseconds.
- */
-static uint32_t ms_since(struct timespec *start) {
-
-  struct timespec now;
-  clock_gettime(CLOCK_MONOTONIC, &now); // TODO: this can fail
-
-  struct timespec diff = {
-      .tv_sec = (now.tv_sec - start->tv_sec),
-      .tv_nsec = now.tv_nsec - start->tv_nsec,
-  };
-
-  if (diff.tv_nsec < 0) {
-    diff.tv_nsec += 1e9;
-    diff.tv_nsec--;
-  }
-
-  return diff.tv_sec * 1000 + (diff.tv_nsec / 1e6);
 }
 
 /**

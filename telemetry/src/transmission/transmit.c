@@ -2,6 +2,9 @@
 #include <fcntl.h>
 #include <pthread.h>
 #include <unistd.h>
+#include <sys/ioctl.h>
+#include <nuttx/wireless/ioctl.h>
+#include <nuttx/wireless/lpwan/rn2xx3.h>
 
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
 #include <stdio.h>
@@ -13,11 +16,35 @@
 #include "../fusion/fusion.h"
 #include "transmit.h"
 
+/* InSpace chosen radio settings - data types are as expected by radio driver */
+
+#if defined(CONFIG_LPWAN_RN2XX3)
+#define RN2483_FREQ (uint32_t)433050000
+#define RN2483_TXPWR (int32_t)15
+#define RN2483_SPREAD_FACTOR (uint8_t)7
+#define RN2483_CODING_RATE (enum rn2xx3_cr_e)RN2XX3_CR_4_5
+#define RN2483_BANDWIDTH (uint32_t)125
+#define RN2483_CRC 1
+#define RN2483_IQI 0
+#define RN2483_SYNC (uint64_t)67
+#define RN2483_PREAMBLE (uint16_t)6
+#endif /* defined(CONFIG_LPWAN_RN2XX3) */
+
+/* If there was an error in configuration, display which line and return the error */
+
+#define config_error(err) \
+  if (err) { \
+    err = errno; \
+    fprintf(stderr, "Error configuring radio, line %d: %d\n", __LINE__, err); \
+    return err; \
+  }
+
 /* Cast an error to a void pointer */
 
 #define err_to_ptr(err) ((void *)((err)))
 
 static ssize_t transmit(int radio, uint8_t *packet, size_t packet_size);
+static int configure_radio(int fd);
 
 /* Main thread for data transmission over radio. */
 void *transmit_main(void *arg) {
@@ -33,15 +60,19 @@ void *transmit_main(void *arg) {
   printf("Transmit thread started.\n");
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
 
-  /* Get access to radio TODO: remove O_CREAT */
-
   radio = open(CONFIG_INSPACE_TELEMETRY_RADIO, O_WRONLY | O_CREAT);
   if (radio < 0) {
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
     err = errno;
     fprintf(stderr, "Error getting radio handle: %d\n", err);
-#endif                             /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
     pthread_exit(err_to_ptr(err)); // TODO: handle more gracefully
+  }
+
+  err = configure_radio(radio);
+  if (err) {
+    /* Error will have been reported in configure_rn2483 where we can say which config failed in particular */
+    pthread_exit(err_to_ptr(err));
   }
 
   /* Transmit forever, regardless of rocket flight state. */
@@ -82,10 +113,40 @@ static ssize_t transmit(int radio, uint8_t *packet, size_t packet_size) {
     // TODO: handle error in errno
     return -err;
   }
-  usleep(500000);
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
   printf("Completed transmission of packet #%u of %ld bytes.\n", ((pkt_hdr_t *)packet)->packet_num,
           packet_size);
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
   return written;
+}
+
+static int configure_radio(int fd) {
+  int err;
+
+#if defined(CONFIG_LPWAN_RN2XX3) 
+  int32_t txpwr = RN2483_TXPWR * 100;
+  uint64_t sync = RN2483_SYNC;
+
+  err = ioctl(fd, WLIOC_SETRADIOFREQ, RN2483_FREQ);
+  config_error(err);
+  err = ioctl(fd, WLIOC_SETTXPOWERF, &txpwr);
+  config_error(err);
+  err = ioctl(fd, WLIOC_SETSPREAD, RN2483_SPREAD_FACTOR);
+  config_error(err);
+  err = ioctl(fd, WLIOC_SETCODERATE, RN2483_CODING_RATE);
+  config_error(err);
+  err = ioctl(fd, WLIOC_SETBANDWIDTH, RN2483_BANDWIDTH);
+  config_error(err);
+  err = ioctl(fd, WLIOC_CRCEN, RN2483_CRC);
+  config_error(err);
+  err = ioctl(fd, WLIOC_IQIEN, RN2483_IQI);
+  config_error(err);
+  // Commented until the sync word configuration is fixed in the rn2483 driver
+  //err = ioctl(fd, WLIOC_SETSYNC, &sync);
+  config_error(err);
+  err = ioctl(fd, WLIOC_SETPRLEN, RN2483_PREAMBLE);
+  config_error(err);
+#endif /* defined(CONFIG_LPWAN_RN2XX3) */
+
+  return 0;
 }
