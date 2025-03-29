@@ -20,11 +20,11 @@
 
 /* The format for flight log file names */
 
-#define FLIGHT_FNAME_FMT CONFIG_INSPACE_TELEMETRY_FLIGHT_FS "/flog_boot%d_%d.bin"
+#define FLIGHT_FNAME_FMT CONFIG_INSPACE_TELEMETRY_FLIGHT_FS "flog_boot%d_%d.bin"
 
 /* The format for extraction log file names */
 
-#define EXTR_FNAME_FMT CONFIG_INSPACE_TELEMETRY_LANDED_FS "/elog_boot%d_%d.bin"
+#define EXTR_FNAME_FMT CONFIG_INSPACE_TELEMETRY_LANDED_FS "elog_boot%d_%d.bin"
 
 /* Cast an error to a void pointer */
 
@@ -36,8 +36,8 @@
 
 // Private Functions 
 
-static int find_max_boot_number(char *file);
-static int switch_active_log_file(FILE **active_storage_file, FILE *storage_file_1, FILE *storage_file_2, char *flight_filename2);
+static int find_max_boot_number();
+static int switch_active_log_file(FILE **active_storage_file, FILE *storage_file_1, FILE **storage_file_2, char *flight_filename2);
 static double timespec_diff(struct timespec *new_time, struct timespec *old_time);
 static int try_open_file(FILE **file_to_open, char *filename, char *open_option);
 
@@ -71,7 +71,9 @@ void *logging_main(void *arg)
 
   /* Generate flight log file names using the boot number */
 
-  int max_flight_log_boot_number = find_max_boot_number(EXTR_FNAME_FMT);
+  int max_flight_log_boot_number = find_max_boot_number();
+  printf("Previous max boot number: %d\n", max_flight_log_boot_number);
+
   if (max_flight_log_boot_number < 0)
   {
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
@@ -81,6 +83,11 @@ void *logging_main(void *arg)
 
   snprintf(flight_filename1, sizeof(flight_filename1), FLIGHT_FNAME_FMT, max_flight_log_boot_number + 1, 1);
   snprintf(flight_filename2, sizeof(flight_filename2), FLIGHT_FNAME_FMT, max_flight_log_boot_number + 1, 2);
+
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+  printf("File 1 name: %s\n", flight_filename1);
+  printf("File 2 name: %s\n", flight_filename2);
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
 
   if (strlen(flight_filename1) > MAX_FILENAME) // Check log 1 filename length
   {
@@ -95,7 +102,7 @@ void *logging_main(void *arg)
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
   }
 
-  err = try_open_file(&storage_file_1, flight_filename1, "rb+");
+  err = try_open_file(&storage_file_1, flight_filename1, "wb+");
   if (err < 0 || storage_file_1 == NULL)
   {
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
@@ -166,6 +173,9 @@ void *logging_main(void *arg)
         fprintf(stderr, "Error during clock_gettime: %d\n", err);
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
       }
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+      printf("Time: %d:%ld\n", new_timespec.tv_sec, new_timespec.tv_nsec);
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
 
       double time_diff = timespec_diff(&new_timespec, &base_timespec);
       if (time_diff < 0)
@@ -177,8 +187,12 @@ void *logging_main(void *arg)
 
       if (time_diff >= 30.0)
       {
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+        printf("30 seconds passed\n");
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+
         // Switch active log file
-        err = switch_active_log_file(&active_storage_file, storage_file_1, storage_file_2, flight_filename2);
+        err = switch_active_log_file(&active_storage_file, storage_file_1, &storage_file_2, flight_filename2);
         if (err < 0)
         {
           err = errno;
@@ -187,6 +201,26 @@ void *logging_main(void *arg)
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
           pthread_exit(err_to_ptr(err)); // TODO: fail more gracefully
         }
+        
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+        if (active_storage_file == storage_file_1)
+        {
+          printf("File 1 active\n\n");
+        }
+        else if (active_storage_file == storage_file_2)
+        {
+          printf("File 2 active\n\n");
+        }
+        else if (active_storage_file == NULL)
+        {
+          printf("ERROR: Active file is NULL\n\n");
+        }
+        else
+        {
+          printf("ERROR: active file is neither\n\n");
+        }
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+        
 
         /* Set Base time to current time to reset*/
         base_timespec = new_timespec;
@@ -243,7 +277,7 @@ void *logging_main(void *arg)
       int max_extraction_log_file_number = find_max_boot_number(EXTR_FNAME_FMT);
       snprintf(land_filename, sizeof(land_filename), EXTR_FNAME_FMT, max_extraction_log_file_number + 1, 1);
 
-      err = try_open_file(&extract_storage_file, land_filename, "wb");
+      err = try_open_file(&extract_storage_file, land_filename, "wb+");
       if (err < 0 || extract_storage_file == NULL)
       {
         // If reach here, all attempts to open log file have failed, fatal error
@@ -333,12 +367,12 @@ void *logging_main(void *arg)
  * @param open_option The string option passed to fopen (r, rb, rb+, etc)
  * @return 0 if succesful, else error from errno
  */
-static int try_open_file(FILE** active_file_pointer, char* filename, char* open_option){
+static int try_open_file(FILE** file_pointer, char* filename, char* open_option){
   int err = 0;
   for (int i = 0; i < NUM_TIMES_TRY_OPEN; i++) // Matteo recomendeded trying multiple times, in case singular one fails.
   {
-    *active_file_pointer = fopen(filename, open_option);
-    if (*active_file_pointer == NULL)
+    *file_pointer = fopen(filename, open_option);
+    if (*file_pointer == NULL)
     {
       err = errno;
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
@@ -350,6 +384,9 @@ static int try_open_file(FILE** active_file_pointer, char* filename, char* open_
     }
     else
     {
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+      printf("\nOpened File: %s\n\n", filename);
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
       break;
     }
   }
@@ -360,35 +397,25 @@ static int try_open_file(FILE** active_file_pointer, char* filename, char* open_
 /**
  * Find max boot number of logging files that already exist
  *
- * @param filename The format string name that will be checked
  * @return The maximum boot number found of previous files, -1 if error 
  **/
-static int find_max_boot_number(char *filename)
+static int find_max_boot_number()
 {
-  int max_boot_number = 0;
-
-  DIR *directory_pointer = opendir("./");
+  
+  DIR *directory_pointer = opendir("/tmp");
   if (directory_pointer == NULL)
   {
     perror("Couldn't open the directory: ");
     return -1;
   }
   
+  int max_boot_number = 0, boot_number = 0, file_number = 0;
+  
   struct dirent *entry;
   while ((entry = readdir(directory_pointer)) != NULL)
   {
-    if (strstr(entry->d_name, filename) != NULL)
+    if (sscanf(entry->d_name, "flog_boot%d_%d.bin", &boot_number, &file_number) == 2)
     {
-      int boot_number, file_number;
-      int vars_filled = sscanf(filename, FLIGHT_FNAME_FMT, &boot_number, &file_number);
-
-      if (vars_filled != 2)
-      {
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-        fprintf(stderr, "Error during sscanf: 2 values not filled");
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
-      }
-
       if (boot_number > max_boot_number)
       {
         max_boot_number = boot_number;
@@ -409,7 +436,7 @@ static int find_max_boot_number(char *filename)
  * @param flight_filename2 The name of the second log file
  * @return 0 if succesful, -1 on error
  **/
-static int switch_active_log_file(FILE **active_storage_file, FILE *storage_file_1, FILE *storage_file_2, char *flight_filename2)
+static int switch_active_log_file(FILE **active_storage_file, FILE *storage_file_1, FILE **storage_file_2, char *flight_filename2)
 {
   int err = 0; 
 
@@ -424,14 +451,14 @@ static int switch_active_log_file(FILE **active_storage_file, FILE *storage_file
   
   if (*active_storage_file == storage_file_1)
   {
-    if (storage_file_2 != NULL){
-      *active_storage_file = storage_file_2;
+    if (*storage_file_2 != NULL){
+      *active_storage_file = *storage_file_2;
       return err;
     }
 
     /* If reach here, file 2 is not opened yet, so open it*/
-    err = try_open_file(&storage_file_2, flight_filename2, "rb+");
-    if (err < 0 || storage_file_2 == NULL)
+    err = try_open_file(storage_file_2, flight_filename2, "wb+");
+    if (err < 0 || *storage_file_2 == NULL)
     {
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
       fprintf(stderr, "Error (%d) trying to open %s", err, flight_filename2);
@@ -439,14 +466,17 @@ static int switch_active_log_file(FILE **active_storage_file, FILE *storage_file
       return -1;
     }
 
-    *active_storage_file = storage_file_2;
+    *active_storage_file = *storage_file_2;
   }
 
   // If file_2 is currently active, that means file_1 was opened successfully, so just switch the pointer
-  else if (*active_storage_file == storage_file_2)
+  else if (*active_storage_file == *storage_file_2)
   {
     if (storage_file_1 == NULL)
     {
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+      fprintf(stderr, "ERROR: storage_file_1 is NULL\n");
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
       return -1;
     }
 
