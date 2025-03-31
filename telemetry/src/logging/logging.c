@@ -34,7 +34,15 @@
 
 #define NUM_TIMES_TRY_OPEN 3
 
-// Private Functions 
+/* Macro to print only if debug enabled */
+
+#ifdef CONFIG_INSPACE_TELEMETRY_DEBUG 
+  #define DEBUG_FPRINTF(...) fprintf(__VA_ARGS__);
+#else
+  #define DEBUG_FPRINTF(...)
+#endif
+
+// Private Functions
 
 static int find_max_boot_number();
 static int switch_active_log_file(FILE **active_storage_file, FILE *storage_file_1, FILE **storage_file_2, char *flight_filename2);
@@ -65,49 +73,38 @@ void *logging_main(void *arg)
   struct timespec base_timespec; // Time that file was last modified
   struct timespec new_timespec;  // Time to check against base_time to see if 30 seconds has passed
 
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-  printf("Logging thread started.\n");
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+  DEBUG_FPRINTF(stdout, "Logging thread started.\n");
 
   /* Generate flight log file names using the boot number */
 
   int max_flight_log_boot_number = find_max_boot_number();
-  printf("Previous max boot number: %d\n", max_flight_log_boot_number);
+  DEBUG_FPRINTF(stdout, "Previous max boot number: %d\n", max_flight_log_boot_number);
 
   if (max_flight_log_boot_number < 0)
   {
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-    fprintf(stderr, "Error finding max boot number: return (%d)\n", max_flight_log_boot_number);
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+    DEBUG_FPRINTF(stderr, "Error finding max boot number: return (%d)\n", max_flight_log_boot_number);
   }
 
   snprintf(flight_filename1, sizeof(flight_filename1), FLIGHT_FNAME_FMT, max_flight_log_boot_number + 1, 1);
   snprintf(flight_filename2, sizeof(flight_filename2), FLIGHT_FNAME_FMT, max_flight_log_boot_number + 1, 2);
 
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-  printf("File 1 name: %s\n", flight_filename1);
-  printf("File 2 name: %s\n", flight_filename2);
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+  DEBUG_FPRINTF(stdout, "File 1 name: %s\n", flight_filename1);
+  DEBUG_FPRINTF(stdout, "File 2 name: %s\n", flight_filename2);
 
   if (strlen(flight_filename1) > MAX_FILENAME) // Check log 1 filename length
   {
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-    fprintf(stderr, "Log file's name (%s) is longer than the maximum size of characters (%d)\n", flight_filename1, MAX_FILENAME);
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+    DEBUG_FPRINTF(stderr, "Log file 1's name (%s) is longer than the maximum size of characters (%d)\n", flight_filename1, MAX_FILENAME);
   }
+
   if (strlen(flight_filename2) > MAX_FILENAME) // Check log 2 filename length
   {
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-    fprintf(stderr, "Log file's name (%s) is longer than the maximum size of characters (%d)\n", flight_filename2, MAX_FILENAME);
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+    DEBUG_FPRINTF(stderr, "Log file 2's name (%s) is longer than the maximum size of characters (%d)\n", flight_filename2, MAX_FILENAME);
   }
 
   err = try_open_file(&storage_file_1, flight_filename1, "wb+");
   if (err < 0 || storage_file_1 == NULL)
   {
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-    fprintf(stderr, "Error opening log file 1 (%s): %d\n", flight_filename1, err);
-#endif                            /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+    DEBUG_FPRINTF(stderr, "Error opening log file 1 (%s): %d\n", flight_filename1, err);
     pthread_exit(err_to_ptr(err)); // TODO: fail more gracefully
   }
 
@@ -117,9 +114,7 @@ void *logging_main(void *arg)
   if (fd < 0)
   {
     err = errno;
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-    fprintf(stderr, "Error using fileno: %d\n", err);
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+    DEBUG_FPRINTF(stderr, "Error using fileno: %d\n", err);
     fclose(active_storage_file);
   }
 
@@ -127,9 +122,7 @@ void *logging_main(void *arg)
   if (err)
   {
     err = errno;
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-    fprintf(stderr, "Error using fstat: %d\n", err);
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+    DEBUG_FPRINTF(stderr, "Error using fstat: %d\n", err);
     fclose(active_storage_file);
   }
 
@@ -142,9 +135,7 @@ void *logging_main(void *arg)
     err = state_get_flightstate(state, &flight_state);
     if (err)
     {
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-      fprintf(stderr, "Error getting flight state: %d\n", err);
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+      DEBUG_FPRINTF(stderr, "Error getting flight state: %d\n", err);
       fclose(active_storage_file);
       // TODO: figure out fail conditions
     }
@@ -160,45 +151,33 @@ void *logging_main(void *arg)
       if (err)
       {
         err = errno;
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-        fprintf(stderr, "Error during state_wait_for_change: %d\n", err);
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+        DEBUG_FPRINTF(stderr, "Error during state_wait_for_change: %d\n", err);
       }
 
       /* Store current system time as new_timespec */
       if (clock_gettime(CLOCK_REALTIME, &new_timespec) < 0) // TODO: Is CLOCK_REALTIME the correct option?
       {
         err = errno;
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-        fprintf(stderr, "Error during clock_gettime: %d\n", err);
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+        DEBUG_FPRINTF(stderr, "Error during clock_gettime: %d\n", err);
       }
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-      printf("Time: %d:%ld\n", new_timespec.tv_sec, new_timespec.tv_nsec);
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+      DEBUG_FPRINTF(stdout, "Time: %d:%ld\n", new_timespec.tv_sec, new_timespec.tv_nsec);
 
       double time_diff = timespec_diff(&new_timespec, &base_timespec);
       if (time_diff < 0)
       {
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-        fprintf(stderr, "Error during timespec_diff (Negative difference returned): %f\n", time_diff);
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+        DEBUG_FPRINTF(stderr, "Error during timespec_diff (Negative difference returned): %f\n", time_diff);
       }
 
       if (time_diff >= 30.0)
       {
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-        printf("30 seconds passed\n");
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+        DEBUG_FPRINTF(stdout, "30 seconds passed\n");
 
         // Switch active log file
         err = switch_active_log_file(&active_storage_file, storage_file_1, &storage_file_2, flight_filename2);
         if (err < 0)
         {
           err = errno;
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-          fprintf(stderr, "Error switching active log file: %d\n", err);
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+          DEBUG_FPRINTF(stderr, "Error switching active log file: %d\n", err);
           pthread_exit(err_to_ptr(err)); // TODO: fail more gracefully
         }
         
@@ -221,7 +200,6 @@ void *logging_main(void *arg)
         }
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
         
-
         /* Set Base time to current time to reset*/
         base_timespec = new_timespec;
       }
@@ -235,16 +213,13 @@ void *logging_main(void *arg)
       if (err)
       {
         err = errno;
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-        fprintf(stderr, "Error during state_read_lock: %d\n", err);
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+        DEBUG_FPRINTF(stderr, "Error during state_read_lock: %d\n", err);
       }
 
       /* Log data to active log file*/
       written = fwrite(&state->data, sizeof(state->data), 1, active_storage_file);
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-      printf("Logged %u bytes\n", written * sizeof(state->data));
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+      DEBUG_FPRINTF(stdout, "Logged %lu bytes\n", written * sizeof(state->data));
+
       if (written == 0)
       { 
         // TODO: Handle error (might happen if file got too large, start
@@ -254,9 +229,7 @@ void *logging_main(void *arg)
       err = state_unlock(state);
       if (err)
       {
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-        fprintf(stderr, "Error during state_unlock: %d\n", err);
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+        DEBUG_FPRINTF(stderr, "Error during state_unlock: %d\n", err);
       }
 
       /* If we are in the idle state, only write the latest n seconds of data*/
@@ -269,9 +242,7 @@ void *logging_main(void *arg)
 
     case STATE_LANDED:
     {
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-      printf("Copying files to extraction file system.\n");
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+      DEBUG_FPRINTF(stdout, "Copying files to extraction file system.\n");
 
       /* Generate log file name for extraction file system */
       int max_extraction_log_file_number = find_max_boot_number(EXTR_FNAME_FMT);
@@ -282,9 +253,7 @@ void *logging_main(void *arg)
       {
         // If reach here, all attempts to open log file have failed, fatal error
         err = errno;
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-        fprintf(stderr, "Couldn't open extraction log file '%s' with error: %d\n", land_filename, err);
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+        DEBUG_FPRINTF(stderr, "Couldn't open extraction log file '%s' with error: %d\n", land_filename, err);
         pthread_exit(err_to_ptr(err));
       }
       
@@ -292,9 +261,7 @@ void *logging_main(void *arg)
       err = fseek(active_storage_file, 0, SEEK_SET); 
       if (err)
       {
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-        fprintf(stderr, "Couldn't seek active file back to start: %d", err);
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+        DEBUG_FPRINTF(stderr, "Couldn't seek active file back to start: %d", err);
       }
       
       /* Copy from one to the other using a buffer */
@@ -312,10 +279,8 @@ void *logging_main(void *arg)
       /* Once done copying, close extraction file */
       if (fclose(extract_storage_file) != 0)
       {
-          err = errno;
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-        fprintf(stderr, "Couldn't close extraction log file '%s' with error: %d\n", land_filename, err);
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+        err = errno;
+        DEBUG_FPRINTF(stderr, "Couldn't close extraction log file '%s' with error: %d\n", land_filename, err);
       }
 
       /* Now that logs are copied to FAT partition, move back to the idle state for another go. */
@@ -324,11 +289,8 @@ void *logging_main(void *arg)
       err = state_set_flightstate(state, STATE_IDLE); 
       if (err < 0)
       {
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-        fprintf(stderr, "Error during state_set_flightstate: %d\n", err);
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
-      }
-      
+        DEBUG_FPRINTF(stderr, "Error during state_set_flightstate: %d\n", err);
+      } 
     }
     }
   }
@@ -337,17 +299,13 @@ void *logging_main(void *arg)
   if (fclose(storage_file_1) != 0)
   {
     err = errno;
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-    fprintf(stderr, "Failed to close flight logfile 1 handle: %d\n", err);
-#endif
+    DEBUG_FPRINTF(stderr, "Failed to close flight logfile 1 handle: %d\n", err);
   }
 
   if (fclose(storage_file_2) != 0)
   {
     err = errno;
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-    fprintf(stderr, "Failed to close flight logfile 2 handle: %d\n", err);
-#endif
+    DEBUG_FPRINTF(stderr, "Failed to close flight logfile 2 handle: %d\n", err);
   }
 
   pthread_exit(err_to_ptr(err));
@@ -375,18 +333,14 @@ static int try_open_file(FILE** file_pointer, char* filename, char* open_option)
     if (*file_pointer == NULL)
     {
       err = errno;
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-      fprintf(stderr, "Error (Attempt %d) opening '%s' file: %d\n", i, filename, err);
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+      DEBUG_FPRINTF(stderr, "Error (Attempt %d) opening '%s' file: %d\n", i, filename, err);
 
       // TODO: check errno values
       usleep(1 * 1000); // Sleep for 1 millisecond before trying again
     }
     else
     {
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-      printf("\nOpened File: %s\n\n", filename);
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+      DEBUG_FPRINTF(stdout, "\nOpened File: %s\n\n", filename);
       break;
     }
   }
@@ -443,9 +397,7 @@ static int switch_active_log_file(FILE **active_storage_file, FILE *storage_file
   /* Make sure we aren't dereferencing null pointer later */
   if (*active_storage_file == NULL)
   {
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-    fprintf(stderr, "Error in switch_active_log_file: active_storage_file is NULL");
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+    DEBUG_FPRINTF(stderr, "Error in switch_active_log_file: active_storage_file is NULL");
     return -1;
   }
   
@@ -460,9 +412,7 @@ static int switch_active_log_file(FILE **active_storage_file, FILE *storage_file
     err = try_open_file(storage_file_2, flight_filename2, "wb+");
     if (err < 0 || *storage_file_2 == NULL)
     {
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-      fprintf(stderr, "Error (%d) trying to open %s", err, flight_filename2);
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+      DEBUG_FPRINTF(stderr, "Error (%d) trying to open %s", err, flight_filename2);
       return -1;
     }
 
@@ -474,9 +424,7 @@ static int switch_active_log_file(FILE **active_storage_file, FILE *storage_file
   {
     if (storage_file_1 == NULL)
     {
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-      fprintf(stderr, "ERROR: storage_file_1 is NULL\n");
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+      DEBUG_FPRINTF(stderr, "ERROR: storage_file_1 is NULL\n");
       return -1;
     }
 
@@ -487,9 +435,7 @@ static int switch_active_log_file(FILE **active_storage_file, FILE *storage_file
   err = fseek(*active_storage_file, 0, SEEK_SET);
   if (err)
   {
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-    fprintf(stderr, "Couldn't seek active file back to start: %d", err);
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+    DEBUG_FPRINTF(stderr, "Couldn't seek active file back to start: %d", err);
   }
 
   return err;
