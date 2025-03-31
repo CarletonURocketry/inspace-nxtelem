@@ -44,7 +44,7 @@
 
 // Private Functions
 
-static int find_max_boot_number();
+static int find_max_boot_number(char* format_string);
 static int switch_active_log_file(FILE **active_storage_file, FILE *storage_file_1, FILE **storage_file_2, char *flight_filename2);
 static double timespec_diff(struct timespec *new_time, struct timespec *old_time);
 static int try_open_file(FILE **file_to_open, char *filename, char *open_option);
@@ -77,7 +77,7 @@ void *logging_main(void *arg)
 
   /* Generate flight log file names using the boot number */
 
-  int max_flight_log_boot_number = find_max_boot_number();
+  int max_flight_log_boot_number = find_max_boot_number("flog_boot%d_%d.bin");
   DEBUG_FPRINTF(stdout, "Previous max boot number: %d\n", max_flight_log_boot_number);
 
   if (max_flight_log_boot_number < 0)
@@ -245,7 +245,7 @@ void *logging_main(void *arg)
       DEBUG_FPRINTF(stdout, "Copying files to extraction file system.\n");
 
       /* Generate log file name for extraction file system */
-      int max_extraction_log_file_number = find_max_boot_number(EXTR_FNAME_FMT);
+      int max_extraction_log_file_number = find_max_boot_number("elog_boot%d_%d.bin");
       snprintf(land_filename, sizeof(land_filename), EXTR_FNAME_FMT, max_extraction_log_file_number + 1, 1);
 
       err = try_open_file(&extract_storage_file, land_filename, "wb+");
@@ -353,9 +353,8 @@ static int try_open_file(FILE** file_pointer, char* filename, char* open_option)
  *
  * @return The maximum boot number found of previous files, -1 if error 
  **/
-static int find_max_boot_number()
+static int find_max_boot_number(char* format_string)
 {
-  
   DIR *directory_pointer = opendir("/tmp");
   if (directory_pointer == NULL)
   {
@@ -368,7 +367,7 @@ static int find_max_boot_number()
   struct dirent *entry;
   while ((entry = readdir(directory_pointer)) != NULL)
   {
-    if (sscanf(entry->d_name, "flog_boot%d_%d.bin", &boot_number, &file_number) == 2)
+    if (sscanf(entry->d_name, format_string, &boot_number, &file_number) == 2)
     {
       if (boot_number > max_boot_number)
       {
