@@ -277,7 +277,7 @@ static void baro_handler(void *ctx, uint8_t *data) {
  * @param accel_data The accel data to add
  */
 static void add_accel_blk(packet_buffer_t *buffer, packet_node_t **node, struct sensor_accel *accel_data) {
-  uint8_t *block = alloc_block(buffer, node, DATA_ACCEL_ABS, us_to_ms(accel_data->timestamp));
+  uint8_t *block = alloc_block(buffer, node, DATA_ACCEL_REL, us_to_ms(accel_data->timestamp));
   if (block) {
     accel_blk_init((struct accel_blk_t*)block_body(block), cm_per_sec_squared(accel_data->x), cm_per_sec_squared(accel_data->y), cm_per_sec_squared(accel_data->z));
   }

@@ -91,8 +91,6 @@ size_t blk_body_len(enum block_type_e type) {
     return sizeof(struct ang_vel_blk_t);
   case DATA_ACCEL_REL:
     return sizeof(struct accel_blk_t);
-  case DATA_ACCEL_ABS:
-    return sizeof(struct accel_blk_t);
   case DATA_ALT_LAUNCH:
     return sizeof(struct alt_blk_t);
   default:
@@ -232,9 +230,9 @@ void ang_vel_blk_init(struct ang_vel_blk_t *b, const int16_t x_axis,
 /*
  * Construct a magnetic field block
  * @param b The magnetic field block to initialize
- * @param x_axis The magnetic field in the x-axis measured in milligauss
- * @param y_axis The magnetic field in the y-axis measured in milligauss
- * @param z_axis The magnetic field in the z-axis measured in milligauss
+ * @param x_axis The magnetic field in the x-axis measured in 0.1 microtesla
+ * @param y_axis The magnetic field in the y-axis measured in 0.1 microtesla
+ * @param z_axis The magnetic field in the z-axis measured in 0.1 microtesla
  */
 void mag_blk_init(struct mag_blk_t *b, const int16_t x_axis,
                   const int16_t y_axis, const int16_t z_axis) {
