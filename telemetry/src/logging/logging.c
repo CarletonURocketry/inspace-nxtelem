@@ -76,7 +76,6 @@ void *logging_main(void *arg)
   DEBUG_FPRINTF(stdout, "Logging thread started.\n");
 
   /* Generate flight log file names using the boot number */
-
   int max_flight_log_boot_number = find_max_boot_number("flog_boot%d_%d.bin");
   DEBUG_FPRINTF(stdout, "Previous max boot number: %d\n", max_flight_log_boot_number);
 
@@ -155,7 +154,7 @@ void *logging_main(void *arg)
       }
 
       /* Store current system time as new_timespec */
-      if (clock_gettime(CLOCK_REALTIME, &new_timespec) < 0) // TODO: Is CLOCK_REALTIME the correct option?
+      if (clock_gettime(CLOCK_REALTIME, &new_timespec) < 0)
       {
         err = errno;
         DEBUG_FPRINTF(stderr, "Error during clock_gettime: %d\n", err);
@@ -222,8 +221,7 @@ void *logging_main(void *arg)
 
       if (written == 0)
       { 
-        // TODO: Handle error (might happen if file got too large, start
-        // another file)
+        // TODO: Handle error (might happen if file got too large, start another file)
       }
 
       err = state_unlock(state);
@@ -247,6 +245,7 @@ void *logging_main(void *arg)
       /* Generate log file name for extraction file system */
       int max_extraction_log_file_number = find_max_boot_number("elog_boot%d_%d.bin");
       snprintf(land_filename, sizeof(land_filename), EXTR_FNAME_FMT, max_extraction_log_file_number + 1, 1);
+      DEBUG_FPRINTF(stdout, "Extraction file name: %s\n", land_filename);
 
       err = try_open_file(&extract_storage_file, land_filename, "wb+");
       if (err < 0 || extract_storage_file == NULL)
@@ -334,8 +333,6 @@ static int try_open_file(FILE** file_pointer, char* filename, char* open_option)
     {
       err = errno;
       DEBUG_FPRINTF(stderr, "Error (Attempt %d) opening '%s' file: %d\n", i, filename, err);
-
-      // TODO: check errno values
       usleep(1 * 1000); // Sleep for 1 millisecond before trying again
     }
     else
@@ -351,7 +348,8 @@ static int try_open_file(FILE** file_pointer, char* filename, char* open_option)
 /**
  * Find max boot number of logging files that already exist
  *
- * @return The maximum boot number found of previous files, -1 if error 
+ * @param format_string The formatted string to sscanf to extract the boot number from. eg.) "flog_boot%d_%d.bin"
+ * @return The maximum boot number found of previous files, -1 if error
  **/
 static int find_max_boot_number(char* format_string)
 {
