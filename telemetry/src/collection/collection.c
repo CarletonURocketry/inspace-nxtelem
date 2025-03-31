@@ -61,7 +61,7 @@ static void gyro_handler(void *ctx, uint8_t *data);
 
 /* Convert gauss to milligauss */
 
-#define milligauss(gauss) (gauss * 1000)
+#define tenth_microtesla(microtesla) (microtesla * 1000)
 
 /* Convert meters per second squared to centimeters per second squared */
 
@@ -353,7 +353,7 @@ static void accel_handler(void *ctx, uint8_t *data) {
 static void add_mag_blk(packet_buffer_t *buffer, packet_node_t **node, struct sensor_mag *mag_data) {
   uint8_t *block = alloc_block(buffer, node, DATA_MAGNETIC, us_to_ms(mag_data->timestamp));
   if (block) {
-    mag_blk_init((struct mag_blk_t*)block_body(block), milligauss(mag_data->x), milligauss(mag_data->y), milligauss(mag_data->z));
+    mag_blk_init((struct mag_blk_t*)block_body(block), tenth_microtesla(mag_data->x), tenth_microtesla(mag_data->y), tenth_microtesla(mag_data->z));
   }
 }
 
