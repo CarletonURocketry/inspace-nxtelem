@@ -156,6 +156,7 @@ uint8_t *pkt_create_blk(uint8_t *packet, uint8_t *block, enum block_type_e type,
       return NULL;
     }
   }
+  header->blocks++;
   blk_hdr_init((blk_hdr_t *)block, type);
   return block + block_size;
 }
@@ -197,6 +198,46 @@ void pres_blk_init(struct pres_blk_t *b, const int32_t pressure) {
  */
 void accel_blk_init(struct accel_blk_t *b, const int16_t x_axis,
                     const int16_t y_axis, const int16_t z_axis) {
+  b->x = x_axis;
+  b->y = y_axis;
+  b->z = z_axis;
+}
+
+/*
+ * Construct a coordinate block
+ * @param b The coordinate block to initialize
+ * @param lat Latitude of the coordinate, in 0.1 microdegress
+ * @param lon Longitude of the coordinate, in 0.1 microdegress
+ */
+void coord_blk_init(struct coord_blk_t *b, const int32_t lat,
+                    const int32_t lon) {
+  b->latitude = lat;
+  b->longitude = lon;
+}
+
+/*
+ * Construct an angular velocity block
+ * @param b The angular velocity block to initialize
+ * @param x_axis Angular velocity in the x-axis measured in tenths of degrees per second
+ * @param y_axis Angular velocity in the y-axis measured in tenths of degrees per second
+ * @param z_axis Angular velocity in the z-axis measured in tenths of degrees per second
+ */
+void ang_vel_blk_init(struct ang_vel_blk_t *b, const int16_t x_axis,
+                      const int16_t y_axis, const int16_t z_axis) {
+  b->x = x_axis;
+  b->y = y_axis;
+  b->z = z_axis;
+}
+
+/*
+ * Construct a magnetic field block
+ * @param b The magnetic field block to initialize
+ * @param x_axis The magnetic field in the x-axis measured in milligauss
+ * @param y_axis The magnetic field in the y-axis measured in milligauss
+ * @param z_axis The magnetic field in the z-axis measured in milligauss
+ */
+void mag_blk_init(struct mag_blk_t *b, const int16_t x_axis,
+                  const int16_t y_axis, const int16_t z_axis) {
   b->x = x_axis;
   b->y = y_axis;
   b->z = z_axis;
