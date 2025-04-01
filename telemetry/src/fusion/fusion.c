@@ -10,49 +10,34 @@
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
 
 
+/* UORB declarations */
 #if defined(CONFIG_DEBUG_UORB)
-/* Format strings for fusioned data, useful for printing debug data using orb_info() */
-static const char fusion_accel_format[] =
-  "fusioned accel - timestamp:%" PRIu64 ",x:%hf,y:%hf,z:%hf,temperature:%hf";
-static const char fusion_baro_format[] =
-  "fusioned baro - timestamp:%" PRIu64 ",pressure:%hf,temperature:%hf";
-ORB_DEFINE(fusion_accel, struct sensor_accel, fusion_accel_format);
-ORB_DEFINE(fusion_baro, struct sensor_baro, fusion_baro_format);
+static const char fusion_alt_format[] = "fusioned altitude - timestamp:%" PRIu64 ",altitude:%hf";
+ORB_DEFINE(fusion_altitude, struct fusion_altitude, fusion_alt_format);
 #else
-/* UORB declarations for fused sensor data */
-ORB_DEFINE(fusion_accel, struct sensor_accel);
-ORB_DEFINE(fusion_baro, struct sensor_baro);
+ORB_DEFINE(fusion_altitude, struct fusion_altitude);
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
 
 /* Buffers for inputs, best to match to the size of the internal sensor buffers */
-#define ACCEL_INPUT_BUFFER_SIZE 5
 #define BARO_INPUT_BUFFER_SIZE 5
 
+struct fusion_altitude calculate_altitude(struct sensor_baro *baro_data);
 
 void *fusion_main(void *arg) {
   /* Input sensors, may want to directly read instead */
   struct uorb_inputs sensors;
   clear_uorb_inputs(&sensors);
-  setup_sensor(&sensors.accel, orb_get_meta("sensor_accel"));
   setup_sensor(&sensors.baro, orb_get_meta("sensor_baro"));
-  struct sensor_accel accel_data[ACCEL_INPUT_BUFFER_SIZE];
   struct sensor_baro baro_data[BARO_INPUT_BUFFER_SIZE];
 
   /* Output sensors */ 
 
   /* Currently publishing blank data to start, might be better to try and advertise only on first fusioned data */
-  struct sensor_accel output_accel = {.x = 0, .y = 0, .z = 0, .temperature = 0, .timestamp = orb_absolute_time()};
-  struct sensor_baro output_baro = {.pressure = 0, .temperature = 0, .timestamp = orb_absolute_time()};
-  int accel_out = orb_advertise_multi_queue(ORB_ID(fusion_accel), &output_accel, NULL, ACCEL_FUSION_BUFFER_SIZE);
-  if (accel_out < 0) {
+  struct fusion_altitude calculated_altitude = {.altitude = 0, .timestamp = orb_absolute_time()};
+  int altitude_fd = orb_advertise_multi_queue(ORB_ID(fusion_altitude), &calculated_altitude, NULL, ACCEL_FUSION_BUFFER_SIZE);
+  if (altitude_fd < 0) {
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-    fprintf(stderr, "Fusion could not advertise accel topic: %d\n", accel_out);
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
-  }
-  int baro_out = orb_advertise_multi_queue(ORB_ID(fusion_baro), &output_baro, NULL, BARO_FUSION_BUFFER_SIZE);
-  if (baro_out < 0) {
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-    fprintf(stderr, "Fusion could not advertise baro topic: %d\n", baro_out);
+    fprintf(stderr, "Fusion could not advertise accel topic: %d\n", altitude_fd);
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
   }
 
@@ -61,19 +46,20 @@ void *fusion_main(void *arg) {
   for(;;) {
     /* Wait for new data */
     poll_sensors(&sensors);
-    int len = get_sensor_data(&sensors.accel, accel_data, sizeof(accel_data));
-    if (len > 0) {
-      for (int i = 0; i < (len / sizeof(struct sensor_accel)); i++) {
-        /* Simply publish the same data we got for now*/
-        orb_publish(ORB_ID(fusion_accel), accel_out, &accel_data[i]);
-      }
-    }
-    len = get_sensor_data(&sensors.baro, baro_data, sizeof(baro_data));
+    int len = get_sensor_data(&sensors.baro, baro_data, sizeof(baro_data));
     if (len > 0) {
       for (int i = 0; i < (len / sizeof(struct sensor_baro)); i++) {
-        orb_publish(ORB_ID(fusion_baro), baro_out, &baro_data[i]);
+        calculated_altitude = calculate_altitude(&baro_data[i]);
+        orb_publish(ORB_ID(fusion_altitude), altitude_fd, &calculated_altitude);
         /* Do some processing or fusion on this data */
       }
     }
   }
+}
+
+struct fusion_altitude calculate_altitude(struct sensor_baro *baro_data) {
+  struct fusion_altitude output;
+  output.timestamp = baro_data->timestamp;
+  output.altitude = 0;
+  return output;
 }
