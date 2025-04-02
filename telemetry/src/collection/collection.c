@@ -38,6 +38,7 @@ static void accel_handler(void *ctx, uint8_t *data);
 static void mag_handler(void *ctx, uint8_t *data);
 static void gnss_handler(void *ctx, uint8_t *data);
 static void gyro_handler(void *ctx, uint8_t *data);
+static void alt_handler(void *ctx, uint8_t *data);
 
 /* Convert microseconds to milliseconds */
 
@@ -78,6 +79,7 @@ static void gyro_handler(void *ctx, uint8_t *data);
 #define MAG_READ_SIZE 5
 #define GNSS_READ_SIZE 5
 #define GYRO_READ_SIZE 5
+#define ALT_READ_SIZE 5
 
 /*
  * Collection thread which runs to collect data.
@@ -108,6 +110,7 @@ void *collection_main(void *arg) {
   setup_sensor(&sensors.mag, orb_get_meta("sensor_mag"));
   setup_sensor(&sensors.gyro, orb_get_meta("sensor_gyro"));
   setup_sensor(&sensors.gnss, orb_get_meta("sensor_gnss"));
+  setup_sensor(&sensors.alt, ORB_ID(fusion_altitude));
 
   /* Separate buffers use more memory but allow us to process in pieces while still reading only once */
   struct sensor_accel accel_data[ACCEL_READ_SIZE];
@@ -115,6 +118,7 @@ void *collection_main(void *arg) {
   struct sensor_mag mag_data[MAG_READ_SIZE];
   struct sensor_gyro gyro_data[GYRO_READ_SIZE];
   struct sensor_gnss gnss_data[GNSS_READ_SIZE];
+  struct fusion_altitude alt_data[ALT_READ_SIZE];
 
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
   printf("Collection thread started.\n");
@@ -142,12 +146,14 @@ void *collection_main(void *arg) {
     uint8_t *mag_end = get_sensor_data_end(&sensors.mag, mag_data, sizeof(mag_data));
     uint8_t *gyro_end = get_sensor_data_end(&sensors.gyro, gyro_data, sizeof(gyro_data));
     uint8_t *gnss_end = get_sensor_data_end(&sensors.gnss, gnss_data, sizeof(gnss_data));
+    uint8_t *alt_end = get_sensor_data_end(&sensors.alt, alt_data, sizeof(alt_data));
 
     uint8_t *accel_start = (uint8_t *)accel_data;
     uint8_t *baro_start = (uint8_t *)baro_data;
     uint8_t *mag_start = (uint8_t *)mag_data;
     uint8_t *gyro_start = (uint8_t *)gyro_data;
     uint8_t *gnss_start = (uint8_t *)gnss_data;
+    uint8_t *alt_start = (uint8_t *)alt_data;
 
     /* Process one piece of data of each type at a time to get a more even mix of things in the packets */
     int processed;
@@ -158,6 +164,7 @@ void *collection_main(void *arg) {
       processed += process_one(mag_handler, &context, &mag_start, mag_end, sizeof(struct sensor_mag));
       processed += process_one(gyro_handler, &context, &gyro_start, gyro_end, sizeof(struct sensor_gyro));
       processed += process_one(gnss_handler, &context, &gnss_start, gnss_end, sizeof(struct sensor_gnss));
+      processed += process_one(alt_handler, &context, &alt_start, alt_end, sizeof(struct fusion_altitude));
     } while (processed);
 
     /* Decide whether to move to lift-off state. TODO: real logic */
@@ -382,7 +389,7 @@ static void add_msl_block(packet_buffer_t *buffer, packet_node_t **node, struct 
  * A uorb_data_callback_t function - adds gnss data to the required packets
  *  
  * @param ctx Context information, type processing_context_t
- * @param data Acceleration data to add, type struct sensor_gnss
+ * @param data GNSS data to add, type struct sensor_gnss
  */
 static void gnss_handler(void *ctx, uint8_t *data) {
   struct sensor_gnss *gnss_data = (struct sensor_gnss*)data;
@@ -392,4 +399,16 @@ static void gnss_handler(void *ctx, uint8_t *data) {
 
   add_gnss_block(context->transmit_buffer, &context->transmit_packet, gnss_data);
   add_msl_block(context->transmit_buffer, &context->transmit_packet, gnss_data);
+}
+
+/**
+ * A uorb_data_callback_t function - adds altitude data to the required packets
+ * 
+ * @param ctx Context information, type processing_context_t
+ * @param data Altitude data to add, type struct fusion_altitude
+ */
+static void alt_handler(void *ctx, uint8_t *data) {
+  struct fusion_altitude *alt_data = (struct fusion_altitude*)data;
+  processing_context_t *context = (processing_context_t *)ctx;
+  add_msl_block(context->logging_buffer, &context->logging_packet, alt_data);
 }
