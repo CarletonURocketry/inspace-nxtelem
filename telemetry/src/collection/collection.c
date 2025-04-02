@@ -411,4 +411,5 @@ static void alt_handler(void *ctx, uint8_t *data) {
   struct fusion_altitude *alt_data = (struct fusion_altitude*)data;
   processing_context_t *context = (processing_context_t *)ctx;
   add_msl_block(context->logging_buffer, &context->logging_packet, alt_data);
+  add_msl_block(context->transmit_buffer, &context->transmit_packet, alt_data);
 }
