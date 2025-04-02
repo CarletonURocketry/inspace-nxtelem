@@ -55,8 +55,10 @@ static int has_offset(enum block_type_e type) {
  * transmissions.
  */
 void pkt_hdr_init(pkt_hdr_t *p, uint8_t packet_number, uint32_t mission_time) {
-  memcpy(&p->call_sign, CONFIG_INSPACE_TELEMETRY_CALLSIGN,
-         sizeof(CONFIG_INSPACE_TELEMETRY_CALLSIGN));
+  if (sizeof(CONFIG_INSPACE_TELEMETRY_CALLSIGN) < sizeof(p->call_sign)) {
+    memset(&p->call_sign, '0', sizeof(p->call_sign));
+  }
+  strncpy(&p->call_sign, CONFIG_INSPACE_TELEMETRY_CALLSIGN, sizeof(p->call_sign));
   p->packet_num = packet_number;
   p->timestamp = calc_timestamp(mission_time);
   p->blocks = 0;
