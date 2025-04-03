@@ -35,6 +35,7 @@ typedef struct {
 } processing_context_t;
 
 static int setup_collection(collection_info_t *collection, packet_buffer_t *packet_buffer);
+static void reset_block_count(collection_info_t *collection);
 static uint8_t *add_block(collection_info_t *collection, enum block_type_e type, uint32_t mission_time);
 static uint8_t *add_or_new(collection_info_t *collection, enum block_type_e type, uint32_t mission_time);
 static void baro_handler(void *ctx, uint8_t *data);
@@ -86,7 +87,7 @@ static void alt_handler(void *ctx, uint8_t *data);
 #define ALT_READ_SIZE 5
 
 /* How many readings of each type of lower-priority data to add to each packet */
-#define TRANSMIT_NUM_LOW_PRIORITY_READINGS 5
+#define TRANSMIT_NUM_LOW_PRIORITY_READINGS 2
 
 /*
  * Collection thread which runs to collect data.
@@ -209,6 +210,7 @@ void *collection_main(void *arg) {
 static int setup_collection(collection_info_t *collection, packet_buffer_t *packet_buffer) {
   collection->buffer = packet_buffer;
   collection->current = packet_buffer_get_empty(packet_buffer);
+  reset_block_count(collection);
   if (!collection->current) {
     return -1; 
   }
@@ -216,9 +218,32 @@ static int setup_collection(collection_info_t *collection, packet_buffer_t *pack
 }
 
 /**
+ * Resets the current block count for the collected data
+ *
+ * @param collection Information about collected data
+ */
+static void reset_block_count(collection_info_t *collection) {
+  for (int i = 0; i < sizeof(collection->block_count) / sizeof(collection->block_count[0]); i++) {
+    collection->block_count[i] = 0;
+  }
+}
+
+/**
+ * Prints the current count for each type of block in the collection
+ * @param collection Information about collected data
+ */
+static void print_block_count(collection_info_t *collection) {
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+  for (int i = 0; i < sizeof(collection->block_count) / sizeof(collection->block_count[0]); i++) {
+    printf("Count for %02x: %d\n", i, collection->block_count[i]);
+  }
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+}
+
+/**
  * Adds a block to the current packet being worked on
  *
- * @param collection The buffer to add the block to
+ * @param collection Collection information containing a packet to add the block to
  * @param type The type of block to add
  * @param mission_time The time of measurement for the block, if it has one
  * @return The location to write the block, or NULL if the block could not be added
@@ -234,7 +259,7 @@ static uint8_t *add_block(collection_info_t *collection, enum block_type_e type,
 /**
  * Allocates a block in the current packet or swaps out the current packet if the block can't be added
  * 
- * @param collection Collection information
+ * @param collection Collection information to add the block to
  * @param type The type of block being allocated
  * @param mission_time The time of the measurement, if this block type has one
  * @return The location to write the requested type of block
@@ -249,6 +274,7 @@ static uint8_t *add_or_new(collection_info_t *collection, enum block_type_e type
 #endif
     packet_buffer_put_full(collection->buffer, collection->current);
     collection->current = packet_buffer_get_empty(collection->buffer);
+    reset_block_count(collection);
     if (collection->current == NULL) {
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
       fprintf(stderr, "Couldn't get an empty packet or overwrite a full one - not enough packets in buffer\n");
@@ -277,7 +303,7 @@ static uint8_t *add_or_new(collection_info_t *collection, enum block_type_e type
 /**
  * Add a pressure block to the packet being assembled
  * 
- * @param collection A buffer of packet nodes, in case the current packet can't be added to
+ * @param collection Collection information where the block should be added
  * @param node The packet currently being assembled
  * @param baro_data The baro data to add
  */
@@ -291,7 +317,7 @@ static void add_pres_blk(collection_info_t *collection, struct sensor_baro *baro
 /**
  * Add a temperature block to the packet being assembled
  * 
- * @param collection A buffer of packet nodes, in case the current packet can't be added to
+ * @param collection Collection information where the block should be added
  * @param node The packet currently being assembled
  * @param baro_data The baro data to add
  */
@@ -314,14 +340,18 @@ static void baro_handler(void *ctx, uint8_t *data) {
   add_pres_blk(&context->logging, baro_data);
   add_temp_blk(&context->logging, baro_data);
 
-  add_pres_blk(&context->transmit, baro_data);
-  add_temp_blk(&context->transmit, baro_data);
+  if (context->transmit.block_count[DATA_PRESSURE] < TRANSMIT_NUM_LOW_PRIORITY_READINGS) {
+    add_pres_blk(&context->transmit, baro_data);
+  }
+  if (context->transmit.block_count[DATA_TEMP] < TRANSMIT_NUM_LOW_PRIORITY_READINGS) {
+    add_temp_blk(&context->transmit, baro_data);
+  }
 }
 
 /**
  * Add an acceleration block to the packet being assembled
  * 
- * @param collection A buffer of packet nodes, in case the current packet can't be added to
+ * @param collection Collection information where the block should be added
  * @param node The packet currently being assembled
  * @param accel_data The accel data to add
  */
@@ -348,7 +378,7 @@ static void accel_handler(void *ctx, uint8_t *data) {
 /**
  * Add a magnetometer block to the packet being assembled
  * 
- * @param collection A buffer of packet nodes, in case the current packet can't be added to
+ * @param collection Collection information where the block should be added
  * @param node The packet currently being assembled
  * @param mag_data The magnetic field data to add
  */
@@ -375,7 +405,7 @@ static void mag_handler(void *ctx, uint8_t *data) {
 /**
  * Add an gyro block to the packet being assembled
  * 
- * @param collection A buffer of packet nodes, in case the current packet can't be added to
+ * @param collection Collection information where the block should be added
  * @param node The packet currently being assembled
  * @param gyro_data The gyro data to add
  */
@@ -402,7 +432,7 @@ static void gyro_handler(void *ctx, uint8_t *data) {
 /**
  * Add an gnss block to the packet being assembled
  * 
- * @param collection A buffer of packet nodes, in case the current packet can't be added to
+ * @param collection Collection information where the block should be added
  * @param node The packet currently being assembled
  * @param gnss_data The gnss data to add
  */
@@ -416,7 +446,7 @@ static void add_gnss_block(collection_info_t *collection, struct sensor_gnss *gn
 /**
  * Add a gnss mean sea level altitude block to the packet being assembled
  * 
- * @param collection A buffer of packet nodes, in case the current packet can't be added to
+ * @param collection Collection information where the block should be added
  * @param node The packet currently being assembled
  * @param alt_data The altitude data to add
  */
@@ -430,7 +460,7 @@ static void add_gnss_msl_block(collection_info_t *collection, struct sensor_gnss
 /**
  * Add a mean sea level altitude block to the packet being assembled
  * 
- * @param collection A buffer of packet nodes, in case the current packet can't be added to
+ * @param collection Collection information where the block should be added
  * @param node The packet currently being assembled
  * @param alt_data The altitude data to add
  */
