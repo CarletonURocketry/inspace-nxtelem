@@ -162,7 +162,6 @@ packet_node_t *packet_buffer_get_empty(packet_buffer_t *buffer) {
 #if defined(PACKET_BUFFERING_DEBUG)
     printf("Got an packet from the buffer at address %p to write into\n", packet); 
 #endif /* defined(PACKET_BUFFERING_DEBUG) */
-    // Take from the end, since that should be the oldest packet
     return packet;
 }
 

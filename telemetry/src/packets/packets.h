@@ -53,12 +53,6 @@ typedef struct {
   uint8_t type;
 } TIGHTLY_PACKED blk_hdr_t;
 
-/* Base type for blocks with a time offset */
-typedef struct {
-  /* The offset from the absolute time in the header in milliseconds */
-  int16_t time_offset;
-} TIGHTLY_PACKED offset_blk;
-
 void blk_hdr_init(blk_hdr_t *b, const enum block_type_e type);
 
 size_t blk_body_len(enum block_type_e type);

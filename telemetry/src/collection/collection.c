@@ -31,7 +31,6 @@ typedef struct {
   packet_node_t *transmit_packet;
 } processing_context_t;
 
-static uint32_t ms_since(struct timespec *start);
 static uint8_t *alloc_block(packet_buffer_t *buffer, packet_node_t **node, enum block_type_e type, uint32_t mission_time);
 static void baro_handler(void *ctx, uint8_t *data);
 static void accel_handler(void *ctx, uint8_t *data);
@@ -80,6 +79,9 @@ static void alt_handler(void *ctx, uint8_t *data);
 #define GNSS_READ_SIZE 5
 #define GYRO_READ_SIZE 5
 #define ALT_READ_SIZE 5
+
+/* How many readings of each type of lower-priority data to add to each packet */
+#define TRANSMIT_NUM_LOW_PRIORITY_READINGS 5
 
 /*
  * Collection thread which runs to collect data.
@@ -141,19 +143,19 @@ void *collection_main(void *arg) {
     poll_sensors(&sensors);
 
     /* Read data all at once to avoid as much locking as possible */
-    uint8_t *accel_end = get_sensor_data_end(&sensors.accel, accel_data, sizeof(accel_data));
-    uint8_t *baro_end = get_sensor_data_end(&sensors.baro, baro_data, sizeof(baro_data));
-    uint8_t *mag_end = get_sensor_data_end(&sensors.mag, mag_data, sizeof(mag_data));
-    uint8_t *gyro_end = get_sensor_data_end(&sensors.gyro, gyro_data, sizeof(gyro_data));
-    uint8_t *gnss_end = get_sensor_data_end(&sensors.gnss, gnss_data, sizeof(gnss_data));
-    uint8_t *alt_end = get_sensor_data_end(&sensors.alt, alt_data, sizeof(alt_data));
+    void *accel_end = get_sensor_data_end(&sensors.accel, accel_data, sizeof(accel_data));
+    void *baro_end = get_sensor_data_end(&sensors.baro, baro_data, sizeof(baro_data));
+    void *mag_end = get_sensor_data_end(&sensors.mag, mag_data, sizeof(mag_data));
+    void *gyro_end = get_sensor_data_end(&sensors.gyro, gyro_data, sizeof(gyro_data));
+    void *gnss_end = get_sensor_data_end(&sensors.gnss, gnss_data, sizeof(gnss_data));
+    void *alt_end = get_sensor_data_end(&sensors.alt, alt_data, sizeof(alt_data));
 
-    uint8_t *accel_start = (uint8_t *)accel_data;
-    uint8_t *baro_start = (uint8_t *)baro_data;
-    uint8_t *mag_start = (uint8_t *)mag_data;
-    uint8_t *gyro_start = (uint8_t *)gyro_data;
-    uint8_t *gnss_start = (uint8_t *)gnss_data;
-    uint8_t *alt_start = (uint8_t *)alt_data;
+    void *accel_start = accel_data;
+    void *baro_start = baro_data;
+    void *mag_start = mag_data;
+    void *gyro_start = gyro_data;
+    void *gnss_start = gnss_data;
+    void *alt_start = alt_data;
 
     /* Process one piece of data of each type at a time to get a more even mix of things in the packets */
     int processed;
@@ -372,13 +374,27 @@ static void add_gnss_block(packet_buffer_t *buffer, packet_node_t **node, struct
 }
 
 /**
+ * Add a gnss mean sea level altitude block to the packet being assembled
+ * 
+ * @param buffer A buffer of packet nodes, in case the current packet can't be added to
+ * @param node The packet currently being assembled
+ * @param alt_data The altitude data to add
+ */
+static void add_gnss_msl_block(packet_buffer_t *buffer, packet_node_t **node, struct sensor_gnss *alt_data) {
+  uint8_t *block = alloc_block(buffer, node, DATA_ALT_SEA, us_to_ms(alt_data->timestamp));
+  if (block) {
+    alt_blk_init((struct alt_blk_t*)block_body(block), millimeters(alt_data->altitude));
+  }
+}
+
+/**
  * Add a mean sea level altitude block to the packet being assembled
  * 
  * @param buffer A buffer of packet nodes, in case the current packet can't be added to
  * @param node The packet currently being assembled
  * @param alt_data The altitude data to add
  */
-static void add_msl_block(packet_buffer_t *buffer, packet_node_t **node, struct sensor_gnss *alt_data) {
+static void add_msl_block(packet_buffer_t *buffer, packet_node_t **node, struct fusion_altitude *alt_data) {
   uint8_t *block = alloc_block(buffer, node, DATA_ALT_SEA, us_to_ms(alt_data->timestamp));
   if (block) {
     alt_blk_init((struct alt_blk_t*)block_body(block), millimeters(alt_data->altitude));
@@ -395,10 +411,10 @@ static void gnss_handler(void *ctx, uint8_t *data) {
   struct sensor_gnss *gnss_data = (struct sensor_gnss*)data;
   processing_context_t *context = (processing_context_t *)ctx;
   add_gnss_block(context->logging_buffer, &context->logging_packet, gnss_data);
-  add_msl_block(context->logging_buffer, &context->logging_packet, gnss_data);
+  add_gnss_msl_block(context->logging_buffer, &context->logging_packet, gnss_data);
 
   add_gnss_block(context->transmit_buffer, &context->transmit_packet, gnss_data);
-  add_msl_block(context->transmit_buffer, &context->transmit_packet, gnss_data);
+  add_gnss_msl_block(context->transmit_buffer, &context->transmit_packet, gnss_data);
 }
 
 /**

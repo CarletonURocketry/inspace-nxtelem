@@ -49,7 +49,7 @@ int setup_sensor(struct pollfd *sensor, orb_id_t meta) {
  * @param size The size of the data parameter in bytes
  * @return The number of bytes read from the sensor or 0 if there was none to read
  */
-ssize_t get_sensor_data(struct pollfd *sensor, uint8_t *data, size_t size) {
+ssize_t get_sensor_data(struct pollfd *sensor, void *data, size_t size) {
  /*
   * If the sensor wasn't set up right, POLLIN won't get set, meaning there's no need to avoid using
   * the sensor if its metadata or fd weren't set up properly
@@ -79,7 +79,7 @@ ssize_t get_sensor_data(struct pollfd *sensor, uint8_t *data, size_t size) {
  * @param size The size of the data parameter in bytes
  * @return The 
  */
-uint8_t *get_sensor_data_end(struct pollfd *sensor, uint8_t* data, size_t size) {
+void *get_sensor_data_end(struct pollfd *sensor, void* data, size_t size) {
   return data + get_sensor_data(sensor, data, size);
 }
 
@@ -115,9 +115,9 @@ void poll_sensors(struct uorb_inputs *sensors) {
  * @param len The number of bytes of data in the buffer
  * @param elem_size The size of each element in the data buffer
  */
-void foreach_measurement(uorb_data_callback_t handler, void* handler_context, uint8_t *buf, size_t len, size_t elem_size) {
+void foreach_measurement(uorb_data_callback_t handler, void* handler_context, void *data, size_t len, size_t elem_size) {
   for (int i = 0; i < (len / elem_size); i++) {
-    handler(handler_context, buf + (i * elem_size));
+    handler(handler_context, data + (i * elem_size));
   }
 }
 
@@ -131,7 +131,7 @@ void foreach_measurement(uorb_data_callback_t handler, void* handler_context, ui
  * @param elem_size The size of elements in the buffer
  * @return 1 if a piece of data was processed, 0 otherwise
  */
-int process_one(uorb_data_callback_t handler, void* handler_context, uint8_t **data_start, uint8_t *data_end, size_t elem_size) {
+int process_one(uorb_data_callback_t handler, void* handler_context, void **data_start, void *data_end, size_t elem_size) {
   if ((*data_start == data_end) || ((elem_size + *data_start) > data_end)) {
     return 0;
   }
