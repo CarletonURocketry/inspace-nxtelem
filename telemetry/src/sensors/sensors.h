@@ -4,6 +4,8 @@
 #include <uORB/uORB.h>
 #include <poll.h>
 
+#include "../fusion/fusion.h"
+
 /* Used for polling on multiple sensors at once. Don't set up the ones you don't want to use */
 struct uorb_inputs {
   struct pollfd accel;
@@ -11,6 +13,7 @@ struct uorb_inputs {
   struct pollfd mag;
   struct pollfd gyro;
   struct pollfd gnss;
+  struct pollfd alt;
 };
 
 /* A buffer that can hold any of the types of data created by the sensors in uorb_inputs */
@@ -20,6 +23,7 @@ union uorb_data {
   struct sensor_mag mag;
   struct sensor_gyro gyro;
   struct sensor_gnss gnss;
+  struct fusion_altitude alt;
 };
 
 /* The numbers of sensors defined in uorb_inputs */
