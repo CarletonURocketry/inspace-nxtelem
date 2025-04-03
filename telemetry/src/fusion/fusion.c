@@ -1,6 +1,7 @@
 #include <pthread.h>
 #include <nuttx/sensors/sensor.h>
 #include <sys/ioctl.h>
+#include <math.h>
 
 #include "../sensors/sensors.h"
 #include "fusion.h"
