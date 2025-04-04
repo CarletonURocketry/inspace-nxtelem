@@ -70,4 +70,10 @@ config INSPACE_TELEMETRY_RADIO
     ---help---
         The path identifier of the radio device for transmitting.
 
+config INSPACE_TELEMETRY_EEPROM
+    string "Eeprom device"
+    default "/dev/eeprom"
+    ---help---
+        The path identifier of the eeprom device for storing settings.
+
 endif # INSPACE_TELEMETRY

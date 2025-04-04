@@ -1,4 +1,7 @@
 #include <pthread.h>
+#include <stdio.h>
+#include <fcntl.h>
+
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
 #include <stdio.h>
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
@@ -13,13 +16,98 @@ static const char *FLIGHT_STATES[] = {
 };
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
 
+/* A struct with the values of the eeprom's contents */
+
+struct eeprom_contents {
+  int flight_state;
+};
+
+/* Represents the different liens that exist in the eeprom contents */
+
+enum eeprom_line_e {
+  EEPROM_FLIGHT_STATE,
+};
+
+/* The maximum size of a line in the eeprom */
+#define MAX_EEPROM_LINE_LEN 50
+
+/* Matches eeprom lines to their format codes, for reading or writing */
+
+static const char *EEPROM_CONTENTS_FMT[] = {
+  [EEPROM_FLIGHT_STATE] = "Flight state: %d\n",
+};
+
+/**
+ * Read the contents of the EEPROM
+ * 
+ * @param contents The read contents of the eeprom
+ * @return 0 on a successful read, or a negative error code on failure
+ */
+static int eeprom_read(struct eeprom_contents* contents) {
+  int err;
+
+  int fd = open(CONFIG_INSPACE_TELEMETRY_EEPROM, O_RDONLY);
+  if (fd < 0) {
+    return fd;
+  }
+  char buffer[MAX_EEPROM_LINE_LEN];
+
+  int err = read(fd, buffer, sizeof(buffer));
+  if (err < 0) {
+    goto close;
+  }
+  int err = sscanf(buffer, EEPROM_CONTENTS_FMT[EEPROM_FLIGHT_STATE], &contents->flight_state);
+  if (err < 0) {
+    goto close;
+  }
+
+  close:
+    close(fd);
+    return err; 
+}
+
+/**
+ * Write the contents of the EEPROM
+ * 
+ * @param contents The data to write to the eerpom
+ * @return 0 on a successful write, or a negative error code on failure
+ */
+static int eeprom_write(struct eeprom_contents* contents) {
+  int err;
+
+  int fd = open(CONFIG_INSPACE_TELEMETRY_EEPROM, O_WRONLY);
+  if (fd < 0) {
+    return fd;
+  }
+  char buffer[MAX_EEPROM_LINE_LEN];
+
+  int err = snprintf(buffer, sizeof(buffer), EEPROM_CONTENTS_FMT[EEPROM_FLIGHT_STATE], contents->flight_state);
+  if (err < 0) {
+    goto close;
+  }
+  err = write(fd, buffer, sizeof(buffer));
+  if (err < 0) {
+    goto close;
+  }
+
+  close:
+    close(fd);
+    return err;
+}
+
 /*
  * Gets the current flight state stored in NV storage.
- * TODO: tell this where to get flight state
  */
 static enum flight_state_e get_flight_state(void) {
-  // TODO: real implementation
-  return STATE_IDLE;
+  struct eeprom_contents contents;
+  int err = eeprom_read(&contents);
+  if (err < 0) {
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+    fprintf(stderr, "Error reading eeprom, going to idle flightstate: %d\n", err);
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+    return STATE_IDLE;
+  }
+  return (enum flight_state_e)contents.flight_state;
 }
 
 
@@ -41,12 +129,13 @@ int state_init(rocket_state_t *state) {
  */
 int state_set_flightstate(rocket_state_t *state,
                           enum flight_state_e flight_state) {
-  // TODO: set for real in NV-storage
   atomic_store(&state->state, flight_state);
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
   printf("Flight state changed to %s\n", FLIGHT_STATES[flight_state]);
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
-  return 0;
+  struct eeprom_contents contents;
+  contents.flight_state = flight_state;
+  return eeprom_write(&contents);
 }
 
 /*
