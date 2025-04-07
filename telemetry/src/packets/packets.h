@@ -7,7 +7,7 @@
 
 /* The maximum size a packet can be in bytes. */
 
-#define PACKET_MAX_SIZE 256
+#define PACKET_MAX_SIZE 255
 
 /* The maximum size a block can be in bytes. */
 
@@ -19,18 +19,16 @@
 
 /* Possible sub-types of data blocks that can be sent. */
 enum block_type_e {
-  DATA_DBG_MSG = 0x0,    /* Debug message */
-  DATA_ALT_SEA = 0x1,    /* Altitude above sea level */
-  DATA_ALT_LAUNCH = 0x2, /* Altitude above launch level */
-  DATA_TEMP = 0x3,       /* Temperature data */
-  DATA_PRESSURE = 0x4,   /* Pressure data */
-  DATA_ACCEL_REL = 0x5,  /* Relative linear acceleration data */
-  DATA_ACCEL_ABS =
-      0x6, /* Absolute linear acceleration data (relative to ground) */
-  DATA_ANGULAR_VEL = 0x7, /* Angular velocity data */
-  DATA_HUMIDITY = 0x8,    /* Humidity data */
-  DATA_LAT_LONG = 0x9,    /* Latitude and longitude coordinates */
-  DATA_VOLTAGE = 0xA,     /* Voltage in millivolts with a unique ID. */
+  DATA_ALT_SEA = 0x0,    /* Altitude above sea level */
+  DATA_ALT_LAUNCH = 0x1, /* Altitude above launch level */
+  DATA_TEMP = 0x2,       /* Temperature data */
+  DATA_PRESSURE = 0x3,   /* Pressure data */
+  DATA_ACCEL_REL = 0x4,  /* Relative linear acceleration data */
+  DATA_ANGULAR_VEL = 0x5, /* Angular velocity data */
+  DATA_HUMIDITY = 0x6,    /* Humidity data */
+  DATA_LAT_LONG = 0x7,    /* Latitude and longitude coordinates */
+  DATA_VOLTAGE = 0x8,     /* Voltage in millivolts with a unique ID. */
+  DATA_MAGNETIC = 0x9,    /* Magnetic field data */
 };
 
 /* Each radio packet will have a header in this format. */
@@ -45,7 +43,7 @@ typedef struct {
   uint8_t blocks;
   /* Which number this packet is in the stream of sent packets. */
   uint8_t packet_num;
-} pkt_hdr_t;
+} TIGHTLY_PACKED pkt_hdr_t;
 
 void pkt_hdr_init(pkt_hdr_t *p, uint8_t packet_number, uint32_t mission_time);
 
@@ -53,18 +51,21 @@ void pkt_hdr_init(pkt_hdr_t *p, uint8_t packet_number, uint32_t mission_time);
 typedef struct {
   /* The type of this block. */
   uint8_t type;
-} blk_hdr_t;
+} TIGHTLY_PACKED blk_hdr_t;
 
 /* Base type for blocks with a time offset */
 typedef struct {
+  /* The offset from the absolute time in the header in milliseconds */
   int16_t time_offset;
-} offset_blk;
+} TIGHTLY_PACKED offset_blk;
 
 void blk_hdr_init(blk_hdr_t *b, const enum block_type_e type);
 
-int blk_len(blk_hdr_t *b);
+size_t blk_body_len(enum block_type_e type);
 
-int pkt_add_blk(pkt_hdr_t *p, blk_hdr_t *b, void *blk, uint32_t mission_time);
+uint8_t *block_body(uint8_t *block);
+uint8_t *init_pkt(uint8_t *packet, uint8_t packet_num, uint32_t mission_time);
+uint8_t *pkt_create_blk(uint8_t *packet, uint8_t *block, enum block_type_e type, uint32_t mission_time);
 
 /* A data block containing information about altitude. */
 struct alt_blk_t {
@@ -72,7 +73,7 @@ struct alt_blk_t {
   int16_t time_offset;
   /* Altitude in units of millimetres above/below the launch height. */
   int32_t altitude;
-};
+} TIGHTLY_PACKED;
 
 void alt_blk_init(struct alt_blk_t *b, const int32_t altitude);
 
@@ -82,7 +83,7 @@ struct temp_blk_t {
   int16_t time_offset;
   /* Temperature in millidegrees Celsius. */
   int32_t temperature;
-};
+} TIGHTLY_PACKED;
 
 void temp_blk_init(struct temp_blk_t *b, const int32_t temperature);
 
@@ -92,7 +93,7 @@ struct hum_blk_t {
   int16_t time_offset;
   /* Relative humidity in ten thousandths of a percent. */
   uint32_t humidity;
-};
+} TIGHTLY_PACKED;
 
 void hum_blk_init(struct hum_blk_t *b, const uint32_t humidity);
 
@@ -102,7 +103,7 @@ struct pres_blk_t {
   int16_t time_offset;
   /* Pressure measured in Pascals. */
   uint32_t pressure;
-};
+} TIGHTLY_PACKED;
 
 void pres_blk_init(struct pres_blk_t *b, const int32_t pressure);
 
@@ -119,9 +120,7 @@ struct ang_vel_blk_t {
   /* Angular velocity in the z-axis measured in tenths of degrees per second.
    */
   int16_t z;
-  /* 0 padding to fill the 4 byte multiple requirement of the packet spec. */
-  int16_t _padding;
-};
+} TIGHTLY_PACKED;
 
 void ang_vel_blk_init(struct ang_vel_blk_t *b, const int16_t x_axis,
                       const int16_t y_axis, const int16_t z_axis);
@@ -139,12 +138,25 @@ struct accel_blk_t {
   /* Linear acceleration in the z-axis measured in centimetres per second
    * squared. */
   int16_t z;
-  /* 0 padding to fill the 4 byte multiple requirement of the packet spec. */
-  int16_t _padding;
-};
+} TIGHTLY_PACKED;
 
 void accel_blk_init(struct accel_blk_t *b, const int16_t x_axis,
                     const int16_t y_axis, const int16_t z_axis);
+
+/* A data block containing information about acceleration. */
+struct mag_blk_t {
+  /* The offset from the absolute time in the header in 0.1 microtesla */
+  int16_t time_offset;
+  /* Magnetic field in the x-axis measured in 0.1 microtesla */
+  int16_t x;
+  /* Magnetic field in the y-axis measured in 0.1 microtesla */
+  int16_t y;
+  /* Magnetic field in the z-axis measured in 0.1 microtesla */
+  int16_t z;
+} TIGHTLY_PACKED;
+
+void mag_blk_init(struct mag_blk_t *b, const int16_t x_axis,
+                  const int16_t y_axis, const int16_t z_axis); 
 
 /* A data block containing latitude and longitude coordinates. */
 struct coord_blk_t {
@@ -154,7 +166,7 @@ struct coord_blk_t {
   int32_t latitude;
   /* Longitude in 0.1 microdegrees/LSB. */
   int32_t longitude;
-};
+} TIGHTLY_PACKED;
 
 void coord_blk_init(struct coord_blk_t *b, const int32_t lat,
                     const int32_t lon);
@@ -168,7 +180,7 @@ struct volt_blk_t {
   uint16_t id;
   /* Voltage in millivolts. */
   int16_t voltage;
-};
+} TIGHTLY_PACKED;
 
 void volt_blk_init(struct volt_blk_t *b, const uint16_t id,
                    const int16_t voltage);
