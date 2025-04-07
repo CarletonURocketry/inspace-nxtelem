@@ -2,6 +2,9 @@
 #include <fcntl.h>
 #include <pthread.h>
 #include <unistd.h>
+#include <sys/ioctl.h>
+#include <nuttx/wireless/ioctl.h>
+#include <nuttx/wireless/lpwan/rn2xx3.h>
 
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
 #include <stdio.h>
@@ -9,88 +12,76 @@
 
 #include "../packets/packets.h"
 #include "../rocket-state/rocket-state.h"
+#include "../sensors/sensors.h"
+#include "../fusion/fusion.h"
 #include "transmit.h"
+
+/* InSpace chosen radio settings - data types are as expected by radio driver */
+
+#if defined(CONFIG_LPWAN_RN2XX3)
+#define RN2483_FREQ (uint32_t)433050000
+#define RN2483_TXPWR (int32_t)15
+#define RN2483_SPREAD_FACTOR (uint8_t)7
+#define RN2483_CODING_RATE (enum rn2xx3_cr_e)RN2XX3_CR_4_5
+#define RN2483_BANDWIDTH (uint32_t)125
+#define RN2483_CRC 1
+#define RN2483_IQI 0
+#define RN2483_SYNC (uint64_t)67
+#define RN2483_PREAMBLE (uint16_t)6
+#endif /* defined(CONFIG_LPWAN_RN2XX3) */
+
+/* If there was an error in configuration, display which line and return the error */
+
+#define config_error(err) \
+  if (err) { \
+    err = errno; \
+    fprintf(stderr, "Error configuring radio, line %d: %d\n", __LINE__, err); \
+    return err; \
+  }
 
 /* Cast an error to a void pointer */
 
 #define err_to_ptr(err) ((void *)((err)))
 
-static uint32_t construct_packet(struct rocket_t *data, uint8_t *pkt,
-                                 uint32_t seq_num);
+static ssize_t transmit(int radio, uint8_t *packet, size_t packet_size);
+static int configure_radio(int fd);
 
 /* Main thread for data transmission over radio. */
 void *transmit_main(void *arg) {
 
   int err;
   int radio; /* Radio device file descriptor */
-  ssize_t written;
-  uint32_t version = 0;
-  rocket_state_t *state = (rocket_state_t *)(arg);
-
-  /* Packet variables. */
-
-  uint8_t packet[PACKET_MAX_SIZE]; /* Array of bytes for packet */
-  uint32_t seq_num = 0;            /* Packet numbering */
-  uint32_t packet_size;            /* The packet size after encoding */
+  struct transmit_args *unpacked_args = (struct transmit_args *)arg;
+  rocket_state_t *state = unpacked_args->state;
+  packet_buffer_t *buffer = unpacked_args->buffer;
+  uint32_t seq_num = 0;
 
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
   printf("Transmit thread started.\n");
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
-
-  /* Get access to radio TODO: remove O_CREAT */
 
   radio = open(CONFIG_INSPACE_TELEMETRY_RADIO, O_WRONLY | O_CREAT);
   if (radio < 0) {
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
     err = errno;
     fprintf(stderr, "Error getting radio handle: %d\n", err);
-#endif                             /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
     pthread_exit(err_to_ptr(err)); // TODO: handle more gracefully
+  }
+
+  err = configure_radio(radio);
+  if (err) {
+    /* Error will have been reported in configure_rn2483 where we can say which config failed in particular */
+    pthread_exit(err_to_ptr(err));
   }
 
   /* Transmit forever, regardless of rocket flight state. */
 
   for (;;) {
-
-    err = state_wait_for_change(state, &version); // TODO: handle error
-
-    err = state_read_lock(state); // TODO: handle error
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-    if (err) {
-      fprintf(stderr, "Error acquiring read lock: %d\n", err);
-    }
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
-
-    /* Encode radio data into packet. */
-
-    packet_size = construct_packet(&state->data, packet, seq_num);
-    err = state_unlock(state); // TODO: handle error
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-    if (err) {
-      fprintf(stderr, "Error releasing read lock: %d\n", err);
-    }
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
-
-    seq_num++; /* Increment sequence numbering */
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-    printf("Constructed packet #%lu of size %lu bytes\n", seq_num, packet_size);
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
-
-    /* Transmit radio data */
-
-    written = write(radio, packet, packet_size);
-    if (written == -1) {
-      err = errno;
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-      fprintf(stderr, "Error transmitting: %d\n", err);
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
-      // TODO: handle error in errno
-    }
-    usleep(500000);
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-    printf("Completed transmission of packet #%lu of %ld bytes.\n", seq_num,
-           packet_size);
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+      packet_node_t *next_packet = packet_buffer_get_full(buffer);
+      ((pkt_hdr_t *)next_packet->packet)->packet_num = seq_num++;
+      transmit(radio, next_packet->packet, next_packet->end - next_packet->packet);
+      packet_buffer_put_empty(buffer, next_packet);
   }
 
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
@@ -103,40 +94,59 @@ void *transmit_main(void *arg) {
   pthread_exit(err_to_ptr(err));
 }
 
-/* Construct a packet from the rocket state data.
- * @param data The rocket data to encode
- * @param pkt The packet buffer to encode the data in
- * @param seq_num The sequence number of the packet
- * @return The packet's length in bytes
+/**
+ * Transmits a packet over the radio with a fake delay
+ *
+ * @param radio The radio to transmit to
+ * @param packet The completed packet to transmit
+ * @param packet_size The size of the packet to transmit
+ * @return The number of bytes written or a negative error code
  */
-static uint32_t construct_packet(struct rocket_t *data, uint8_t *pkt,
-                                 uint32_t seq_num) {
+static ssize_t transmit(int radio, uint8_t *packet, size_t packet_size) {
+  ssize_t written = write(radio, packet, packet_size);
+  int err = 0;
+  if (written == -1) {
+    err = errno;
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+    fprintf(stderr, "Error transmitting: %d\n", err);
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+    // TODO: handle error in errno
+    return -err;
+  }
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+  printf("Completed transmission of packet #%u of %ld bytes.\n", ((pkt_hdr_t *)packet)->packet_num,
+          packet_size);
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+  return written;
+}
 
-  pkt_hdr_t *pkt_hdr = (pkt_hdr_t *)(pkt); /* Packet header */
-  uint8_t *write_ptr = pkt;                /* Location in packet buffer */
-  uint32_t size = 0;                       /* Packet size */
+static int configure_radio(int fd) {
+  int err;
 
-  pkt_hdr_init(pkt_hdr, seq_num, data->time); /* Fresh packet header */
-  size += sizeof(pkt_hdr_t);
-  write_ptr += sizeof(pkt_hdr_t);
+#if defined(CONFIG_LPWAN_RN2XX3) 
+  int32_t txpwr = RN2483_TXPWR * 100;
+  uint64_t sync = RN2483_SYNC;
 
-  /* Encode temperature */
+  err = ioctl(fd, WLIOC_SETRADIOFREQ, RN2483_FREQ);
+  config_error(err);
+  err = ioctl(fd, WLIOC_SETTXPOWERF, &txpwr);
+  config_error(err);
+  err = ioctl(fd, WLIOC_SETSPREAD, RN2483_SPREAD_FACTOR);
+  config_error(err);
+  err = ioctl(fd, WLIOC_SETCODERATE, RN2483_CODING_RATE);
+  config_error(err);
+  err = ioctl(fd, WLIOC_SETBANDWIDTH, RN2483_BANDWIDTH);
+  config_error(err);
+  err = ioctl(fd, WLIOC_CRCEN, RN2483_CRC);
+  config_error(err);
+  err = ioctl(fd, WLIOC_IQIEN, RN2483_IQI);
+  config_error(err);
+  // Commented until the sync word configuration is fixed in the rn2483 driver
+  //err = ioctl(fd, WLIOC_SETSYNC, &sync);
+  config_error(err);
+  err = ioctl(fd, WLIOC_SETPRLEN, RN2483_PREAMBLE);
+  config_error(err);
+#endif /* defined(CONFIG_LPWAN_RN2XX3) */
 
-  blk_hdr_t *temp_blk_hdr = (blk_hdr_t *)(write_ptr);
-  blk_hdr_init(temp_blk_hdr, DATA_TEMP);
-  size += sizeof(blk_hdr_t);
-  write_ptr += sizeof(blk_hdr_t);
-
-  struct temp_blk_t *tempblk = (struct temp_blk_t *)(write_ptr);
-  temp_blk_init(tempblk, data->temp);
-  size += sizeof(struct temp_blk_t);
-  write_ptr += sizeof(struct temp_blk_t);
-
-  pkt_add_blk(pkt_hdr, temp_blk_hdr, tempblk, data->time);
-
-  // TODO: encode rest of data
-
-  /* Update packet header length with the size of all written bytes */
-
-  return size;
+  return 0;
 }

@@ -8,36 +8,37 @@
 struct uorb_inputs {
   struct pollfd accel;
   struct pollfd baro;
+  struct pollfd mag;
+  struct pollfd gyro;
+  struct pollfd gnss;
+};
+
+/* A buffer that can hold any of the types of data created by the sensors in uorb_inputs */
+union uorb_data {
+  struct sensor_accel accel;
+  struct sensor_baro baro;
+  struct sensor_mag mag;
+  struct sensor_gyro gyro;
+  struct sensor_gnss gnss;
 };
 
 /* The numbers of sensors defined in uorb_inputs */
 #define NUM_SENSORS sizeof(struct uorb_inputs) / sizeof(struct pollfd)
 
+/**
+ * A function pointer to a function that will perform operations on single pieces of uORB data
+ *
+ * @param context Context given to the callback by the program using this interface
+ * @param element The element to perform processing on, where the length is implied by knowing the type of element
+ */
+typedef void (*uorb_data_callback_t)(void* context, uint8_t* element);
+
 int setup_sensor(struct pollfd *sensor, orb_id_t meta);
-int get_sensor_data(struct pollfd *sensor, void *data, size_t size);
-
-/**
- * Clears the uorb_inputs struct to make no sensors get polled on accidentally. After this,
- * should be fine to only set up a the desired sensors and poll everything
- * 
- * @param sensors The uorb_inputs struct to clear
- */
-static void clear_uorb_inputs(struct uorb_inputs *sensors) {
-  struct pollfd *sensor_array = (struct pollfd *)sensors;
-  for (int i = 0; i < NUM_SENSORS; i++) {
-    sensor_array[i].fd = -1;
-    sensor_array[i].events = 0;
-  }
-}
-
-/**
- * Polls on all sensors in the uorb_inputs struct
- * 
- * @param sensors The uorb_inputs struct to poll on
- */
-static void poll_sensors(struct uorb_inputs *sensors) {
-    poll((struct pollfd *)sensors, NUM_SENSORS, -1);
-}
+ssize_t get_sensor_data(struct pollfd *sensor, uint8_t *data, size_t size);
+uint8_t *get_sensor_data_end(struct pollfd *sensor, uint8_t* data, size_t size);
+void clear_uorb_inputs(struct uorb_inputs *sensors);
+void poll_sensors(struct uorb_inputs *sensors);
+void foreach_measurement(uorb_data_callback_t handler, void* handler_context, uint8_t *buf, size_t size, size_t elem_size);
+int process_one(uorb_data_callback_t handler, void* handler_context, uint8_t **data_start, uint8_t *data_end, size_t elem_size);
 
 #endif // _INSPACE_SENSORS_H_
-

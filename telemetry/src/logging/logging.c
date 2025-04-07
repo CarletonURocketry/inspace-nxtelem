@@ -4,6 +4,9 @@
 #include <stdlib.h>
 
 #include "logging.h"
+#include "../fusion/fusion.h"
+#include "../sensors/sensors.h"
+#include "../packets/packets.h"
 
 /* The maximum size of a log file's file name. */
 
@@ -21,16 +24,20 @@
 
 #define err_to_ptr(err) ((void *)((err)))
 
+static size_t log_packet(FILE *storage, uint8_t *packet, size_t packet_size);
+
 /*
  * Logging thread which runs to log data to the SD card.
  */
 void *logging_main(void *arg) {
 
   int err;
-  size_t written;
   enum flight_state_e flight_state;
-  rocket_state_t *state = ((rocket_state_t *)(arg));
-  uint32_t version = 0;
+  struct logging_args *unpacked_args = (struct logging_args *)(arg);
+  rocket_state_t *state = unpacked_args->state;
+  packet_buffer_t *buffer = unpacked_args->buffer;
+  uint32_t seq_num = 0;
+
   char flight_filename[sizeof(CONFIG_INSPACE_TELEMETRY_FLIGHT_FS) +
                        MAX_FILENAME];
   char land_filename[sizeof(CONFIG_INSPACE_TELEMETRY_LANDED_FS) + MAX_FILENAME];
@@ -69,32 +76,10 @@ void *logging_main(void *arg) {
     case STATE_IDLE:
       /* Purposeful fall-through */
     case STATE_AIRBORNE: {
-
-      /* Infinite loop to log data */
-
-      /* Wait for the data to have a change */
-
-      err = state_wait_for_change(state, &version); // TODO: handle error
-
-      /* Log data */
-
-      err = state_read_lock(state); // TODO: handle error
-
-      written = fwrite(&state->data, sizeof(state->data), 1, storage);
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-      printf("Logged %u bytes\n", written * sizeof(state->data));
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
-      if (written == 0) {
-        // TODO: Handle error (might happen if file got too large, start
-        // another file)
-      }
-
-      err = state_unlock(state); // TODO: handle error
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-      if (err) {
-        fprintf(stderr, "Error releasing read lock: %d\n", err);
-      }
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+      packet_node_t *next_packet = packet_buffer_get_full(buffer);
+      ((pkt_hdr_t *)next_packet->packet)->packet_num = seq_num++;
+      log_packet(storage, next_packet->packet, next_packet->end - next_packet->packet);
+      packet_buffer_put_empty(buffer, next_packet);
 
       /* If we are in the idle state, only write the latest n seconds of data
        */
@@ -170,4 +155,16 @@ void *logging_main(void *arg) {
   fclose(storage);
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
   pthread_exit(err_to_ptr(err));
+}
+
+static size_t log_packet(FILE *storage, uint8_t *packet, size_t packet_size) {
+  size_t written = fwrite(packet, 1, packet_size, storage);
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+  printf("Logged %lu bytes\n", written);
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+  if (written == 0) {
+    // TODO: Handle error (might happen if file got too large, start
+    // another file)
+  }
+  return written;
 }
