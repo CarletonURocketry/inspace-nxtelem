@@ -55,8 +55,15 @@ static int has_offset(enum block_type_e type) {
  * transmissions.
  */
 void pkt_hdr_init(pkt_hdr_t *p, uint8_t packet_number, uint32_t mission_time) {
-  memcpy(&p->call_sign, CONFIG_INSPACE_TELEMETRY_CALLSIGN,
-         sizeof(CONFIG_INSPACE_TELEMETRY_CALLSIGN));
+  // Don't include the null-terminator
+  int callsign_length = sizeof(CONFIG_INSPACE_TELEMETRY_CALLSIGN) - 1;
+  if (callsign_length < sizeof(p->call_sign)) {
+    memcpy(&p->call_sign, CONFIG_INSPACE_TELEMETRY_CALLSIGN, callsign_length);
+    memset(&p->call_sign[callsign_length], '0', sizeof(p->call_sign) - callsign_length);
+  } else {
+    memcpy(&p->call_sign, CONFIG_INSPACE_TELEMETRY_CALLSIGN, sizeof(p->call_sign));
+  }
+
   p->packet_num = packet_number;
   p->timestamp = calc_timestamp(mission_time);
   p->blocks = 0;
@@ -77,24 +84,31 @@ void blk_hdr_init(blk_hdr_t *b, const enum block_type_e type) {
  */
 size_t blk_body_len(enum block_type_e type) {
   switch (type) {
-  case DATA_TEMP:
-    return sizeof(struct temp_blk_t);
-  case DATA_HUMIDITY:
-    return sizeof(struct hum_blk_t);
-  case DATA_VOLTAGE:
-    return sizeof(struct volt_blk_t);
-  case DATA_LAT_LONG:
-    return sizeof(struct coord_blk_t);
-  case DATA_PRESSURE:
-    return sizeof(struct pres_blk_t);
-  case DATA_ANGULAR_VEL:
-    return sizeof(struct ang_vel_blk_t);
-  case DATA_ACCEL_REL:
-    return sizeof(struct accel_blk_t);
+  case DATA_ALT_SEA:
+    return sizeof(struct alt_blk_t);
   case DATA_ALT_LAUNCH:
     return sizeof(struct alt_blk_t);
+  case DATA_TEMP:
+    return sizeof(struct temp_blk_t);
+  case DATA_PRESSURE:
+    return sizeof(struct pres_blk_t);
+  case DATA_ACCEL_REL:
+    return sizeof(struct accel_blk_t);
+  case DATA_ANGULAR_VEL:
+    return sizeof(struct ang_vel_blk_t);
+  case DATA_HUMIDITY:
+    return sizeof(struct hum_blk_t);
+  case DATA_LAT_LONG:
+    return sizeof(struct coord_blk_t);
+  case DATA_VOLTAGE:
+    return sizeof(struct volt_blk_t);
+  case DATA_MAGNETIC:
+    return sizeof(struct mag_blk_t);
   default:
-    return 0;
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+    fprintf(stderr, "Length requested for unsupported type %d\n", type);
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+    return -1;
   }
 }
 
