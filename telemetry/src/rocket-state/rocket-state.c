@@ -16,100 +16,102 @@ static const char *FLIGHT_STATES[] = {
 };
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
 
-/* A struct with the values of the eeprom's contents */
+/* A struct that defines how the non-volatile storage medium will store information */
 
-struct eeprom_contents {
-  int flight_state;
+struct nv_storage {
+  uint8_t flight_state; /* The flight state of the rocket, of type enum flight_state_e (a uint8_t so only one byte stored) */
+  uint8_t crc;          /* A 8 bit cyclic redundancy check to make sure data is valid before being used */
 };
 
-/* Represents the different liens that exist in the eeprom contents */
+/* The polynomial to use in the 8 bit crc */
 
-enum eeprom_line_e {
-  EEPROM_FLIGHT_STATE,
-};
+#define NV_STORAGE_CRC_POLYNOMIAL 0x31
 
-/* The maximum size of a line in the eeprom */
-#define MAX_EEPROM_LINE_LEN 50
+/* The initial value when calculating the 8 bit crc */
 
-/* Matches eeprom lines to their format codes, for reading or writing */
+#define NV_STORAGE_CRC_INITIAL 0xFF
 
-static const char *EEPROM_CONTENTS_FMT[] = {
-  [EEPROM_FLIGHT_STATE] = "Flight state: %d\n",
-};
-
-/**
- * Read the contents of the EEPROM
- * 
- * @param contents The read contents of the eeprom
- * @return 0 on a successful read, or a negative error code on failure
+/* Calculates an 8 bit cyclic redundancy check for the provided data
+ * @param buff A pointer to the data to have its CRC calculated
+ * @param n_bytes The length of the data in bytes
+ * @return uint8_t The calculated CRC
  */
-static int eeprom_read(struct eeprom_contents* contents) {
-  int err;
+uint8_t calculate_crc8_bitwise(const uint8_t *buf, size_t nbytes) {
+    uint8_t crc = NV_STORAGE_CRC_INITIAL; 
+    for (size_t byte = 0; byte < nbytes; byte++) {
+        crc ^= buf[byte];
+        for (uint8_t bit = 0; bit < 8; bit++) {
+            if (crc & 0x80) {
+                // Discard the highest bit (implicit XOR), then divide by the polynomial
+                crc <<= 1;
+                crc ^= NV_STORAGE_CRC_POLYNOMIAL;
+            } else {
+                // Continue until the highest bit is set
+                crc <<= 1;
+            }
+        }
+    }
+    return crc;
+}
 
+/* Get the contents of non-volatile storage
+ * @param Where to put the loaded contents of the NV storage
+ * @return 0 on success, negative error code on failure
+ */
+static int nv_read(struct nv_storage *contents) {
   int fd = open(CONFIG_INSPACE_TELEMETRY_EEPROM, O_RDONLY);
   if (fd < 0) {
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+    fprintf(stderr, "Error opening nv storage: %d\n", fd);
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
     return fd;
   }
-  char buffer[MAX_EEPROM_LINE_LEN];
-
-  int err = read(fd, buffer, sizeof(buffer));
-  if (err < 0) {
-    goto close;
-  }
-  int err = sscanf(buffer, EEPROM_CONTENTS_FMT[EEPROM_FLIGHT_STATE], &contents->flight_state);
-  if (err < 0) {
-    goto close;
-  }
-
-  close:
-    close(fd);
-    return err; 
-}
-
-/**
- * Write the contents of the EEPROM
- * 
- * @param contents The data to write to the eerpom
- * @return 0 on a successful write, or a negative error code on failure
- */
-static int eeprom_write(struct eeprom_contents* contents) {
-  int err;
-
-  int fd = open(CONFIG_INSPACE_TELEMETRY_EEPROM, O_WRONLY);
-  if (fd < 0) {
-    return fd;
-  }
-  char buffer[MAX_EEPROM_LINE_LEN];
-
-  int err = snprintf(buffer, sizeof(buffer), EEPROM_CONTENTS_FMT[EEPROM_FLIGHT_STATE], contents->flight_state);
-  if (err < 0) {
-    goto close;
-  }
-  err = write(fd, buffer, sizeof(buffer));
-  if (err < 0) {
-    goto close;
-  }
-
-  close:
-    close(fd);
-    return err;
-}
-
-/*
- * Gets the current flight state stored in NV storage.
- */
-static enum flight_state_e get_flight_state(void) {
-  struct eeprom_contents contents;
-  int err = eeprom_read(&contents);
+  int err = read(fd, contents, sizeof(struct nv_storage));
   if (err < 0) {
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-    fprintf(stderr, "Error reading eeprom, going to idle flightstate: %d\n", err);
+    fprintf(stderr, "Error reading nv storage: %d\n", err);
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
-    return STATE_IDLE;
   }
-  return (enum flight_state_e)contents.flight_state;
+  else if (err != sizeof(struct nv_storage)) {
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+    fprintf(stderr, "Didn't read the correct number of bytes from nv storage: %d\n", err);
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+    err = -1;
+  }
+  else if (calculate_crc8_bitwise((uint8_t *)contents, sizeof(struct nv_storage) - 1) != 0) {
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+    fprintf(stderr, "CRC check failed on nv storage data\n");
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+    err = -1;
+  }
+  close(fd);
+  return err;
 }
 
+static int nv_write(struct nv_storage *contents) {
+  int fd = open(CONFIG_INSPACE_TELEMETRY_EEPROM, O_WRONLY);
+  if (fd < 0) {
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+    fprintf(stderr, "Error opening nv storage: %d\n", fd);
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+    return fd;
+  }
+  contents->crc = calculate_crc8_bitwise((uint8_t *)contents, sizeof(struct nv_storage) - 1);
+  int err = write(fd, contents, sizeof(struct nv_storage));
+  if (err < 0) {
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+    fprintf(stderr, "Error writing nv storage: %d\n", err);
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+  }
+  else if (err != sizeof(struct nv_storage)) {
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+    fprintf(stderr, "Didn't write the correct number of bytes to nv storage: %d\n", err);
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+    err = -1;
+  }
+  close(fd);
+  return err;
+}
 
 /* Initialize the rocket state monitor
  * @param state The rocket state to initialize
@@ -117,7 +119,18 @@ static enum flight_state_e get_flight_state(void) {
  * @return 0 on success, error code on failure
  */
 int state_init(rocket_state_t *state) {
-  atomic_store(&state->state, get_flight_state());
+  struct nv_storage contents;
+  uint8_t flight_state = STATE_IDLE;
+  int err = nv_read(&contents);
+  if (err < 0) {
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+    fprintf(stderr, "Couldn't read from nv storage, going to idle flightstate: %d\n", err);
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+    atomic_store(&state->state, STATE_IDLE); 
+  }
+  else {
+    atomic_store(&state->state, contents.flight_state);
+  }
   return 0;
 }
 
@@ -129,13 +142,20 @@ int state_init(rocket_state_t *state) {
  */
 int state_set_flightstate(rocket_state_t *state,
                           enum flight_state_e flight_state) {
-  atomic_store(&state->state, flight_state);
+  struct nv_storage contents;
+  contents.flight_state = flight_state;
+  int err = nv_write(&contents);
+  if (err < 0) {
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+    fprintf(stderr, "Couldn't write flight state to nv storage, continuing anyways\n");
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+  }
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
   printf("Flight state changed to %s\n", FLIGHT_STATES[flight_state]);
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
-  struct eeprom_contents contents;
-  contents.flight_state = flight_state;
-  return eeprom_write(&contents);
+  // Store the value last, so we won't begin using the new state unless we're sure of power-safety
+  atomic_store(&state->state, flight_state);
+  return 0;
 }
 
 /*
