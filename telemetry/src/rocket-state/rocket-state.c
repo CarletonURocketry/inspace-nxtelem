@@ -54,7 +54,7 @@ uint8_t calculate_crc8_bitwise(const uint8_t *buf, size_t nbytes) {
     return crc;
 }
 
-/* Get the contents of non-volatile storage
+/* Get the contents of non-volatile storage and check the CRC
  * @param Where to put the loaded contents of the NV storage
  * @return 0 on success, negative error code on failure
  */
@@ -88,6 +88,11 @@ static int nv_read(struct nv_storage *contents) {
   return err;
 }
 
+/*
+ * Set the CRC and write to NV storage
+ * @param contents The contents to write to NV storage
+ * @return 0 on success, negative error code on failure
+ */
 static int nv_write(struct nv_storage *contents) {
   int fd = open(CONFIG_INSPACE_TELEMETRY_EEPROM, O_WRONLY);
   if (fd < 0) {
@@ -120,7 +125,6 @@ static int nv_write(struct nv_storage *contents) {
  */
 int state_init(rocket_state_t *state) {
   struct nv_storage contents;
-  uint8_t flight_state = STATE_IDLE;
   int err = nv_read(&contents);
   if (err < 0) {
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
