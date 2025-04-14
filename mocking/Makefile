@@ -1,5 +1,3 @@
-
-
 include $(APPDIR)/Make.defs
 
 # Mocking built-in application info

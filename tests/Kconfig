@@ -1,0 +1,20 @@
+#
+# For a description of the syntax of this configuration file,
+# see the file kconfig-language.txt in the NuttX tools repository.
+#
+
+config INSPACE_TESTS
+	tristate "Test cases"
+	default n
+	---help---
+		Enable the test cases for the InSpace system
+
+if INSPACE_TESTS
+
+config INSPACE_TEST_PROGNAME
+	string "Program name"
+	default "inspace_test"
+	---help---
+		This is the name of the program will run the tests
+
+endif

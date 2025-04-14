@@ -1,0 +1,3 @@
+ifneq ($(CONFIG_INSPACE_TESTS),)
+CONFIGURED_APPS += $(APPDIR)/inspace-nxtelem/tests
+endif
