@@ -1,12 +1,13 @@
 include $(APPDIR)/Make.defs
 
-# Mocking built-in application info
+# Application information
 
-PROGNAME  = $(CONFIG_INSPACE_TESTS_PROGNAME)
-PRIORITY  = $(CONFIG_DEFAULT_TASK_PRIORITY)
+PROGNAME = $(CONFIG_INSPACE_TESTS_PROGNAME)
+PRIORITY = 100
 STACKSIZE = $(CONFIG_DEFAULT_TASK_STACKSIZE)
-MODULE    = $(CONFIG_INSPACE_TESTS)
+MODULE = $(CONFIG_INSPACE_TESTS)
 
 MAINSRC = tests_main.c
+CSRCS += $(filter-out $(MAINSRC), $(wildcard *.c))
 
 include $(APPDIR)/Application.mk

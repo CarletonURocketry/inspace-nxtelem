@@ -5,16 +5,18 @@
 
 config INSPACE_TESTS
 	tristate "Test cases"
+	select TESTING_UNITY
+	depends on INSPACE_TELEMETRY
 	default n
 	---help---
-		Enable the test cases for the InSpace system
+		Build test cases
 
 if INSPACE_TESTS
 
-config INSPACE_TEST_PROGNAME
+config INSPACE_TESTS_PROGNAME
 	string "Program name"
-	default "inspace_test"
+	default "inspace_tests"
 	---help---
-		This is the name of the program will run the tests
+		Name of the test executable
 
 endif
