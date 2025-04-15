@@ -5,42 +5,77 @@
 
 #include "../telemetry/src/rocket-state/rocket-state.h"
 
-/**
- * Empty the contents of the flight state file
- */
+/* Empty the contents of the flight state file, skipping the test if that fails */
 static void clear_rocket_state(void) {
   if (fclose(fopen(CONFIG_INSPACE_TELEMETRY_EEPROM, "w"))) {
     TEST_IGNORE_MESSAGE("Could not clear eeprom contents before test");
   }
 }
 
-/**
- * Test that if the flight state file is empty, we end up in the idle flightstate
- */
+/* Writes data to the state file, clearing previous contents. Skips the test if that fails */
+static void write_to_state_file(uint8_t *data, size_t len) {
+  FILE *state_file = fopen(CONFIG_INSPACE_TELEMETRY_EEPROM, "w");  
+  if (state_file == NULL) {
+    TEST_IGNORE_MESSAGE("Could not open eeprom file to set invalid state");
+  }
+  if (!fwrite(data, len, sizeof(*data), state_file)) {
+    TEST_IGNORE_MESSAGE("Could not write garbage to eeprom file");
+  }
+  fclose(state_file);
+}
+
+/* Test that if the flight state file is empty, we end up in the idle flightstate */
 static void test_no_state__sent_to_idle(void) {
   clear_rocket_state();
   rocket_state_t state;
-  int ret = state_init(&state);
+  TEST_ASSERT_EQUAL(0, state_init(&state));
   enum flight_state_e flight_state;
   state_get_flightstate(&state, &flight_state);
   TEST_ASSERT_EQUAL(STATE_IDLE, flight_state);
 }
 
+/* Test that an invalid flight state results in the idle state being loaded */
 static void test_invalid_state__sent_to_idle(void) {
-
+  const char *garbage = "FFFFFFFF";
+  write_to_state_file((uint8_t *)garbage, sizeof(garbage));
+  rocket_state_t state;
+  TEST_ASSERT_EQUAL(0, state_init(&state));
+  enum flight_state_e flight_state;
+  state_get_flightstate(&state, &flight_state);
+  TEST_ASSERT_EQUAL(STATE_IDLE, flight_state);
 }
 
-static void test_flying_state__sent_to_flying_state(void) {
-  
+/* Paramaterized test to check if we can set and then load a flight state, starting from an invalid state file */
+static void check_set_state(enum flight_state_e flight_state) {
+  clear_rocket_state();
+  rocket_state_t state;
+  TEST_ASSERT_EQUAL(0, state_init(&state));  
+  TEST_ASSERT_EQUAL(0, state_set_flightstate(&state, flight_state));
+
+  enum flight_state_e new_state;
+  state_get_flightstate(&state, &new_state);
+  TEST_ASSERT_EQUAL(flight_state, new_state);
 }
 
-static void test_landed_state__sent_to_landed_state(void) {
-  
+/* Test if we can set flying state and load it */
+static void test_set_flying__flying_loaded(void) {
+  check_set_state(STATE_AIRBORNE);
+}
+
+/* Test if we can set landed state and load it */
+static void test_set_landed__landing_loaded(void) {
+  check_set_state(STATE_LANDED);
+}
+
+/* Test if we can set the idle state and load it */
+static void test_set_idle__idle_loaded(void) {
+  check_set_state(STATE_IDLE);
 }
 
 void test_rocket_state(void) {
   RUN_TEST(test_no_state__sent_to_idle);
   RUN_TEST(test_invalid_state__sent_to_idle);
-  RUN_TEST(test_flying_state__sent_to_flying_state);
-  RUN_TEST(test_landed_state__sent_to_landed_state);
+  RUN_TEST(test_set_flying__flying_loaded);
+  RUN_TEST(test_set_landed__landing_loaded);
+  RUN_TEST(test_set_idle__idle_loaded);
 }
