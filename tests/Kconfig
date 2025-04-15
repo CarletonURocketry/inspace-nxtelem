@@ -6,6 +6,7 @@
 config INSPACE_TESTS
 	tristate "Test cases"
 	select TESTING_UNITY
+	select TESTING_UNITY_EXCLUDE_SETJMP
 	depends on INSPACE_TELEMETRY
 	default n
 	---help---
