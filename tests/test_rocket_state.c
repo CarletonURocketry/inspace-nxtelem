@@ -28,9 +28,9 @@ static void write_to_state_file(uint8_t *data, size_t len) {
 static void test_no_state__sent_to_idle(void) {
   clear_rocket_state();
   rocket_state_t state;
-  TEST_ASSERT_EQUAL(0, state_init(&state));
+  TEST_ASSERT_NOT_EQUAL(0, state_init(&state));
   enum flight_state_e flight_state;
-  state_get_flightstate(&state, &flight_state);
+  TEST_ASSERT_EQUAL(0, state_get_flightstate(&state, &flight_state));
   TEST_ASSERT_EQUAL(STATE_IDLE, flight_state);
 }
 
@@ -39,21 +39,35 @@ static void test_invalid_state__sent_to_idle(void) {
   const char *garbage = "FFFFFFFF";
   write_to_state_file((uint8_t *)garbage, sizeof(garbage));
   rocket_state_t state;
-  TEST_ASSERT_EQUAL(0, state_init(&state));
+  TEST_ASSERT_NOT_EQUAL(0, state_init(&state));
   enum flight_state_e flight_state;
-  state_get_flightstate(&state, &flight_state);
+  TEST_ASSERT_EQUAL(0, state_get_flightstate(&state, &flight_state));
   TEST_ASSERT_EQUAL(STATE_IDLE, flight_state);
+}
+
+/* Test that a valid flight state can be loaded from nv storage */
+static void test_valid_state__sent_to_state(void) {
+  clear_rocket_state();
+  rocket_state_t state;
+  TEST_ASSERT_NOT_EQUAL(0, state_init(&state));
+  TEST_ASSERT_EQUAL(0, state_set_flightstate(&state, STATE_AIRBORNE));
+
+  // Now try loading again
+  enum flight_state_e new_state;
+  TEST_ASSERT_EQUAL(0, state_init(&state));
+  TEST_ASSERT_EQUAL(0, state_get_flightstate(&state, &new_state));
+  TEST_ASSERT_EQUAL(STATE_AIRBORNE, new_state);
 }
 
 /* Paramaterized test to check if we can set and then load a flight state, starting from an invalid state file */
 static void check_set_state(enum flight_state_e flight_state) {
   clear_rocket_state();
   rocket_state_t state;
-  TEST_ASSERT_EQUAL(0, state_init(&state));  
+  TEST_ASSERT_NOT_EQUAL(0, state_init(&state));  
   TEST_ASSERT_EQUAL(0, state_set_flightstate(&state, flight_state));
 
   enum flight_state_e new_state;
-  state_get_flightstate(&state, &new_state);
+  TEST_ASSERT_EQUAL(0, state_get_flightstate(&state, &new_state));
   TEST_ASSERT_EQUAL(flight_state, new_state);
 }
 
@@ -75,6 +89,7 @@ static void test_set_idle__idle_loaded(void) {
 void test_rocket_state(void) {
   RUN_TEST(test_no_state__sent_to_idle);
   RUN_TEST(test_invalid_state__sent_to_idle);
+  RUN_TEST(test_valid_state__sent_to_state);
   RUN_TEST(test_set_flying__flying_loaded);
   RUN_TEST(test_set_landed__landing_loaded);
   RUN_TEST(test_set_idle__idle_loaded);
