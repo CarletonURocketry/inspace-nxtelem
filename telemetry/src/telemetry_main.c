@@ -39,9 +39,12 @@ int main(int argc, char **argv) {
   err = state_init(&state);
   if (err) {
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-    fprintf(stderr, "Could not initialize state: %d\n", err);
+    fprintf(stderr, "State not loaded properly, ensuring idle state set: %d\n", err);
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
-    exit(EXIT_FAILURE);
+    err = state_set_flightstate(&state, STATE_IDLE);
+    if (err) {
+      fprintf(stderr, "Could not set flight state properly either, continuing anyways: %d\n", err);
+    }
   }
 
   err = packet_buffer_init(&transmit_buffer);

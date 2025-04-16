@@ -71,19 +71,19 @@ static int nv_read(struct nv_storage *contents) {
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
     fprintf(stderr, "Error reading nv storage: %d\n", err);
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
-  }
-  else if (err != sizeof(struct nv_storage)) {
+  } else if (err != sizeof(struct nv_storage)) {
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
     fprintf(stderr, "Didn't read the correct number of bytes from nv storage: %d\n", err);
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
     err = -1;
-  }
-  else if (calculate_crc8_bitwise((uint8_t *)contents, sizeof(struct nv_storage) - 1) != 0) {
+  } else if (calculate_crc8_bitwise((uint8_t *)contents, sizeof(struct nv_storage)) != 0) {
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
     fprintf(stderr, "CRC check failed on nv storage data\n");
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
     err = -1;
-  }
+  } else {
+    err = 0;
+  } 
   close(fd);
   return err;
 }
@@ -107,42 +107,41 @@ static int nv_write(struct nv_storage *contents) {
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
     fprintf(stderr, "Error writing nv storage: %d\n", err);
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
-  }
-  else if (err != sizeof(struct nv_storage)) {
+  } else if (err != sizeof(struct nv_storage)) {
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
     fprintf(stderr, "Didn't write the correct number of bytes to nv storage: %d\n", err);
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
     err = -1;
+  } else {
+    err = 0;
   }
   close(fd);
   return err;
 }
 
-/* Initialize the rocket state monitor
+/* Initialize the rocket state monitor using NV storage, or sensible defaults if NV storage is unavailable
  * @param state The rocket state to initialize
- * @param flight_state The flight state that the rocket is currently in.
- * @return 0 on success, error code on failure
+ * @return 0 on success, or an error code on failure reading from NV storage
  */
 int state_init(rocket_state_t *state) {
   struct nv_storage contents;
   int err = nv_read(&contents);
   if (err < 0) {
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-    fprintf(stderr, "Couldn't read from nv storage, going to idle flightstate: %d\n", err);
+    fprintf(stderr, "Couldn't read from nv storage, setting idle flightstate: %d\n", err);
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
     atomic_store(&state->state, STATE_IDLE); 
-  }
-  else {
+  } else {
     atomic_store(&state->state, contents.flight_state);
   }
-  return 0;
+  return err;
 }
 
 /*
  * Set the flight state in NV storage and state object (write-through)
  * @param state The rocket state to modify
  * @param flight_state The rocket's new flight state to set.
- * @return 0 on success, error code on failure
+ * @return 0 on success, or an error code if writing to NV storage failed
  */
 int state_set_flightstate(rocket_state_t *state,
                           enum flight_state_e flight_state) {
@@ -159,7 +158,7 @@ int state_set_flightstate(rocket_state_t *state,
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
   // Store the value last, so we won't begin using the new state unless we're sure of power-safety
   atomic_store(&state->state, flight_state);
-  return 0;
+  return err;
 }
 
 /*
