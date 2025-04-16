@@ -1,8 +1,14 @@
-# TODO: add all the "dependency" requirements for device drivers
+#
+# For a description of the syntax of this configuration file,
+# see the file kconfig-language.txt in the NuttX tools repository.
+#
 
 config INSPACE_TELEMETRY
     tristate "InSpace Telemetry System"
     default n
+    select SENSORS
+    select USENSOR
+    select UORB
     ---help---
         Enable the Carleton University InSpace telemetry system code.
 
