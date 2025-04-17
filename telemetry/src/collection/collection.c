@@ -36,6 +36,7 @@ typedef struct {
 
 static int setup_collection(collection_info_t *collection, packet_buffer_t *packet_buffer);
 static void reset_block_count(collection_info_t *collection);
+static void print_block_count(collection_info_t *collection);
 static uint8_t *add_block(collection_info_t *collection, enum block_type_e type, uint32_t mission_time);
 static uint8_t *add_or_new(collection_info_t *collection, enum block_type_e type, uint32_t mission_time);
 static void baro_handler(void *ctx, uint8_t *data);
@@ -44,6 +45,11 @@ static void mag_handler(void *ctx, uint8_t *data);
 static void gnss_handler(void *ctx, uint8_t *data);
 static void gyro_handler(void *ctx, uint8_t *data);
 static void alt_handler(void *ctx, uint8_t *data);
+
+/* Don't use this function if debug printing is off */
+#if !defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+#define print_block_count(collection)
+#endif /* CONFIG_INSPACE_TELEMETRY_DEBUG */
 
 /* Convert microseconds to milliseconds */
 
@@ -233,11 +239,9 @@ static void reset_block_count(collection_info_t *collection) {
  * @param collection Information about collected data
  */
 static void print_block_count(collection_info_t *collection) {
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
   for (int i = 0; i < sizeof(collection->block_count) / sizeof(collection->block_count[0]); i++) {
     printf("Count for %02x: %d\n", i, collection->block_count[i]);
   }
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
 }
 
 /**
