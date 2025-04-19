@@ -21,7 +21,7 @@ static const char *FLIGHT_STATES[] = {
 struct nv_storage {
   uint8_t flight_state; /* The flight state of the rocket, of type enum flight_state_e (a uint8_t so only one byte stored) */
   uint8_t crc;          /* A 8 bit cyclic redundancy check to make sure data is valid before being used */
-};
+} __attribute__((packed, aligned(1)));
 
 /* The polynomial to use in the 8 bit crc */
 

@@ -5,13 +5,6 @@
 
 #include "../telemetry/src/rocket-state/rocket-state.h"
 
-/* Empty the contents of the flight state file, skipping the test if that fails */
-static void clear_rocket_state(void) {
-  if (fclose(fopen(CONFIG_INSPACE_TELEMETRY_EEPROM, "w"))) {
-    TEST_IGNORE_MESSAGE("Could not clear eeprom contents before test");
-  }
-}
-
 /* Writes data to the state file, clearing previous contents. Skips the test if that fails */
 static void write_to_state_file(uint8_t *data, size_t len) {
   FILE *state_file = fopen(CONFIG_INSPACE_TELEMETRY_EEPROM, "w");  
@@ -19,9 +12,15 @@ static void write_to_state_file(uint8_t *data, size_t len) {
     TEST_IGNORE_MESSAGE("Could not open eeprom file to set invalid state");
   }
   if (!fwrite(data, len, sizeof(*data), state_file)) {
-    TEST_IGNORE_MESSAGE("Could not write garbage to eeprom file");
+    TEST_IGNORE_MESSAGE("Could not write test data to eeprom file");
   }
   fclose(state_file);
+}
+
+/* Eeprom may not work like regular file - overwrite to delete data to be sure */
+static void clear_rocket_state(void) {
+  const char *empty = "\0\0\0\0\0\0\0\0\0\0\0";
+  write_to_state_file((uint8_t *)empty, sizeof(empty));
 }
 
 /* Test that if the flight state file is empty, we end up in the idle flightstate */
