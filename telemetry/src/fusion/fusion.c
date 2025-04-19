@@ -34,7 +34,7 @@
 static const char fusion_alt_format[] = "fusioned altitude - timestamp:%" PRIu64 ",altitude:%hf";
 ORB_DEFINE(fusion_altitude, struct fusion_altitude, fusion_alt_format);
 #else
-ORB_DEFINE(fusion_altitude, struct fusion_altitude);
+ORB_DEFINE(fusion_altitude, struct fusion_altitude, 0);
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
 
 /* Buffers for inputs, best to match to the size of the internal sensor buffers */

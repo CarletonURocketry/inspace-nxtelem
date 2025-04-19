@@ -49,6 +49,14 @@ static int has_offset(enum block_type_e type) {
   }
 }
 
+/* Get the timestamp out of a block body
+ * @param block_body The body of the block to get a timestamp from
+ * @return A the timestamp field of the block
+ */
+static int16_t *block_timestamp(uint8_t* block_body) {
+  return (int16_t *)(block_body);
+}
+
 /* Initialize the packet header.
  * @param p The packet header to initialize.
  * @param packet_number The sequence number of this packet in the stream of
@@ -161,7 +169,7 @@ uint8_t *pkt_create_blk(uint8_t *packet, uint8_t *block, enum block_type_e type,
     return NULL;
   }
   if (has_offset(type)) {
-    if (calc_offset(mission_time, header->timestamp, &((offset_blk *)block_body(block))->time_offset)) {
+    if (calc_offset(mission_time, header->timestamp, block_timestamp(block_body(block)))) {
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
       /*fprintf(stderr, "Could not fit time into packet, time was %d and packet header had %d\n", mission_time, 30000 * header->timestamp );*/
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */

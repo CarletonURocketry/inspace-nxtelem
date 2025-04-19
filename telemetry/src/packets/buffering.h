@@ -2,6 +2,7 @@
 #define _INSPACE_PACKET_QUEUE_H_
 
 #include <pthread.h>
+
 #include "packets.h"
 
 typedef struct packet_node packet_node_t;
