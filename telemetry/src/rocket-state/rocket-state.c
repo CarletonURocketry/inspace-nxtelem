@@ -130,7 +130,7 @@ int state_init(rocket_state_t *state) {
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
     fprintf(stderr, "Couldn't read from nv storage, setting idle flightstate: %d\n", err);
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
-    atomic_store(&state->state, STATE_IDLE); 
+    atomic_store(&state->state, STATE_AIRBORNE);
   } else {
     atomic_store(&state->state, contents.flight_state);
   }

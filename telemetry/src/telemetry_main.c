@@ -39,9 +39,9 @@ int main(int argc, char **argv) {
   err = state_init(&state);
   if (err) {
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-    fprintf(stderr, "State not loaded properly, ensuring idle state set: %d\n", err);
+    fprintf(stderr, "State not loaded properly, ensuring airborne state set: %d\n", err);
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
-    err = state_set_flightstate(&state, STATE_IDLE);
+    err = state_set_flightstate(&state, STATE_AIRBORNE);
     if (err) {
       fprintf(stderr, "Could not set flight state properly either, continuing anyways: %d\n", err);
     }
@@ -54,7 +54,7 @@ int main(int argc, char **argv) {
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
     exit(EXIT_FAILURE);
   }
-  
+
   err = packet_buffer_init(&logging_buffer);
   if (err) {
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
