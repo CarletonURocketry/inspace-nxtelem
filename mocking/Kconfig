@@ -6,6 +6,9 @@
 config INSPACE_MOCKING
 	tristate "Sensor Mocking"
 	select BOARDCTL_ROMDISK
+	select GNSSUTILS_MINMEA_LIB
+	select SENSORS_GNSS
+	select SENSORS_FAKESENSOR
 	default n
 	---help---
 		Enable mocking of sensors using test data
@@ -17,14 +20,6 @@ config INSPACE_MOCKING_PROGNAME
 	default "inspace_mock"
 	---help---
 		This is the name of the program that sets up sensor mocking
-
-config INSPACE_MOCKING_PRIORITY
-	int "Mocking setup task priority"
-	default 100
-
-config INSPACE_MOCKING_STACKSIZE
-	int "Mocking setup stack size"
-	default DEFAULT_TASK_STACKSIZE
 
 config INSPACE_MOCKING_MOUNT
 	string "ROMFS mount point"

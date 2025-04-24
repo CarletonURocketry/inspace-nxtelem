@@ -14,6 +14,8 @@ enum flight_state_e {
   STATE_LANDED,   /* Rocket is landed. */
 };
 
+/* State information about the rocket */
+
 typedef struct {
   atomic_int state;          /* Flight state of the rocket. */
 } rocket_state_t;
