@@ -80,6 +80,7 @@ int register_fakesensors(void) {
 
     return ret;
 }
+
 int main(int argc, char **argv) {
     int ret = 0;
     ret = mount_mock_fs();
