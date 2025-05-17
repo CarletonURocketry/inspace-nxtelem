@@ -1,8 +1,7 @@
 #include <stdint.h>
 #include <stdlib.h>
-#include "altitude-detection.h"
-#include "circular-buffer.h"
 
+#include "altitude-detection.h"
 
 /* The minimum number of samples to use in an average */
 #define MIN_SAMPLES_FOR_AVERAGE 10
@@ -24,36 +23,6 @@
 
 /* Altitude above which landing event won't be considered */
 #define LANDED_ALTITUDE_FLOOR 100
-
-/**
- * Initalizes the altitude records structure
- * @param records The altitude records structure to initialize
- */
-void init_records(struct altitude_records *records) {
-  records->last_event = FUSION_NO_EVENT;
-  circ_buffer_init(&records->window_buffer, records->window, ALTITUDE_WINDOW_SIZE, sizeof(struct sensor_altitude));
-  circ_buffer_init(&records->averages_buffer, records->averages, ALTITUDE_AVERAGES_SIZE, sizeof(struct altitude_average));
-}
-
-/**
- * Adds a sample to the altitude records structure, performs detection if necessary
- * @param records The altitude records structure to add the sample to
- * @param sample The sample to add
- */
-void add_sample(struct altitude_records *records, struct sensor_altitude *sample) {
-  int need_avg = need_new_average(records, sample);
-  circ_buffer_append(&records->window_buffer, sample);
-  if (need_avg) {
-    struct altitude_average avg = new_average(records);
-    circ_buffer_append(&records->averages_buffer, &avg);
-    // Only want to consider detecting landing if we definitely aren't airborne
-    if (detect_airborne(records)) {
-      records->last_event = FUSION_AIRBORNE_EVENT;
-    } else if (detect_landed(records)) {
-      records->last_event = FUSION_LANDING_EVENT;
-    }
-  }
-}
 
 /**
  * Returns the last event that was detected
@@ -151,4 +120,34 @@ static int detect_landed(struct altitude_records *records) {
     }
   }
   return 0;
+}
+
+/**
+ * Initalizes the altitude records structure
+ * @param records The altitude records structure to initialize
+ */
+void init_records(struct altitude_records *records) {
+  records->last_event = FUSION_NO_EVENT;
+  circ_buffer_init(&records->window_buffer, records->window, ALTITUDE_WINDOW_SIZE, sizeof(struct altitude_sample));
+  circ_buffer_init(&records->averages_buffer, records->averages, ALTITUDE_AVERAGES_SIZE, sizeof(struct altitude_average));
+}
+
+/**
+ * Adds a sample to the altitude records structure, performs detection if necessary
+ * @param records The altitude records structure to add the sample to
+ * @param sample The sample to add
+ */
+void add_sample(struct altitude_records *records, struct altitude_sample *sample) {
+  int need_avg = need_new_average(records, sample);
+  circ_buffer_append(&records->window_buffer, sample);
+  if (need_avg) {
+    struct altitude_average avg = new_average(records);
+    circ_buffer_append(&records->averages_buffer, &avg);
+    // Only want to consider detecting landing if we definitely aren't airborne
+    if (detect_airborne(records)) {
+      records->last_event = FUSION_AIRBORNE_EVENT;
+    } else if (detect_landed(records)) {
+      records->last_event = FUSION_LANDING_EVENT;
+    }
+  }
 }

@@ -4,7 +4,10 @@
 #include <math.h>
 
 #include "../sensors/sensors.h"
+#include "../rocket-state/rocket-state.h"
 #include "fusion.h"
+#include "altitude-detection.h"
+
 
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
 #include <stdio.h>
@@ -43,13 +46,16 @@ ORB_DEFINE(fusion_altitude, struct fusion_altitude, 0);
 struct fusion_altitude calculate_altitude(struct sensor_baro *baro_data);
 
 void *fusion_main(void *arg) {
+  rocket_state_t *state = ((struct fusion_args *)arg)->state;
+
   /* Input sensors, may want to directly read instead */
   struct uorb_inputs sensors;
   clear_uorb_inputs(&sensors);
   setup_sensor(&sensors.baro, orb_get_meta("sensor_baro"));
   struct sensor_baro baro_data[BARO_INPUT_BUFFER_SIZE];
 
-  /* Output sensors */ 
+  struct altitude_records altitude_detection;
+  init_records(&altitude_detection);
 
   /* Currently publishing blank data to start, might be better to try and advertise only on first fusioned data */
   struct fusion_altitude calculated_altitude = {.altitude = 0, .timestamp = orb_absolute_time()};
@@ -69,6 +75,25 @@ void *fusion_main(void *arg) {
     if (len > 0) {
       for (int i = 0; i < (len / sizeof(struct sensor_baro)); i++) {
         calculated_altitude = calculate_altitude(&baro_data[i]);
+        add_sample(&altitude_detection, &calculated_altitude);
+        enum flight_state_e flight_state;
+        switch (last_event(&altitude_detection)) {
+          case FUSION_AIRBORNE_EVENT:
+            state_get_flightstate(state, &flight_state);
+            if (flight_state == STATE_IDLE) {
+              state_set_flightstate(state, STATE_AIRBORNE);
+            }
+            break;
+          case FUSION_LANDING_EVENT:
+            state_get_flightstate(state, &flight_state);
+            if (flight_state == STATE_AIRBORNE) {
+              state_set_flightstate(state, STATE_LANDED);
+            }
+            break;
+          default:
+            // Includes FUSION_NO_EVENT
+            break;
+        }
         orb_publish(ORB_ID(fusion_altitude), altitude_fd, &calculated_altitude);
         /* Do some processing or fusion on this data */
       }

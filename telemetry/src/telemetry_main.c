@@ -92,7 +92,8 @@ int main(int argc, char **argv) {
     exit(EXIT_FAILURE);
   }
 
-  err = pthread_create(&fusion_thread, NULL, fusion_main, &state);
+  struct fusion_args fusion_thread_args = {.state = &state};
+  err = pthread_create(&fusion_thread, NULL, fusion_main, &fusion_thread_args);
   if (err) {
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
     fprintf(stderr, "Problem starting fusion thread: %d\n", err);

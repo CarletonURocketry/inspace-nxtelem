@@ -1,6 +1,7 @@
-#include "circular-buffer.h"
 #include <stdlib.h>
 #include <string.h>
+
+#include "circular-buffer.h"
 
 /**
  * Initializes a circular buffer with the given parameters
