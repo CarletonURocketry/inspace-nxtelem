@@ -13,10 +13,10 @@ enum fusion_events {
 };
 
 /* The number of samples to take to use in averages */
-#define ALTITUDE_WINDOW_SIZE 1000
+#define ALTITUDE_WINDOW_SIZE 50
 
 /* The number of altitude averages to keep */
-#define ALTITUDE_AVERAGES_SIZE 5
+#define ALTITUDE_AVERAGES_SIZE 10
 
 /* A single measurement of altitude */
 struct altitude_sample {

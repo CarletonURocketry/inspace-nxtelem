@@ -90,7 +90,7 @@ static void test_iterator_full__return_first(void) {
     }
     struct circ_iterator it;
     circ_iterator_init(&it, &buffer);
-    TEST_ASSERT_EQUAL(1, *(int*)circ_iterator_next(&it));
+    TEST_ASSERT_EQUAL(3, *(int*)circ_iterator_next(&it));
 }
 
 static void test_iterator_next__return_next(void) {
@@ -101,9 +101,9 @@ static void test_iterator_next__return_next(void) {
     }
     struct circ_iterator it;
     circ_iterator_init(&it, &buffer);
-    TEST_ASSERT_EQUAL(1, *(int*)circ_iterator_next(&it));
-    TEST_ASSERT_EQUAL(2, *(int*)circ_iterator_next(&it));
     TEST_ASSERT_EQUAL(3, *(int*)circ_iterator_next(&it));
+    TEST_ASSERT_EQUAL(2, *(int*)circ_iterator_next(&it));
+    TEST_ASSERT_EQUAL(1, *(int*)circ_iterator_next(&it));
     TEST_ASSERT_NULL(circ_iterator_next(&it));
 }
 

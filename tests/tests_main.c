@@ -5,14 +5,9 @@
 #include "test_runners.h"
 
 // Empty but required by Unity
-void setUp(void) {
-
-}
-
+void setUp(void) {}
 // Empty but required by Unity
-void tearDown(void) {
-
-}
+void tearDown(void) {}
 
 int main(void) {
   UNITY_BEGIN();

@@ -1,28 +1,48 @@
 #include <stdint.h>
 #include <stdlib.h>
+#include <math.h>
+#include <float.h>
 
 #include "altitude-detection.h"
+
+#define DETECTION_DEBUG
+
+#if defined(DETECTION_DEBUG)
+#include <stdio.h>
+#define DEBUG_PRINT(...) printf(__VA_ARGS__)
+#else
+#define DEBUG_PRINT(...)
+#endif
 
 /* The minimum number of samples to use in an average */
 #define MIN_SAMPLES_FOR_AVERAGE 10
 
 /* The period for averaging samples in milliseconds */
-#define ALTITUDE_AVERAGE_PERIOD 1000
+#define ALTITUDE_AVERAGE_PERIOD 500
 
-/* Altitude change requirement for airborne event in meters */
-#define AIRBORNE_ALTITUDE_DELTA_THRESHOLD 50
+struct altitude_thresholds {
+  float max_roc;        /* Max abs rate of change of altitude for this event in m/s */
+  float min_roc;        /* Min abs rate of change of altitude for this event in m/s */
+  float time_threshold; /* The minimum time difference before an event can be detected in s*/
+  float min_altitude;   /* The minimum altitude this event can be detected at in m*/
+  float max_altitude;   /* The maximum altitude this event can be detected at in m*/
+};
 
-/* Time change requirement for airborne event in milliseconds */
-#define AIRBORNE_TIME_DELTA_THRESHOLD 2000
+const struct altitude_thresholds airborne_thresholds = {
+  .min_roc = 25.0,
+  .max_roc = FLT_MAX,
+  .time_threshold = 2.0,
+  .min_altitude = -FLT_MAX,
+  .max_altitude = FLT_MAX
+};
 
-/* Landed altitude change requirement (must be less than) in meters*/
-#define LANDED_ALTITUDE_DELTA_THRESHOLD 2
-
-/* Time change requirement for landed state in milliseconds */
-#define LANDED_TIME_DELTA_THRESHOLD 2000
-
-/* Altitude above which landing event won't be considered */
-#define LANDED_ALTITUDE_FLOOR 100
+const struct altitude_thresholds landed_thresholds = {
+  .min_roc = -FLT_MAX,
+  .max_roc = 0.5,
+  .time_threshold = 2.0,
+  .min_altitude = -FLT_MAX,
+  .max_altitude = 100.0
+};
 
 /**
  * Returns the last event that was detected
@@ -43,12 +63,14 @@ enum fusion_events last_event(struct altitude_records *records) {
  */
 static int need_new_average(struct altitude_records *records, struct altitude_sample *sample) {
   struct altitude_average *last_average = circ_buffer_get(&records->averages_buffer);
-  if (last_average != NULL) {
-    if (sample->timestamp - last_average->timestamp < ALTITUDE_AVERAGE_PERIOD) {
-      return records->window_buffer.size > MIN_SAMPLES_FOR_AVERAGE;
-    }
+  if (last_average == NULL) {
+    DEBUG_PRINT("Need new average because we have none\n");
+    return 1;
   }
-  return 1;
+  if ((sample->timestamp - last_average->timestamp) > (ALTITUDE_AVERAGE_PERIOD * 1000)) {
+    return circ_buffer_size(&records->window_buffer) > MIN_SAMPLES_FOR_AVERAGE;
+  }
+  return 0;
 }
 
 /**
@@ -57,13 +79,9 @@ static int need_new_average(struct altitude_records *records, struct altitude_sa
  * @return The new average 
  */
 static struct altitude_average new_average(struct altitude_records *records) {
-  struct circ_iterator it;
-  circ_iterator_init(&it, &records->window_buffer);
-
   struct altitude_sample *sample;
-  struct altitude_average output;
-  output.num_samples = 0;
-  while ((sample = circ_iterator_next(&it)) != NULL) {
+  struct altitude_average output = {0, 0, 0};
+  while ((sample = circ_buffer_pop(&records->window_buffer)) != NULL) {
     output.altitude += sample->altitude;
     output.timestamp += sample->timestamp;
     ++output.num_samples;
@@ -76,11 +94,12 @@ static struct altitude_average new_average(struct altitude_records *records) {
 }
 
 /**
- * Detects if the rocket is airborne, using the configured thresholds
+ * Checks if the records currently meet the criteria stored in the thresholds struct
  * @param records The altitude records structure to check
- * @return 1 if the rocket is airborne, 0 otherwise
+ * @param thresholds The thresholds to check against, which may include rate of change or time requirements
+ * @return 1 if the thresholds are all met, 0 otherwise
  */
-static int detect_airborne(struct altitude_records *records) {
+static int detect_event(struct altitude_records *records, struct altitude_thresholds const *thresholds) {
   struct circ_iterator it;
   circ_iterator_init(&it, &records->averages_buffer);
   struct altitude_average *last = circ_iterator_next(&it);
@@ -89,33 +108,16 @@ static int detect_airborne(struct altitude_records *records) {
   }
   struct altitude_average *cmp;
   while ((cmp = circ_iterator_next(&it)) != NULL) {
-    int altitude_criteria = (last->altitude - cmp->altitude) > AIRBORNE_ALTITUDE_DELTA_THRESHOLD;
-    int time_criteria = (last->timestamp - cmp->timestamp) > AIRBORNE_TIME_DELTA_THRESHOLD;
-    if (altitude_criteria && time_criteria) {
-      return 1;
-    }
-  }
-  return 0;
-}
-
-/**
- * Detects if the rocket is landed, using the configured thresholds
- * @param records The altitude records structure to check
- * @return 1 if the rocket is landed, 0 otherwise
- */
-static int detect_landed(struct altitude_records *records) {
-  struct circ_iterator it;
-  circ_iterator_init(&it, &records->averages_buffer);
-  struct altitude_average *last = circ_iterator_next(&it);
-  if (last == NULL) {
-    return 0;
-  }
-  struct altitude_average *cmp;
-  while ((cmp = circ_iterator_next(&it)) != NULL) {
-    int altitude_criteria = (last->altitude - cmp->altitude) < LANDED_ALTITUDE_DELTA_THRESHOLD;
-    int time_criteria = (last->timestamp - cmp->timestamp) > LANDED_TIME_DELTA_THRESHOLD;
-    int abs_altitude_criteria = cmp->altitude < LANDED_ALTITUDE_FLOOR;
-    if (altitude_criteria && time_criteria && abs_altitude_criteria) {
+    float altitude_delta = fabsf(last->altitude - cmp->altitude);
+    float time_delta = (last->timestamp - cmp->timestamp) / 1000000.0;
+    DEBUG_PRINT("Time delta: %f, ROC: %f\n", time_delta, altitude_delta / time_delta); 
+    int test = time_delta > thresholds->time_threshold;
+    test &= (altitude_delta / time_delta) > thresholds->min_roc;
+    test &= (altitude_delta / time_delta) < thresholds->max_roc;
+    test &= last->altitude > thresholds->min_altitude;
+    test &= last->altitude < thresholds->max_altitude;
+    if (test) {
+      DEBUG_PRINT("Detected event\n");
       return 1;
     }
   }
@@ -142,11 +144,12 @@ void add_sample(struct altitude_records *records, struct altitude_sample *sample
   circ_buffer_append(&records->window_buffer, sample);
   if (need_avg) {
     struct altitude_average avg = new_average(records);
+    DEBUG_PRINT("Got a new average of %lu:%f, %d samples\n", avg.timestamp, avg.altitude, avg.num_samples);
     circ_buffer_append(&records->averages_buffer, &avg);
     // Only want to consider detecting landing if we definitely aren't airborne
-    if (detect_airborne(records)) {
+    if (detect_event(records, &airborne_thresholds)) {
       records->last_event = FUSION_AIRBORNE_EVENT;
-    } else if (detect_landed(records)) {
+    } else if (detect_event(records, &landed_thresholds)) {
       records->last_event = FUSION_LANDING_EVENT;
     }
   }
