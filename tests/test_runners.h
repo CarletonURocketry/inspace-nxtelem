@@ -3,5 +3,7 @@
 
 /* Test runners, to be called from main() */
 void test_rocket_state(void);
+void test_altitude_detection(void);
+void test_circular_buffer(void);
 
 #endif // _TEST_RUNNERS_H_

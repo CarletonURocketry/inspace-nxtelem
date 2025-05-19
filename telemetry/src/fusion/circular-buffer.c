@@ -18,6 +18,10 @@ void circ_buffer_init(struct circ_buffer *buffer, void* backing, int max_elems, 
   buffer->elem_size = elem_size;
 }
 
+int circ_buffer_size(struct circ_buffer *buffer) {
+  return buffer->size;
+}
+
 /**
  * Appends an element to the circular buffer, overwriting oldest data if full
  * @param buffer The circular buffer to append to
