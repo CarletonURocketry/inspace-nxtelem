@@ -24,15 +24,29 @@ int circ_buffer_size(struct circ_buffer *buffer) {
 
 /**
  * Appends an element to the circular buffer, overwriting oldest data if full
- * @param buffer The circular buffer to append to
- * @param data Pointer to the data to append
+ * @param buffer The circular buffer to push an element onto
+ * @param data Pointer to the data to push
  */
-void circ_buffer_append(struct circ_buffer *buffer, void *data) {
+void circ_buffer_push(struct circ_buffer *buffer, void *data) {
   if (buffer->size < buffer->capacity) {
     ++buffer->size;
   }
   memcpy(buffer->data + (buffer->head * buffer->elem_size), data, buffer->elem_size);
   buffer->head = (buffer->head + 1) % buffer->capacity;
+}
+
+/**
+ * Pushes an element into the circular buffer, copies out the oldest element if full before overwriting it
+ * @param buffer The circular buffer to push to
+ * @param data Pointer to the data to push
+ * @param out Pointer to the location to copy the oldest element to if the buffer is full
+ * @return 1 if the buffer was full and the oldest element was copied out, 0 otherwise
+ */
+int circ_buffer_push_out(struct circ_buffer *buffer, void *data, void *out){
+  if (buffer->size == buffer->capacity) {
+    memcpy(out, buffer->data + (buffer->head * buffer->elem_size), buffer->elem_size);
+  }
+  circ_buffer_push(buffer, data);
 }
 
 /**
