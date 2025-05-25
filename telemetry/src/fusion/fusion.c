@@ -6,7 +6,8 @@
 #include "../sensors/sensors.h"
 #include "../rocket-state/rocket-state.h"
 #include "fusion.h"
-#include "altitude-detection.h"
+#include "detector.h"
+#include "filter.h"
 
 
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
@@ -43,10 +44,12 @@ ORB_DEFINE(fusion_altitude, struct fusion_altitude, 0);
 /* Buffers for inputs, best to match to the size of the internal sensor buffers */
 #define BARO_INPUT_BUFFER_SIZE 5
 
-struct fusion_altitude calculate_altitude(struct sensor_baro *baro_data);
+static struct fusion_altitude calculate_altitude(struct sensor_baro *baro_data);
 
 void *fusion_main(void *arg) {
   rocket_state_t *state = ((struct fusion_args *)arg)->state;
+  enum flight_state_e flight_state;
+  state_get_flightstate(state, &flight_state);
 
   /* Input sensors, may want to directly read instead */
   struct uorb_inputs sensors;
@@ -54,8 +57,13 @@ void *fusion_main(void *arg) {
   setup_sensor(&sensors.baro, orb_get_meta("sensor_baro"));
   struct sensor_baro baro_data[BARO_INPUT_BUFFER_SIZE];
 
-  struct altitude_records altitude_detection;
-  init_records(&altitude_detection);
+  struct detector detector;
+  struct filter filter;
+  struct rocket_dynamics dynamics = {0};
+
+  detector_init(&detector);
+  filter_init(&filter);
+
 
   /* Currently publishing blank data to start, might be better to try and advertise only on first fusioned data */
   struct fusion_altitude calculated_altitude = {.altitude = 0, .timestamp = orb_absolute_time()};
@@ -75,19 +83,20 @@ void *fusion_main(void *arg) {
     if (len > 0) {
       for (int i = 0; i < (len / sizeof(struct sensor_baro)); i++) {
         calculated_altitude = calculate_altitude(&baro_data[i]);
-        add_sample(&altitude_detection, &calculated_altitude);
-        enum flight_state_e flight_state;
-        switch (last_event(&altitude_detection)) {
-          case FUSION_AIRBORNE_EVENT:
+        filter_add_sample(&filter, (struct altitude_sample *)&calculated_altitude, &dynamics);
+        switch(detector_detect(&detector, flight_state, &dynamics)) {
+          case DETECTOR_AIRBORNE_EVENT:
             state_get_flightstate(state, &flight_state);
             if (flight_state == STATE_IDLE) {
               state_set_flightstate(state, STATE_AIRBORNE);
+              flight_state = STATE_AIRBORNE;
             }
             break;
-          case FUSION_LANDING_EVENT:
+          case DETECTOR_LANDING_EVENT:
             state_get_flightstate(state, &flight_state);
             if (flight_state == STATE_AIRBORNE) {
               state_set_flightstate(state, STATE_LANDED);
+              flight_state = STATE_LANDED;
             }
             break;
           default:
@@ -105,7 +114,7 @@ void *fusion_main(void *arg) {
  * Calculates the current altitude above sea level using temperature adjusted barometer readings
  * @param baro_data The barometer data to use for the calculation
  */
-struct fusion_altitude calculate_altitude(struct sensor_baro *baro_data) {
+static struct fusion_altitude calculate_altitude(struct sensor_baro *baro_data) {
   struct fusion_altitude output;
   output.timestamp = baro_data->timestamp;
 

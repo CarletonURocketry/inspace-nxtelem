@@ -22,7 +22,7 @@ struct fusion_altitude {
 
 /* The arguments required by the fusion thread */
 struct fusion_args {
-  struct rocket_state_t *state; /* A pointer to the rocket state shared between all threads */
+  rocket_state_t *state; /* A pointer to the rocket state shared between all threads */
 };
 
 void *fusion_main(void *arg);

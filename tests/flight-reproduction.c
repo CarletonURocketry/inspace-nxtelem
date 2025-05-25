@@ -13,9 +13,33 @@ static const double coeff_d[99] = {1319.8599999999999, 1561.48, 2537.21, 3781.96
  * @param t The time at which to calculate the altitude, in seconds. Valid from 0 to 1341 seconds
  * @return 
  */
-double calculate_altitude(double t) {
+double reproduce_flight_altitude(double t) {
     int i = 0;
     while (i < N_INTERVALS-1 && t >= x_knots[i+1]) { i++; }
     double dt = t - x_knots[i];
     return coeff_a[i] + coeff_b[i] * dt + coeff_c[i] * dt * dt + coeff_d[i] * dt * dt * dt;
+}
+
+/**
+ * Calculates the velocity at a given time using cubic spline interpolation
+ * @param t The time at which to calculate the velocity, in seconds. Valid from 0 to 1341 seconds
+ * @return The velocity at time t in m/s
+ */
+double reproduce_flight_velocity(double t) {
+    int i = 0;
+    while (i < N_INTERVALS - 1 && t >= x_knots[i+1]) i++;
+    double dt = t - x_knots[i];
+    return coeff_b[i] + 2 * coeff_c[i] * dt + 3 * coeff_d[i] * dt * dt;
+}
+
+/**
+ * Calculates the acceleration at a given time using cubic spline interpolation
+ * @param t The time at which to calculate the acceleration, in seconds. Valid from 0 to 1341 seconds
+ * @return The acceleration at time t in m/s^2
+ */
+double reproduce_flight_acceleration(double t) {
+    int i = 0;
+    while (i < N_INTERVALS - 1 && t >= x_knots[i+1]) i++;
+    double dt = t - x_knots[i];
+    return 2 * coeff_c[i] + 6 * coeff_d[i] * dt;
 }

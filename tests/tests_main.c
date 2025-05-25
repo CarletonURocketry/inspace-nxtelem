@@ -12,7 +12,7 @@ void tearDown(void) {}
 int main(void) {
   UNITY_BEGIN();
   test_rocket_state();
-  test_altitude_detection();
+  test_detection();
   test_circular_buffer();
   return UNITY_END();
 }
