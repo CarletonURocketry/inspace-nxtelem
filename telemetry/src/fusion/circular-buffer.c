@@ -43,10 +43,13 @@ void circ_buffer_push(struct circ_buffer *buffer, void *data) {
  * @return 1 if the buffer was full and the oldest element was copied out, 0 otherwise
  */
 int circ_buffer_push_out(struct circ_buffer *buffer, void *data, void *out){
+  int ret = 0;
   if (buffer->size == buffer->capacity) {
     memcpy(out, buffer->data + (buffer->head * buffer->elem_size), buffer->elem_size);
+    ret = 1;
   }
   circ_buffer_push(buffer, data);
+  return ret;
 }
 
 /**
