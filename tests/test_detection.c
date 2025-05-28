@@ -21,7 +21,7 @@ static void test_filter_constant_altitude(void) {
     filter_init(&f);
     struct rocket_dynamics dynamics = {0};
     for (int i = 0; i < 2 * FILTER_WINDOW_SIZE; i++) {
-        struct altitude_sample sample = { .timestamp = i, .altitude = 10 };
+        struct altitude_sample sample = { .timestamp = i * 1000000, .altitude = 10 };
         filter_add_sample(&f, &sample, &dynamics);
     }
     TEST_ASSERT_EQUAL_FLOAT(10.0, dynamics.altitude);
@@ -33,7 +33,7 @@ static void test_filter_constant_velocity(void) {
     filter_init(&f);
     struct rocket_dynamics dynamics = {0};
     for (int i = 0; i < 2 * FILTER_WINDOW_SIZE; i++) {
-      struct altitude_sample sample = { .timestamp = i, .altitude = 10 * i};
+      struct altitude_sample sample = { .timestamp = i * 1000000, .altitude = 10 * i};
         filter_add_sample(&f, &sample, &dynamics);
     }
     TEST_ASSERT_EQUAL_FLOAT(10.0, dynamics.velocity);
@@ -44,7 +44,7 @@ static void test_filter_constant_altitude_with_noise(void) {
     filter_init(&f);
     struct rocket_dynamics dynamics = {0};
     for (int i = 0; i < 2 * FILTER_WINDOW_SIZE; i++) {
-        struct altitude_sample sample = { .timestamp = i, .altitude = 10 + (rand() % 5) };
+        struct altitude_sample sample = { .timestamp = i * 1000000, .altitude = 10 + (rand() % 5) };
         filter_add_sample(&f, &sample, &dynamics);
     }
     TEST_ASSERT_FLOAT_WITHIN(5.0, 10.0, dynamics.altitude);
@@ -56,7 +56,7 @@ static void test_filter_constant_velocity_with_noise(void) {
     filter_init(&f);
     struct rocket_dynamics dynamics = {0};
     for (int i = 0; i < 2 * FILTER_WINDOW_SIZE; i++) {
-        struct altitude_sample sample = { .timestamp = i , .altitude = 10 * i + (rand() % 5) };
+        struct altitude_sample sample = { .timestamp = i * 1000000, .altitude = 10 * i + (rand() % 5) };
         filter_add_sample(&f, &sample, &dynamics);
     }
     TEST_ASSERT_FLOAT_WITHIN(5.0, 10.0, dynamics.velocity);

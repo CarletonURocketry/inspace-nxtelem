@@ -19,19 +19,17 @@ struct altitude_sample {
 };
 
 struct filter {
-  struct rocket_dynamics dynamics;
   struct altitude_sample samples[FILTER_WINDOW_SIZE];
   struct circ_buffer buffer;
 
   // Velocity
-  float x_accumulator;
-  float y_accumulator;
-  float xy_accumulator;
-  float x_square_accumulator;
+  float x_accum;
+  float y_accum;
+  float xy_accum;
+  float x_sq_accum;
 };
 
 void filter_init(struct filter *filter);
 void filter_add_sample(struct filter *filter, struct altitude_sample *sample, struct rocket_dynamics *dynamics);
-struct rocket_dynamics *filter_get_dynamics(struct filter *filter);
 
 #endif /* _FILTER_H_ */
