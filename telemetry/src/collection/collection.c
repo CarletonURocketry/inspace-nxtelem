@@ -484,6 +484,8 @@ static void add_msl_block(collection_info_t *collection, struct fusion_altitude 
 static void gnss_handler(void *ctx, uint8_t *data) {
   struct sensor_gnss *gnss_data = (struct sensor_gnss*)data;
   processing_context_t *context = (processing_context_t *)ctx;
+  if (gnss_data->latitude == (int)NULL && gnss_data->longitude == (int)NULL) return; // Don't send packets with no sat fix
+
   add_gnss_block(&context->logging, gnss_data);
   add_gnss_msl_block(&context->logging, gnss_data);
 
