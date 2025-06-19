@@ -77,12 +77,13 @@ struct detector {
   float apogee;               /* The maximum altitude ever recorded */
   uint64_t apogee_time;       /* The time the maximum altitude was recorded in microseconds */
 
-  float landed_alt;           /* The altitude at landing or a sensible default */
   float alt_window_max;       /* The maximum altitude recently recorded */
   float alt_window_min;       /* The minimum altitude recently recorded */
   float alt_window_duration;  /* The minimum of the timestamps of recent_min/max_alt */
 
-  rocket_state_t rocket_state; /* Local copy of the flight state */
+  float elevation;                 /* The altitude at landing or a sensible default */
+  enum flight_state_e state;       /* The flight state */
+  enum flight_substate_e substate; /* The flight substate */
 };
 
 void detector_init(struct detector *detector, rocket_state_t initial_state);

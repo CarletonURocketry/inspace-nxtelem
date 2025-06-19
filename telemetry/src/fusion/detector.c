@@ -119,7 +119,7 @@ static int detector_accel_valid(struct detector *detector) {
 }
 
 static int detector_is_airborne(struct detector *detector) {
-  return (detector_alt_valid(detector) && fabs(detector->current_alt - detector->landed_alt) > AIRBORNE_ALT_THRESHOLD) ||
+  return (detector_alt_valid(detector) && fabs(detector->current_alt - detector->elevation) > AIRBORNE_ALT_THRESHOLD) ||
          (detector_accel_valid(detector) && fabs(detector->current_accel) > AIRBORNE_ACCEL_THRESHOLD);
 }
 
@@ -137,13 +137,12 @@ static int detector_is_apogee(struct detector *detector) {
          detector_accel_valid(detector) && fabs(detector->current_accel) < AIRBORNE_ACCEL_THRESHOLD;
 }
 
-void detector_init(struct detector *detector) {
-  detector->apogee = -FLT_MAX;
-  detector->apogee_time = 0;
-  detector->alt_window_max = -FLT_MAX;
-  detector->alt_window_min = FLT_MAX;
-  detector->alt_window_duration = 0.0f;
-  detector->landed_alt = 0.0f; // TODO - Figure out how to set properly later
+void detector_init(struct detector *detector, rocket_state_t *rocket_state) {
+  median_filter_init(&detector->alts.median, detector->alts.median_backing_sorted, detector->alts.median_backing_time_ordered, ALTITUDE_MEDIAN_FILTER_SIZE);
+  average_filter_init(&detector->alts.average, detector->alts.average_backing, ALTITUDE_AVERAGE_FILTER_SIZE);
+
+  median_filter_init(&detector->accels.median, detector->accels.median_backing_sorted, detector->accels.median_backing_time_ordered, ACCEL_MEDIAN_FILTER_SIZE);
+  average_filter_init(&detector->accels.average, detector->accels.average_backing, ACCEL_AVERAGE_FILTER_SIZE);
 
   detector->current_time = 0;
   detector->last_alt_update = 0;
@@ -151,11 +150,17 @@ void detector_init(struct detector *detector) {
   detector->current_alt = 0.0f;
   detector->current_accel = 0.0f;
 
-  median_filter_init(&detector->alts.median, detector->alts.median_backing_sorted, detector->alts.median_backing_time_ordered, ALTITUDE_MEDIAN_FILTER_SIZE);
-  average_filter_init(&detector->alts.average, detector->alts.average_backing, ALTITUDE_AVERAGE_FILTER_SIZE);
+  detector->apogee = -FLT_MAX;
+  detector->apogee_time = 0;
 
-  median_filter_init(&detector->accels.median, detector->accels.median_backing_sorted, detector->accels.median_backing_time_ordered, ACCEL_MEDIAN_FILTER_SIZE);
-  average_filter_init(&detector->accels.average, detector->accels.average_backing, ACCEL_AVERAGE_FILTER_SIZE);
+  detector->alt_window_max = -FLT_MAX;
+  detector->alt_window_min = FLT_MAX;
+  detector->alt_window_duration = 0.0f;
+
+  /* These need to be set manually before the detector is used, but these defaults will work */
+  detector->landed_alt = 0.0f;
+  detector->state = STATE_AIRBORNE;
+  detector->substate = SUBSTATE_UNKNOWN;
 }
 
 void detector_add_alt(struct detector *detector, struct altitude_sample *sample) {
@@ -169,7 +174,7 @@ void detector_add_alt(struct detector *detector, struct altitude_sample *sample)
     detector->apogee_time = sample->time;
   }
 
-  if (detector->rocket_state.state == STATE_AIRBORNE) {
+  if (detector->state == STATE_AIRBORNE) {
     detector_update_alt_window(detector, detector->current_alt, sample->time - detector->last_alt_update);
   }
 
@@ -205,14 +210,14 @@ float detector_get_accel(struct detector *detector) {
  * @return The detected event, or DETECTOR_NO_EVENT if none was detected
  */
 enum detector_event detector_detect(struct detector *detector) {
-  switch (detector->rocket_state.state) {
+  switch (detector->state) {
     case STATE_IDLE:
       // Add a way to set the landed height before we try to 
       if (detector_is_airborne(detector)) {
         return DETECTOR_AIRBORNE_EVENT;
       }
     case STATE_AIRBORNE: {
-      switch (detector->rocket_state.substate) {
+      switch (detector->substate) {
         case SUBSTATE_UNKNOWN:
           /* If we aren't sure what state we're really in, make sure we haven't landed */
           if (detector_is_landed(detector)) {
@@ -236,4 +241,13 @@ enum detector_event detector_detect(struct detector *detector) {
     default:
       return DETECTOR_NO_EVENT;
   }
+}
+
+void detector_set_state(struct detector *detector, enum flight_state_e state, enum flight_substate_e substate) {
+  detector->state = state;
+  detector->substate = substate;
+}
+
+void detector_set_elevation(struct detector *detector, uint32_t elevation) {
+  detector->elevation = elevation;
 }
