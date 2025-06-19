@@ -21,18 +21,25 @@ enum detector_event {
 
 struct altitude_sample {
   float altitude; /* The altitude in meters */
-  float time;     /* The time in seconds since mission start */
+  uint64_t time;  /* The time in microseconds */
 };
 
+/* Median filter - rejects sudden spikes in readings better than an averaging.
+ * This type of filter is best kept small because it requires sorting
+ */
 struct median_filter {
-  int size;
-  float *sorted;
-  struct circ_buffer time_ordered;
+  int size;                        /* The number of elements in the sorted array */
+  float *sorted;                   /* The elements in the circular buffer, sorted */
+  struct circ_buffer time_ordered; /* Circular buffer of floating point values */
 };
 
+/* Moving average - smooths data to get rid of random noise.
+ * This type of filter is best kept larger, but causes a lag in the output of 
+ * appprox half the size of the filter
+ */
 struct average_filter {
-  struct circ_buffer buffer; /* Circular buffer */
-  float sum;
+  struct circ_buffer buffer; /* Circular buffer of floating point values */
+  float sum;                 /* The sum of the elements in the circular buffer */
 };
 
 struct alt_filter {
@@ -41,12 +48,11 @@ struct alt_filter {
   struct altitude_sample average_backing[ALTITUDE_AVERAGE_FILTER_SIZE];
   struct median_filter median;   /* Median filter for altitude */
   struct average_filter average; /* Average filter for altitude */
-
 };
 
 struct accel_sample {
   float acceleration; /* The acceleration in m/s^2 */
-  float time;         /* The time in seconds since mission start */
+  uint64_t time;      /* The time in microseconds */
 };
 
 struct accel_filter {
@@ -62,30 +68,30 @@ struct detector {
   struct alt_filter alts;     /* Filtering for altitude data */
   struct accel_filter accels; /* Filtering for acceleration data */
 
-  uint64_t current_time;
-  uint64_t last_alt_update;
-  uint64_t last_accel_update;
-  float current_alt;
-  float current_accel;
-  
+  uint64_t current_time;       /* The time of the most recent update to the detector */
+  uint64_t last_alt_update;    /* The time the guess of the current altitude was made in microseconds */
+  uint64_t last_accel_update;  /* The time the guess of the current accleration was made in microseconds */
+  float current_alt;           /* Best guess of the current altitude in meters */
+  float current_accel;         /* Best guess of the current acceleration in meters */
+
+  float apogee;               /* The maximum altitude ever recorded */
+  uint64_t apogee_time;       /* The time the maximum altitude was recorded in microseconds */
+
   float landed_alt;           /* The altitude at landing or a sensible default */
-  float abs_max_altitude;     /* The maximum altitude ever recorded */
   float alt_window_max;       /* The maximum altitude recently recorded */
   float alt_window_min;       /* The minimum altitude recently recorded */
   float alt_window_duration;  /* The minimum of the timestamps of recent_min/max_alt */
+
+  rocket_state_t rocket_state; /* Local copy of the flight state */
 };
 
-void detector_init(struct detector *detector);
+void detector_init(struct detector *detector, rocket_state_t initial_state);
 void detector_add_alt(struct detector *detector, struct altitude_sample *sample);
-float detector_get_alt(struct detector *detector);
 void detector_add_accel(struct detector *detector, struct accel_sample *sample);
+float detector_get_alt(struct detector *detector);
 float detector_get_accel(struct detector *detector);
+void detector_set_state(struct detector *detector, enum flight_state_e state, enum flight_substate_e substate);
+void detector_set_elevation(struct detector *detector, uint32_t elevation);
 enum detector_event detector_detect(struct detector *detector, enum flight_state_e state);
-
-void median_filter_init(struct median_filter *filter, float *sorted, float *time_ordered, int size);
-float median_filter_add(struct median_filter *filter, float new_value);
-
-void average_filter_init(struct average_filter *filter, float *buffer, int size);
-float average_filter_add(struct average_filter *filter, float new_value);
 
 #endif /* _DETECTOR_H_ */

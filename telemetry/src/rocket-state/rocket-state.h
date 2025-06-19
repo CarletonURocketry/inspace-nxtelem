@@ -15,10 +15,8 @@ enum flight_state_e {
 };
 
 enum flight_substate_e {
-  SUBSTATE_NONE,     /* The flight substate is invalid. */
   SUBSTATE_UNKNOWN,  /* The flight substate is unknown. */
   SUBSTATE_ASCENT,   /* The rocket is ascending. */
-  SUBSTATE_DEPLOY,   /* The rocket should deploy the parachute. */
   SUBSTATE_DESCENT,  /* The rocket is descending. */
 };
 
