@@ -81,7 +81,7 @@ struct detector {
   float alt_window_min;       /* The minimum altitude recently recorded */
   float alt_window_duration;  /* The minimum of the timestamps of recent_min/max_alt */
 
-  float elevation;                 /* The altitude at landing or a sensible default */
+  float elevation;                 /* The altitude at landing or a sensible default in meters */
   enum flight_state_e state;       /* The flight state */
   enum flight_substate_e substate; /* The flight substate */
 };

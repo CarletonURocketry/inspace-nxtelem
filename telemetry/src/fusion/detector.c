@@ -158,7 +158,7 @@ void detector_init(struct detector *detector, rocket_state_t *rocket_state) {
   detector->alt_window_duration = 0.0f;
 
   /* These need to be set manually before the detector is used, but these defaults will work */
-  detector->landed_alt = 0.0f;
+  detector->elevation = 0.0f;
   detector->state = STATE_AIRBORNE;
   detector->substate = SUBSTATE_UNKNOWN;
 }
@@ -212,7 +212,6 @@ float detector_get_accel(struct detector *detector) {
 enum detector_event detector_detect(struct detector *detector) {
   switch (detector->state) {
     case STATE_IDLE:
-      // Add a way to set the landed height before we try to 
       if (detector_is_airborne(detector)) {
         return DETECTOR_AIRBORNE_EVENT;
       }
@@ -248,6 +247,6 @@ void detector_set_state(struct detector *detector, enum flight_state_e state, en
   detector->substate = substate;
 }
 
-void detector_set_elevation(struct detector *detector, uint32_t elevation) {
+void detector_set_elevation(struct detector *detector, float elevation) {
   detector->elevation = elevation;
 }
