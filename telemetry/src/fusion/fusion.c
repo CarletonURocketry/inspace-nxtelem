@@ -121,7 +121,7 @@ void *fusion_main(void *arg) {
       if (orb_absolute_time() > enable_time) {
         float elevation = detector_get_alt(detector);
         detector_set_elevation(elevation);
-        state_set_elevation(state, elevation);
+        state_set_elevation(state, elevation * 1000); // Convert to millimeters
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
         printf("Time lockout on detection is up, setting new landed elevation to %fm above sea level\n", elevation);
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
