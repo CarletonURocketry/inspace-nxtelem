@@ -28,6 +28,7 @@
 /* Constant for the conversion from Celsius to Kelvin */
 #define KELVIN 273
 
+// TODO - remove this, but potentially keep the time lockout
 /* The amount of time to not perform detection for (if the idle state is loaded)
  * so that the detector can have a decent amount of data to work with. Otherwise,
  * the first few data points will have nothing to compare against and could be very
@@ -61,7 +62,7 @@ void *fusion_main(void *arg) {
   int32_t init_elevation;
 
   state_get_flightstate(state, &flight_state);
-  state_get_flightsubstate(state, &flight_substate)
+  state_get_flightsubstate(state, &flight_substate);
   state_get_elevation(state, &init_elevation);
 
   /* Input sensors, may want to directly read instead */
@@ -73,13 +74,15 @@ void *fusion_main(void *arg) {
   struct sensor_accel accel_data[ACCEL_INPUT_BUFFER_SIZE];
 
   struct detector detector;
-  detector_init(&detector);
-  detector_set_state(flight_state, flight_substate);
+  detector_init(&detector, orb_absolute_time());
+  detector_set_state(&detector, flight_state, flight_substate);
+
   /* Set the elevation, which will either be a remembered value or a sensible default (and convert to meters) */
-  detector_set_elevation(&detector, init_elevation / 1000);
+  // detector_set_elevation(&detector, init_elevation / 1000);
 
   /* Currently publishing blank data to start, might be better to try and advertise only on first fusioned data */
   struct fusion_altitude calculated_altitude = {.altitude = 0, .timestamp = orb_absolute_time()};
+  struct accel_sample calculated_accel_mag = {0};
   int altitude_fd = orb_advertise_multi_queue(ORB_ID(fusion_altitude), &calculated_altitude, NULL, ALT_FUSION_BUFFER);
   if (altitude_fd < 0) {
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
@@ -103,7 +106,7 @@ void *fusion_main(void *arg) {
     if (len > 0) {
       for (int i = 0; i < (len / sizeof(struct sensor_baro)); i++) {
         calculated_altitude = calculate_altitude(&baro_data[i]);
-        detector_add_alt(detector, (struct altitude_sample *)&calculate_altitude);
+        detector_add_alt(&detector, (struct altitude_sample *)&calculate_altitude);
         orb_publish(ORB_ID(fusion_altitude), altitude_fd, &calculated_altitude);
         /* Do some processing or fusion on this data */
       }
@@ -111,16 +114,17 @@ void *fusion_main(void *arg) {
     len = get_sensor_data(&sensors.accel, accel_data, sizeof(accel_data));
     if (len > 0) {
       for (int i = 0; i < (len / sizeof(struct sensor_accel)); i++) {
-        calculated_altitude = calculate_accel_magnitude(&accel_data[i]);
-        detector_add_accel(detector, (struct accel_sample *)&accel_data);
+        calculated_accel_mag = calculate_accel_magnitude(&accel_data[i]);
+        detector_add_accel(&detector, (struct accel_sample *)&calculated_accel_mag);
       }
     }
 
     /* Check if we should skip detection, so that the detector can get some data to work with first */
     if (time_lockout) {
       if (orb_absolute_time() > enable_time) {
-        float elevation = detector_get_alt(detector);
-        detector_set_elevation(elevation);
+        float elevation = detector_get_alt(&detector);
+        // Allow the detector to set its own elevation
+        // detector_set_elevation(&detector, elevation);
         state_set_elevation(state, elevation * 1000); // Convert to millimeters
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
         printf("Time lockout on detection is up, setting new landed elevation to %fm above sea level\n", elevation);
@@ -132,14 +136,14 @@ void *fusion_main(void *arg) {
     }
 
     /* Run detection. Potentially run periodically instead of every update */
-    switch(detector_detect(detector)) {
+    switch(detector_detect(&detector)) {
       case DETECTOR_AIRBORNE_EVENT:
         /* Make sure we're in the idle state when going to airborne */
         state_get_flightstate(state, &flight_state);
         if (flight_state == STATE_IDLE) {
           state_set_flightstate(state, STATE_AIRBORNE);
           state_set_flightsubstate(state, SUBSTATE_ASCENT);
-          detector_set_state(STATE_AIRBORNE, SUBSTATE_ASCENT);
+          detector_set_state(&detector, STATE_AIRBORNE, SUBSTATE_ASCENT);
         }
         break;
       case DETECTOR_APOGEE_EVENT:
@@ -147,20 +151,20 @@ void *fusion_main(void *arg) {
         state_get_flightstate(state, &flight_state);
         if (flight_state == STATE_AIRBORNE) {
           state_set_flightsubstate(state, SUBSTATE_DESCENT);
-          detector_set_state(STATE_AIRBORNE, SUBSTATE_DESCENT);
+          detector_set_state(&detector, STATE_AIRBORNE, SUBSTATE_DESCENT);
         } else {
-          detector_set_state(STATE_AIRBORNE, SUBSTATE_ASCENT);
+          detector_set_state(&detector, STATE_AIRBORNE, SUBSTATE_ASCENT);
         }
         break;
       case DETECTOR_LANDING_EVENT:
         /* We can set to landing from anywhere */
         state_set_flightstate(state, STATE_LANDED);
-        detector_set_state(STATE_LANDED, SUBSTATE_UNKNOWN);
+        detector_set_state(&detector, STATE_LANDED, SUBSTATE_UNKNOWN);
         /* Update our elevation so that we don't get false readings in IDLE and detect liftoff again */
-        float elevation = detector_get_alt(detector);
-        detector_set_elevation(detector, elevation)
+        float elevation = detector_get_alt(&detector);
+        detector_set_elevation(&detector, elevation);
         /* Also set the state in case we lose power, so we know where the ground level is */
-        state_set_elevation(state, elevation * 1000) // Convert to millimeters
+        state_set_elevation(state, elevation * 1000); // Convert to millimeters
         break;
       default:
         /* Includes DETECTOR_NO_EVENT

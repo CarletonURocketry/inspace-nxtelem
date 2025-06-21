@@ -68,7 +68,8 @@ struct detector {
   struct alt_filter alts;     /* Filtering for altitude data */
   struct accel_filter accels; /* Filtering for acceleration data */
 
-  uint64_t current_time;       /* The time of the most recent update to the detector */
+  uint64_t init_time;          /* The time the detector was first used in microseconds*/
+  uint64_t current_time;       /* The time of the most recent update to the detector in microseconds */
   uint64_t last_alt_update;    /* The time the guess of the current altitude was made in microseconds */
   uint64_t last_accel_update;  /* The time the guess of the current accleration was made in microseconds */
   float current_alt;           /* Best guess of the current altitude in meters */
@@ -81,18 +82,19 @@ struct detector {
   float alt_window_min;       /* The minimum altitude recently recorded */
   float alt_window_duration;  /* The minimum of the timestamps of recent_min/max_alt */
 
+  int elevation_set;               /* If the elevation has been set or not */
   float elevation;                 /* The altitude at landing or a sensible default in meters */
   enum flight_state_e state;       /* The flight state */
   enum flight_substate_e substate; /* The flight substate */
 };
 
-void detector_init(struct detector *detector, rocket_state_t initial_state);
+void detector_init(struct detector *detector, uint64_t time);
 void detector_add_alt(struct detector *detector, struct altitude_sample *sample);
 void detector_add_accel(struct detector *detector, struct accel_sample *sample);
 float detector_get_alt(struct detector *detector);
 float detector_get_accel(struct detector *detector);
 void detector_set_state(struct detector *detector, enum flight_state_e state, enum flight_substate_e substate);
-void detector_set_elevation(struct detector *detector, uint32_t elevation);
-enum detector_event detector_detect(struct detector *detector, enum flight_state_e state);
+void detector_set_elevation(struct detector *detector, float elevation);
+enum detector_event detector_detect(struct detector *detector);
 
 #endif /* _DETECTOR_H_ */

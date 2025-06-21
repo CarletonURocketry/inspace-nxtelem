@@ -33,8 +33,10 @@ typedef struct {
 
 int state_init(rocket_state_t *state);
 
-int state_set_flightstate(rocket_state_t *state);
-int state_get_flightstate(rocket_state_t *state);
+int state_set_flightstate(rocket_state_t *state,
+                          enum flight_state_e flight_state);
+int state_get_flightstate(rocket_state_t *state,
+                          enum flight_state_e *flight_state);
 
 int state_set_flightsubstate(rocket_state_t *state,
                              enum flight_substate_e flight_substate);

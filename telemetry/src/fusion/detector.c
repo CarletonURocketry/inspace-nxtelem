@@ -26,6 +26,9 @@
 /* The accel above which we will not detect an apogee event in m/s^2 */
 #define APOGEE_ACCEL_THRESHOLD 15.0f
 
+/* The time on after initialization to take an altitude reading and use as the maximum landing altitude, in microseconds */
+#define INIT_ELEVATION_DELAY 100000 /* 0.1 seconds in microseconds */
+
 /**
  * Initialize a median filter, providing backing arrays for the filter
  * 
@@ -244,14 +247,15 @@ static int detector_is_apogee(struct detector *detector) {
  *
  * @param detector The detector to initialize
  */
-void detector_init(struct detector *detector) {
+void detector_init(struct detector *detector, uint64_t time) {
   median_filter_init(&detector->alts.median, detector->alts.median_backing_sorted, detector->alts.median_backing_time_ordered, ALTITUDE_MEDIAN_FILTER_SIZE);
   average_filter_init(&detector->alts.average, detector->alts.average_backing, ALTITUDE_AVERAGE_FILTER_SIZE);
 
   median_filter_init(&detector->accels.median, detector->accels.median_backing_sorted, detector->accels.median_backing_time_ordered, ACCEL_MEDIAN_FILTER_SIZE);
   average_filter_init(&detector->accels.average, detector->accels.average_backing, ACCEL_AVERAGE_FILTER_SIZE);
 
-  detector->current_time = 0;
+  detector->init_time = time;
+  detector->current_time = time;
   detector->last_alt_update = 0;
   detector->last_accel_update = 0;
   detector->current_alt = 0.0f;
@@ -264,8 +268,11 @@ void detector_init(struct detector *detector) {
   detector->alt_window_min = FLT_MAX;
   detector->alt_window_duration = 0.0f;
 
-  /* These should ideally be set manually before the detector is used, but these defaults may work */
+  /* This can be set manually, or will be set by the detector automatically */
+  detector->elevation_set = 0;
   detector->elevation = 0.0f;
+
+  /* These should ideally be set manually before the detector is used, but these defaults may work */
   detector->state = STATE_AIRBORNE;
   detector->substate = SUBSTATE_UNKNOWN;
 }
@@ -277,6 +284,11 @@ void detector_init(struct detector *detector) {
  * @param sample The altitude sample to use
  */
 void detector_add_alt(struct detector *detector, struct altitude_sample *sample) {
+  /* Time decreasing would not make sense in the detector, but possible with order of provided samples */
+  if (sample->time > detector->current_time) {
+    detector->current_time = sample->time;
+  }
+
   // Filtering step to prevent false readings
   float median = median_filter_add(&detector->alts.median, sample->altitude);
   detector->current_alt = average_filter_add(&detector->alts.average, median);
@@ -290,11 +302,16 @@ void detector_add_alt(struct detector *detector, struct altitude_sample *sample)
   /* Could limit use of the altitude window to states that need it */
   detector_update_alt_window(detector, detector->current_alt, sample->time - detector->last_alt_update);
 
-  detector->last_alt_update = sample->time;
-  /* Time decreasing would not make sense in the detector, but possible with order of provided samples */
-  if (sample->time > detector->current_time) {
-    detector->current_time = sample->time;
+  /* If we just powered on and elevation hasn't been set */
+  if (!detector->elevation_set) {
+    if (detector->current_time - detector->init_time > INIT_ELEVATION_DELAY) {
+      /* Hopefully, the filters should be full and this should be a very sensible value */
+      detector->elevation = detector->current_alt;
+      detector->elevation_set = 1;
+    }
   }
+
+  detector->last_alt_update = sample->time;
 }
 
 /**
@@ -314,14 +331,14 @@ float detector_get_alt(struct detector *detector) {
  * @param sample the altitude sample to use
  */
 void detector_add_accel(struct detector *detector, struct accel_sample *sample) {
+  if (sample->time > detector->current_time) {
+    detector->current_time = sample->time;
+  }
   /* Note - get rid of the sign on the provided acceleration value since in case it has one */
   float median = median_filter_add(&detector->accels.median, fabs(sample->acceleration));
   detector->current_accel = average_filter_add(&detector->accels.average, median);
 
   detector->last_accel_update = sample->time;
-  if (sample->time > detector->current_time) {
-    detector->current_time = sample->time;
-  }
 }
 
 /**
@@ -346,6 +363,10 @@ enum detector_event detector_detect(struct detector *detector) {
    */
   switch (detector->state) {
     case STATE_IDLE:
+      if (!detector->elevation_set) {
+        /* Don't detect until we have a filtered altitude to use as our landed altitutde */
+        return DETECTOR_NO_EVENT;
+      }
       if (detector_is_airborne(detector)) {
         return DETECTOR_AIRBORNE_EVENT;
       }
@@ -390,15 +411,13 @@ void detector_set_state(struct detector *detector, enum flight_state_e state, en
 }
 
 /**
- * Set the elevation (landing altitude) of the detector. This should be set before using the detector, perferrably using
- * a filtered altitude from the detector. Otherwise, a default can be used instead
+ * Set the elevation (landing altitude) of the detector. The detector will take a reading after a certain amount 
+ * of time if the elevation isn't set
  *
- * @param detector 
- * @param elevation 
+ * @param detector The detector to use
+ * @param elevation The elevation to set, which should be collected anytime the rocket is in a new location
  */
 void detector_set_elevation(struct detector *detector, float elevation) {
-  /* We may want to change how setting elevation is done eventually, and potentially just change it to be power-on altitude
-   * This might slow down detection, but could be a lot more reliable
-   */
+  detector->elevation_set = 1;
   detector->elevation = elevation;
 }
