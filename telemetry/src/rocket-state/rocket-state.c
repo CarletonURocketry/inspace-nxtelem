@@ -16,12 +16,19 @@ static const char *FLIGHT_STATES[] = {
 };
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
 
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+static const char *FLIGHT_SUBSTATES[] = {
+    [SUBSTATE_UNKNOWN] = "SUBSTATE_UNKNOWN",
+    [SUBSTATE_ASCENT] = "SUBSTATE_ASCENT",
+    [SUBSTATE_DESCENT] = "SUBSTATE_DESCENT",
+};
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+
 /* A struct that defines how the non-volatile storage medium will store information */
 
 struct nv_storage {
   uint8_t flight_state;     /* The flight state of the rocket, of type enum flight_state_e (a uint8_t so only one byte stored) */
   uint8_t flight_substate;  /* The flight substate of the rocket, of type enum flight_substate_e (a uint8_t so only one byte stored)*/
-  int32_t launch_elevation; /* The measured altitude above sea level when at at ground level, in millimeters (signed in case of a constant error) */
   uint8_t crc;              /* A 8 bit cyclic redundancy check to make sure data is valid before being used */
 } __attribute__((packed, aligned(1)));
 
@@ -133,11 +140,9 @@ int state_init(rocket_state_t *state) {
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
     atomic_store(&state->state, STATE_AIRBORNE);
     atomic_store(&state->substate, SUBSTATE_UNKNOWN);
-    atomic_store(&state->elevation, DEFAULT_ELEVATION_MM);
   } else {
     atomic_store(&state->state, contents.flight_state);
     atomic_store(&state->substate, contents.flight_substate);
-    atomic_store(&state->elevation, contents.launch_elevation);
   }
   return err;
 }
@@ -150,16 +155,12 @@ static int save_state(rocket_state_t *state) {
   struct nv_storage contents;
   contents.flight_state = atomic_load(&state->state);
   contents.flight_substate = atomic_load(&state->substate);
-  contents.launch_elevation = atomic_load(&state->elevation);
   int err = nv_write(&contents);
   if (err < 0) {
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
     fprintf(stderr, "Couldn't write flight state to nv storage, continuing anyways\n");
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
   }
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-  printf("Flight state changed to %s\n", FLIGHT_STATES[flight_state]);
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
   // Store the value last, so we won't begin using the new state unless we're sure of power-safety
   return err;
 }
@@ -172,6 +173,9 @@ static int save_state(rocket_state_t *state) {
 int state_set_flightstate(rocket_state_t *state,
                           enum flight_state_e flight_state) {
   atomic_store(&state->state, flight_state);
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+  printf("Flight state changed to %s\n", FLIGHT_STATES[flight_state]);
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
   int err = save_state(state);
   return err;
 }
@@ -195,6 +199,9 @@ int state_get_flightstate(rocket_state_t *state,
 int state_set_flightsubstate(rocket_state_t *state,
                              enum flight_substate_e flight_substate) {
   atomic_store(&state->substate, flight_substate);
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+  printf("Flight substate changed to %s\n", FLIGHT_SUBSTATES[flight_substate]);
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
   int err = save_state(state);
   return err;
 }
@@ -207,26 +214,5 @@ int state_set_flightsubstate(rocket_state_t *state,
 int state_get_flightsubstate(rocket_state_t *state,
                              enum flight_substate_e *flight_substate) {
   *flight_substate = atomic_load(&state->substate);
-  return 0;
-}
-
-/* Set the elevation
- * @param state The rocket state to modify
- * @param elevation The new elevation to set
- * @return 0 on success, or an error code if writing to NV storage failed
- */
-int state_set_elevation(rocket_state_t *state, int32_t elevation) {
-  atomic_store(&state->elevation, elevation);
-  int err = save_state(state);
-  return err;
-}
-
-/* Get the current elevation
- * @param state The rocket state to get the elevation from
- * @param elevation A pointer in which to hold the elevation
- * @return 0 on success, error code on failure
- */
-int state_get_elevation(rocket_state_t *state, int32_t *elevation) {
-  *elevation = atomic_load(&state->elevation);
   return 0;
 }

@@ -62,12 +62,12 @@ static void test_valid_state__sent_to_state(void) {
 static void check_set_state(enum flight_state_e flight_state) {
   clear_rocket_state();
   rocket_state_t state;
-  TEST_ASSERT_NOT_EQUAL(0, state_init(&state));
-  TEST_ASSERT_EQUAL(0, state_set_flightstate(&state, flight_state));
+  TEST_ASSERT_NOT_EQUAL_MESSAGE(0, state_init(&state), "Could not initialize the flight state");
+  TEST_ASSERT_EQUAL_MESSAGE(0, state_set_flightstate(&state, flight_state), "Could not set the flight state");
 
   enum flight_state_e new_state;
-  TEST_ASSERT_EQUAL(0, state_get_flightstate(&state, &new_state));
-  TEST_ASSERT_EQUAL(flight_state, new_state);
+  TEST_ASSERT_EQUAL_MESSAGE(0, state_get_flightstate(&state, &new_state), "Could not load the flight state");
+  TEST_ASSERT_EQUAL_MESSAGE(flight_state, new_state, "The wrong flight state was loaded");
 }
 
 /* Test if we can set flying state and load it */

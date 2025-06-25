@@ -234,8 +234,11 @@ static void reset_block_count(collection_info_t *collection) {
   }
 }
 
+
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
 /**
  * Prints the current count for each type of block in the collection
+ *
  * @param collection Information about collected data
  */
 static void print_block_count(collection_info_t *collection) {
@@ -243,6 +246,7 @@ static void print_block_count(collection_info_t *collection) {
     printf("Count for %02x: %d\n", i, collection->block_count[i]);
   }
 }
+#endif /* CONFIG_INSPACE_TELEMETRY_DEBUG */
 
 /**
  * Adds a block to the current packet being worked on

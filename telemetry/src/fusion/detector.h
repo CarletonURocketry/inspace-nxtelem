@@ -43,9 +43,9 @@ struct average_filter {
 };
 
 struct alt_filter {
-  struct altitude_sample median_backing_sorted[ALTITUDE_MEDIAN_FILTER_SIZE];
-  struct altitude_sample median_backing_time_ordered[ALTITUDE_MEDIAN_FILTER_SIZE];
-  struct altitude_sample average_backing[ALTITUDE_AVERAGE_FILTER_SIZE];
+  float median_backing_sorted[ALTITUDE_MEDIAN_FILTER_SIZE];
+  float median_backing_time_ordered[ALTITUDE_MEDIAN_FILTER_SIZE];
+  float average_backing[ALTITUDE_AVERAGE_FILTER_SIZE];
   struct median_filter median;   /* Median filter for altitude */
   struct average_filter average; /* Average filter for altitude */
 };
@@ -56,9 +56,9 @@ struct accel_sample {
 };
 
 struct accel_filter {
-  struct accel_sample median_backing_sorted[ACCEL_MEDIAN_FILTER_SIZE];
-  struct accel_sample median_backing_time_ordered[ACCEL_MEDIAN_FILTER_SIZE];
-  struct accel_sample average_backing[ACCEL_AVERAGE_FILTER_SIZE];
+  float median_backing_sorted[ACCEL_MEDIAN_FILTER_SIZE];
+  float median_backing_time_ordered[ACCEL_MEDIAN_FILTER_SIZE];
+  float average_backing[ACCEL_AVERAGE_FILTER_SIZE];
   struct median_filter median;   /* Median filter for acceleration */
   struct average_filter average; /* Average filter for acceleration */
 };
@@ -96,5 +96,6 @@ float detector_get_accel(struct detector *detector);
 void detector_set_state(struct detector *detector, enum flight_state_e state, enum flight_substate_e substate);
 void detector_set_elevation(struct detector *detector, float elevation);
 enum detector_event detector_detect(struct detector *detector);
+
 
 #endif /* _DETECTOR_H_ */

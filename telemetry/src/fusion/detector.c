@@ -29,6 +29,10 @@
 /* The time on after initialization to take an altitude reading and use as the maximum landing altitude, in microseconds */
 #define INIT_ELEVATION_DELAY 100000 /* 0.1 seconds in microseconds */
 
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+#include <stdio.h>
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+
 /**
  * Initialize a median filter, providing backing arrays for the filter
  * 
@@ -342,7 +346,8 @@ void detector_add_accel(struct detector *detector, struct accel_sample *sample) 
 }
 
 /**
- * Get the current acceleration value being used by the detector, after filtering
+ * Get the current acceleration value being used by the detector, after filtering. Note: this
+ * doesn't make use of altitude data. Only direct acceleration measurements are used
  * 
  * @param detector The detector to use
  * @return The current acceleration that the detector is using
@@ -362,39 +367,52 @@ enum detector_event detector_detect(struct detector *detector) {
    * might not make sense
    */
   switch (detector->state) {
-    case STATE_IDLE:
+    case STATE_IDLE: {
       if (!detector->elevation_set) {
         /* Don't detect until we have a filtered altitude to use as our landed altitutde */
         return DETECTOR_NO_EVENT;
       }
       if (detector_is_airborne(detector)) {
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+        printf("Detected airborne event from the idle state\n");
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
         return DETECTOR_AIRBORNE_EVENT;
       }
+    } break;
     case STATE_AIRBORNE: {
       switch (detector->substate) {
         case SUBSTATE_UNKNOWN:
           /* If we aren't sure what state we're really in, make sure we haven't landed */
           if (detector_is_landed(detector)) {
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+            printf("Detected a landing event from the airborne state, unknown substate\n");
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
             return DETECTOR_LANDING_EVENT;
           }
           /* Fall through */
         case SUBSTATE_ASCENT:
           if (detector_is_apogee(detector)) {
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+            printf("Detected apogee from the airborne state\n");
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
             return DETECTOR_APOGEE_EVENT;
           }
           break;
         case SUBSTATE_DESCENT:
           if (detector_is_landed(detector)) {
+#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
+            printf("Detected a landing event from the descent state\n");
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
             return DETECTOR_LANDING_EVENT;
           }
           break;
       }
-      break;
-    }
-
+    } break;
     default:
-      return DETECTOR_NO_EVENT;
+      /* Ignore states like landing */
+      break;
   }
+  return DETECTOR_NO_EVENT;
 }
 
 /**

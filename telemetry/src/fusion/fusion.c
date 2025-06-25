@@ -28,15 +28,11 @@
 /* Constant for the conversion from Celsius to Kelvin */
 #define KELVIN 273
 
-// TODO - remove this, but potentially keep the time lockout
-/* The amount of time to not perform detection for (if the idle state is loaded)
- * so that the detector can have a decent amount of data to work with. Otherwise,
- * the first few data points will have nothing to compare against and could be very
- * noisy. After this time, also set the default elevation. If the rocket turns out to
- * actually be flying this whole time, we'll likely detect it immediately after the new
- * launch elevation is set. In loaded states other than idle, noise shouldn't be a large concern
+/* Don't do any detection until we have time to collect some data so we can filter out noise.
+ * Although this would add a delay to the detection of events if the rocket regains power mid-flight,
+ * it is probably worth doing
  */
-#define DETECTION_INIT_SETTLE_TIME 100000
+#define DETECTION_INIT_LOCKOUT 100000
 
 /* UORB declarations */
 #if defined(CONFIG_DEBUG_UORB)
@@ -59,11 +55,9 @@ void *fusion_main(void *arg) {
   rocket_state_t *state = ((struct fusion_args *)arg)->state;
   enum flight_state_e flight_state;
   enum flight_substate_e flight_substate;
-  int32_t init_elevation;
 
   state_get_flightstate(state, &flight_state);
   state_get_flightsubstate(state, &flight_substate);
-  state_get_elevation(state, &init_elevation);
 
   /* Input sensors, may want to directly read instead */
   struct uorb_inputs sensors;
@@ -92,12 +86,9 @@ void *fusion_main(void *arg) {
 
   /* Perform fusion on sensor data endlessly */
 
-  /* The time included with data is based on the uORB time so use that */
-  int time_lockout = 0;
-  uint64_t enable_time = orb_absolute_time() + DETECTION_INIT_SETTLE_TIME;
-  if (flight_state == STATE_IDLE) {
-    time_lockout = 1;
-  }
+  /* The time included with data is based on the uORB time so use that to calculate when detection should be turned on */
+  int detection_lockout = 1;
+  uint64_t detection_enable_time = orb_absolute_time() + DETECTION_INIT_LOCKOUT;
 
   for(;;) {
     /* Wait for new data */
@@ -108,7 +99,6 @@ void *fusion_main(void *arg) {
         calculated_altitude = calculate_altitude(&baro_data[i]);
         detector_add_alt(&detector, (struct altitude_sample *)&calculate_altitude);
         orb_publish(ORB_ID(fusion_altitude), altitude_fd, &calculated_altitude);
-        /* Do some processing or fusion on this data */
       }
     }
     len = get_sensor_data(&sensors.accel, accel_data, sizeof(accel_data));
@@ -119,25 +109,16 @@ void *fusion_main(void *arg) {
       }
     }
 
-    /* Check if we should skip detection, so that the detector can get some data to work with first */
-    if (time_lockout) {
-      if (orb_absolute_time() > enable_time) {
-        float elevation = detector_get_alt(&detector);
-        // Allow the detector to set its own elevation
-        // detector_set_elevation(&detector, elevation);
-        state_set_elevation(state, elevation * 1000); // Convert to millimeters
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-        printf("Time lockout on detection is up, setting new landed elevation to %fm above sea level\n", elevation);
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
-        time_lockout = 0;
-      } else {
-        continue;
-      }
+    /* Skip detection of events for a small amount of time */
+    if (detection_lockout && (orb_absolute_time() > detection_enable_time)) {
+      detection_lockout = 0;
+    } else {
+      continue;
     }
 
     /* Run detection. Potentially run periodically instead of every update */
     switch(detector_detect(&detector)) {
-      case DETECTOR_AIRBORNE_EVENT:
+      case DETECTOR_AIRBORNE_EVENT: {
         /* Make sure we're in the idle state when going to airborne */
         state_get_flightstate(state, &flight_state);
         if (flight_state == STATE_IDLE) {
@@ -145,8 +126,9 @@ void *fusion_main(void *arg) {
           state_set_flightsubstate(state, SUBSTATE_ASCENT);
           detector_set_state(&detector, STATE_AIRBORNE, SUBSTATE_ASCENT);
         }
-        break;
-      case DETECTOR_APOGEE_EVENT:
+      } break;
+
+      case DETECTOR_APOGEE_EVENT: {
         /* Make sure we're airborne already before setting to descent */
         state_get_flightstate(state, &flight_state);
         if (flight_state == STATE_AIRBORNE) {
@@ -155,17 +137,18 @@ void *fusion_main(void *arg) {
         } else {
           detector_set_state(&detector, STATE_AIRBORNE, SUBSTATE_ASCENT);
         }
-        break;
-      case DETECTOR_LANDING_EVENT:
+      } break;
+
+      case DETECTOR_LANDING_EVENT: {
         /* We can set to landing from anywhere */
         state_set_flightstate(state, STATE_LANDED);
         detector_set_state(&detector, STATE_LANDED, SUBSTATE_UNKNOWN);
+
         /* Update our elevation so that we don't get false readings in IDLE and detect liftoff again */
         float elevation = detector_get_alt(&detector);
         detector_set_elevation(&detector, elevation);
-        /* Also set the state in case we lose power, so we know where the ground level is */
-        state_set_elevation(state, elevation * 1000); // Convert to millimeters
-        break;
+      } break;
+
       default:
         /* Includes DETECTOR_NO_EVENT
          * The landed to idle state transition is done by the thread responsible for copying out the flight data
