@@ -43,17 +43,18 @@ ORB_DEFINE(fusion_altitude, struct fusion_altitude, 0);
 struct fusion_altitude calculate_altitude(struct sensor_baro *baro_data);
 
 void *fusion_main(void *arg) {
+
   /* Input sensors, may want to directly read instead */
+
   struct uorb_inputs sensors;
   clear_uorb_inputs(&sensors);
   setup_sensor(&sensors.baro, orb_get_meta("sensor_baro"));
   struct sensor_baro baro_data[BARO_INPUT_BUFFER_SIZE];
+  struct fusion_altitude calculated_altitude;
 
   /* Output sensors */ 
 
-  /* Currently publishing blank data to start, might be better to try and advertise only on first fusioned data */
-  struct fusion_altitude calculated_altitude = {.altitude = 0, .timestamp = orb_absolute_time()};
-  int altitude_fd = orb_advertise_multi_queue(ORB_ID(fusion_altitude), &calculated_altitude, NULL, ALT_FUSION_BUFFER);
+  int altitude_fd = orb_advertise_multi_queue(ORB_ID(fusion_altitude), NULL, NULL, ALT_FUSION_BUFFER);
   if (altitude_fd < 0) {
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
     fprintf(stderr, "Fusion could not advertise altitude topic: %d\n", altitude_fd);
