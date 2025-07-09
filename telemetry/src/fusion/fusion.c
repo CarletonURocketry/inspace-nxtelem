@@ -1,14 +1,11 @@
-#include <pthread.h>
-#include <nuttx/sensors/sensor.h>
-#include <sys/ioctl.h>
 #include <math.h>
+#include <nuttx/sensors/sensor.h>
+#include <pthread.h>
+#include <sys/ioctl.h>
 
 #include "../sensors/sensors.h"
+#include "../syslogging.h"
 #include "fusion.h"
-
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-#include <stdio.h>
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
 
 /* The pressure at sea level in millibar*/
 
@@ -30,12 +27,13 @@
 #define KELVIN 273
 
 /* UORB declarations */
+
 #if defined(CONFIG_DEBUG_UORB)
 static const char fusion_alt_format[] = "fusioned altitude - timestamp:%" PRIu64 ",altitude:%hf";
 ORB_DEFINE(fusion_altitude, struct fusion_altitude, fusion_alt_format);
 #else
 ORB_DEFINE(fusion_altitude, struct fusion_altitude, 0);
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+#endif
 
 /* Buffers for inputs, best to match to the size of the internal sensor buffers */
 #define BARO_INPUT_BUFFER_SIZE 5
@@ -44,37 +42,35 @@ struct fusion_altitude calculate_altitude(struct sensor_baro *baro_data);
 
 void *fusion_main(void *arg) {
 
-  /* Input sensors, may want to directly read instead */
+    /* Input sensors, may want to directly read instead */
 
-  struct uorb_inputs sensors;
-  clear_uorb_inputs(&sensors);
-  setup_sensor(&sensors.baro, orb_get_meta("sensor_baro"));
-  struct sensor_baro baro_data[BARO_INPUT_BUFFER_SIZE];
-  struct fusion_altitude calculated_altitude;
+    struct uorb_inputs sensors;
+    clear_uorb_inputs(&sensors);
+    setup_sensor(&sensors.baro, orb_get_meta("sensor_baro"));
+    struct sensor_baro baro_data[BARO_INPUT_BUFFER_SIZE];
+    struct fusion_altitude calculated_altitude;
 
-  /* Output sensors */ 
+    /* Output sensors */
 
-  int altitude_fd = orb_advertise_multi_queue(ORB_ID(fusion_altitude), NULL, NULL, ALT_FUSION_BUFFER);
-  if (altitude_fd < 0) {
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-    fprintf(stderr, "Fusion could not advertise altitude topic: %d\n", altitude_fd);
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
-  }
-
-  /* Perform fusion on sensor data endlessly */
-
-  for(;;) {
-    /* Wait for new data */
-    poll_sensors(&sensors);
-    int len = get_sensor_data(&sensors.baro, baro_data, sizeof(baro_data));
-    if (len > 0) {
-      for (int i = 0; i < (len / sizeof(struct sensor_baro)); i++) {
-        calculated_altitude = calculate_altitude(&baro_data[i]);
-        orb_publish(ORB_ID(fusion_altitude), altitude_fd, &calculated_altitude);
-        /* Do some processing or fusion on this data */
-      }
+    int altitude_fd = orb_advertise_multi_queue(ORB_ID(fusion_altitude), NULL, NULL, ALT_FUSION_BUFFER);
+    if (altitude_fd < 0) {
+        inerr("Fusion could not advertise altitude topic: %d\n", altitude_fd);
     }
-  }
+
+    /* Perform fusion on sensor data endlessly */
+
+    for (;;) {
+        /* Wait for new data */
+        poll_sensors(&sensors);
+        int len = get_sensor_data(&sensors.baro, baro_data, sizeof(baro_data));
+        if (len > 0) {
+            for (int i = 0; i < (len / sizeof(struct sensor_baro)); i++) {
+                calculated_altitude = calculate_altitude(&baro_data[i]);
+                orb_publish(ORB_ID(fusion_altitude), altitude_fd, &calculated_altitude);
+                /* Do some processing or fusion on this data */
+            }
+        }
+    }
 }
 
 /**
@@ -82,10 +78,10 @@ void *fusion_main(void *arg) {
  * @param baro_data The barometer data to use for the calculation
  */
 struct fusion_altitude calculate_altitude(struct sensor_baro *baro_data) {
-  struct fusion_altitude output;
-  output.timestamp = baro_data->timestamp;
+    struct fusion_altitude output;
+    output.timestamp = baro_data->timestamp;
 
-  /* Assume barometric reading is temperature adjusted */
-  output.altitude = -(GAS_CONSTANT * KELVIN) / (MOLAR_MASS * GRAVITY) * log(baro_data->pressure / SEA_PRESSURE);
-  return output;
+    /* Assume barometric reading is temperature adjusted */
+    output.altitude = -(GAS_CONSTANT * KELVIN) / (MOLAR_MASS * GRAVITY) * log(baro_data->pressure / SEA_PRESSURE);
+    return output;
 }
