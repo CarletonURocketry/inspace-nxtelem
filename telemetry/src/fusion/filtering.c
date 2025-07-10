@@ -6,17 +6,17 @@
  *
  * @param to_remove The value to remove
  * @param sorted The sorted array to remove the value from
- * @param size The number of elements in the sorted array
+ * @param num_elements The number of elements in the sorted array. The array will have one less element afterwards
  */
-static void remove_from_sorted(float to_remove, float *sorted, int size) {
+static void remove_from_sorted(float to_remove, float *sorted, int num_elements) {
   int remove_index = 0;
-  for (; remove_index < size; remove_index++) {
+  for (; remove_index < num_elements; remove_index++) {
     if (sorted[remove_index] == to_remove) {
       break;
     }
   }
   // Remove the oldest value by shifting to the left
-  for (; remove_index < size - 1; remove_index++) {
+  for (; remove_index < num_elements - 1; remove_index++) {
     sorted[remove_index] = sorted[remove_index + 1];
   }
 }
@@ -25,19 +25,19 @@ static void remove_from_sorted(float to_remove, float *sorted, int size) {
  * Insert a value into a sorted array, shifting elements right after the insertion point
  *
  * @param value The value to insert
- * @param sorted The sorted array to insert a value into
- * @param size The number of elements in the sorted array
+ * @param sorted The sorted array to insert a value into, which must have a capacity of size + 1
+ * @param num_elements The number of elements in the sorted array
  */
-static void insert_into_sorted(float value, float *sorted, int size) {
+static void insert_into_sorted(float value, float *sorted, int num_elements) {
   // Find position to insert the new value
   int insert_index = 0;
-  for (; insert_index < size; insert_index++) {
+  for (; insert_index < num_elements; insert_index++) {
     if (sorted[insert_index] > value) {
       break;
     }
   }
   // Shift elements to the right after the insertion point
-  for (int i = size - 1; i >= insert_index; i--) {
+  for (int i = num_elements - 1; i >= insert_index; i--) {
     sorted[i + 1] = sorted[i];
   }
   sorted[insert_index] = value;
@@ -128,19 +128,20 @@ void window_criteria_init(struct window_criteria *window, float target_size, uin
  * @param since_update The time since the last update to the altitude window, in microseconds
  */
 void window_criteria_add(struct window_criteria *window, float new_value, uint64_t since_update) {
+    if (new_value > window->max) {
+        window->max = new_value;
+    } else if (new_value < window->min) {
+        window->min = new_value;
+    }
+
     // If the window is too large, reset it
     if (window->max - window->min > window->target_size) {
         window->max = new_value;
         window->min = new_value;
         window->duration = 0;
-        return;
-    } else if (new_value > window->max) {
-        // If we exceed the previous maximum or minimum, reset the time the window has been valid for
-        window->max = new_value;
-    } else if (new_value < window->min) {
-        window->min = new_value;
+    } else {
+        window->duration += since_update;
     }
-    window->duration += since_update;
 }
 
 /**

@@ -9,7 +9,7 @@
 #define STALE_MEASUREMENT_TIME 1000000 /* 1 second in microseconds */
 
 /* The maximum amount the altitude can change by in meters to consider us landed */
-#define LANDED_ALT_WINDOW_SIZE 10.0f
+#define LANDED_ALT_WINDOW_SIZE 5.0f
 
 /* The time in microseconds that altitude variation must be within LANDED_ALT_WINDOW_SIZE */
 #define LANDED_ALT_WINDOW_DURATION 5000000 /* 5 seconds in microseconds */
