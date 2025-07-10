@@ -14,5 +14,6 @@ int main(void) {
   test_rocket_state();
   test_detection();
   test_circular_buffer();
+  test_filtering();
   return UNITY_END();
 }
