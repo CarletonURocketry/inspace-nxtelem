@@ -11,8 +11,8 @@
 /* The maximum amount the altitude can change by in meters to consider us landed */
 #define LANDED_ALT_WINDOW_SIZE 10.0f
 
-/* The time in seconds that altitude variation must be within LANDED_ALT_WINDOW_SIZE */
-#define LANDED_ALT_WINDOW_DURATION 5.0f
+/* The time in microseconds that altitude variation must be within LANDED_ALT_WINDOW_SIZE */
+#define LANDED_ALT_WINDOW_DURATION 5000000 /* 5 seconds in microseconds */
 
 /* The change in altitude when idle to enter the airborne state in meters */
 #define AIRBORNE_ALT_THRESHOLD 20.0f
@@ -32,146 +32,6 @@
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
 #include <stdio.h>
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
-
-/**
- * Initialize a median filter, providing backing arrays for the filter
- * 
- * @param filter The filter to initialize
- * @param sorted The memory to use as backing for the median filter's sorted array
- * @param time_ordered The memory to use as backing for the median filter's time ordered array
- * @param size The size of the sorted and time_ordered arrays in bytes. They must be the same size
- */
-static void median_filter_init(struct median_filter *filter, float *sorted, float *time_ordered, int size) {
-  filter->size = 0;
-  filter->sorted = sorted;
-  circ_buffer_init(&filter->time_ordered, time_ordered, size, sizeof(float));
-}
-
-/**
- * Remove a value from a sorted array by shifting all elements after the removed one to the left
- *
- * @param to_remove The value to remove
- * @param sorted The sorted array to remove the value from
- * @param size The number of elements in the sorted array
- */
-static void remove_from_sorted(float to_remove, float *sorted, int size) {
-  int remove_index = 0;
-  for (; remove_index < size; remove_index++) {
-    if (sorted[remove_index] == to_remove) {
-      break;
-    }
-  }
-  // Remove the oldest value by shifting to the left
-  for (; remove_index < size - 1; remove_index++) {
-    sorted[remove_index] = sorted[remove_index + 1];
-  }
-}
-
-/**
- * Insert a value into a sorted array, shifting elements right after the insertion point
- *
- * @param value The value to insert
- * @param sorted The sorted array to insert a value into, which has space for size + 1 elements
- * @param size The number of elements in the sorted array
- */
-static void insert_into_sorted(float value, float *sorted, int size) {
-  // Find position to insert the new value
-  int insert_index = 0;
-  for (; insert_index < size; insert_index++) {
-    if (sorted[insert_index] > value) {
-      break;
-    }
-  }
-  // Shift elements to the right after the insertion point
-  for (int i = size; i >= insert_index; i--) {
-    sorted[i + 1] = sorted[i];
-  }
-  sorted[insert_index] = value;
-}
-
-/**
- * Add a value to the median filter get the current result of the filter
- *
- * @param filter The filter to add the value to
- * @param new_value The new value to add
- * @return The current result of the median filter
- */
-static float median_filter_add(struct median_filter *filter, float new_value) {
-  float to_remove = 0.0f;
-  if (circ_buffer_push_out(&filter->time_ordered, &new_value, &to_remove)) {
-    remove_from_sorted(to_remove, filter->sorted, filter->size);
-    filter->size--;
-  }
-  insert_into_sorted(new_value, filter->sorted, filter->size);
-  filter->size++;
-  // Return the median (assume odd size)
-  return filter->sorted[filter->size / 2];
-}
-
-/**
- * Initialize a averaging filter
- *
- * @param filter The averaging filter to initialize
- * @param buffer The memory to use as the backing for the averaging filter
- * @param size The size of buffer in bytes
- */
-static void average_filter_init(struct average_filter *filter, float *buffer, int size) {
-  circ_buffer_init(&filter->buffer, buffer, size, sizeof(float));
-  filter->sum = 0.0f;
-}
-
-static float average_filter_add(struct average_filter *filter, float new_value) {
-  float old_value = 0.0f;
-  if (circ_buffer_push_out(&filter->buffer, &new_value, &old_value)) {
-    filter->sum -= old_value;
-  }
-  filter->sum += new_value;
-  return filter->sum / circ_buffer_size(&filter->buffer);
-}
-
-/**
- * Update the altitude window which can be used to detect landing
- *
- * @param detector The detector with the altitude window to update
- * @param new_altitude The altitude measurement to add to the window
- * @param time_since_update The time since the last update to the altitude window
- */
-static void detector_update_alt_window(struct detector *detector, float new_altitude, uint64_t time_since_update) {
-  // If the window is too large, reset it
-  if (detector->alt_window_max - detector->alt_window_min > LANDED_ALT_WINDOW_SIZE) {
-    detector->alt_window_max = new_altitude;
-    detector->alt_window_min = new_altitude;
-    detector->alt_window_duration = 0;
-  }
-  // If we exceed the previous maximum or minimum, reset the time the window has been valid for
-  else if (new_altitude > detector->alt_window_max) {
-    detector->alt_window_max = new_altitude;
-    detector->alt_window_duration = 0;
-  }
-  else if (new_altitude < detector->alt_window_min) {
-    detector->alt_window_min = new_altitude;
-    detector->alt_window_duration = 0;
-  }
-  else {
-    detector->alt_window_duration += time_since_update;
-  }
-}
-
-/**
- * Check if the altitude window satisfies the conditions for landing
- *
- * @param detector The detector with the altitude window to check
- * @return 1 if the altitude window satisfies landing conditions, 0 otherwise
- */
-static int detector_check_alt_window_landed(struct detector *detector) {
-  /* The altitude window makes sure that the maximum variation in altitude over a certain amount of time is
-   * within a certain range. This is the same strategy for detecting landing that AltOS uses, and will prevent
-   * landing detection during ascent and descent. This should be reliable enough to use at any time, provided we
-   * aren't at transonic speeds
-   */
-  return detector->alt_window_max - detector->alt_window_min < LANDED_ALT_WINDOW_SIZE &&
-         detector->alt_window_duration > LANDED_ALT_WINDOW_DURATION;
-}
 
 /**
  * Check if the current altitude is valid and can be used for detection purposes
@@ -226,7 +86,7 @@ static int detector_is_landed(struct detector *detector) {
    * and then check that acceleration is below launch levels. Acceleration check is necessary in case
    * the barometer's readings are unreliable when airborne
    */
-  return detector_alt_valid(detector) && detector_check_alt_window_landed(detector) && 
+  return detector_alt_valid(detector) && window_criteria_satisfied(&detector->alt_window) && 
          detector_accel_valid(detector) && detector_get_accel(detector) < AIRBORNE_ACCEL_THRESHOLD;
 }
 
@@ -258,6 +118,8 @@ void detector_init(struct detector *detector, uint64_t time) {
   median_filter_init(&detector->accels.median, detector->accels.median_backing_sorted, detector->accels.median_backing_time_ordered, ACCEL_MEDIAN_FILTER_SIZE);
   average_filter_init(&detector->accels.average, detector->accels.average_backing, ACCEL_AVERAGE_FILTER_SIZE);
 
+  window_criteria_init(&detector->alt_window, LANDED_ALT_WINDOW_SIZE, LANDED_ALT_WINDOW_DURATION);
+
   detector->init_time = time;
   detector->current_time = time;
   detector->last_alt_update = 0;
@@ -267,10 +129,6 @@ void detector_init(struct detector *detector, uint64_t time) {
 
   detector->apogee = -FLT_MAX;
   detector->apogee_time = 0;
-
-  detector->alt_window_max = -FLT_MAX;
-  detector->alt_window_min = FLT_MAX;
-  detector->alt_window_duration = 0.0f;
 
   /* This can be set manually, or will be set by the detector automatically */
   detector->elevation_set = 0;
@@ -304,7 +162,7 @@ void detector_add_alt(struct detector *detector, struct altitude_sample *sample)
   }
 
   /* Could limit use of the altitude window to states that need it */
-  detector_update_alt_window(detector, detector->current_alt, sample->time - detector->last_alt_update);
+  window_criteria_add(&detector->alt_window, detector->current_alt, sample->time - detector->last_alt_update);
 
   /* If we just powered on and elevation hasn't been set */
   if (!detector->elevation_set) {
