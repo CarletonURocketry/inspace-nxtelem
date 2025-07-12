@@ -4,18 +4,18 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "logging.h"
 #include "../fusion/fusion.h"
-#include "../sensors/sensors.h"
 #include "../packets/packets.h"
 #include <fcntl.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
-#include <ctype.h>
 
 #include <dirent.h>
 #include <time.h>
+#include "../sensors/sensors.h"
+#include "../syslogging.h"
+#include "logging.h"
 
 /* The maximum size of a log file's file name. */
 
@@ -36,14 +36,6 @@
 /* The number of times opening a log file will be attempted */
 
 #define NUM_TIMES_TRY_OPEN 3
-
-/* Macro to print only if debug enabled */
-
-#ifdef CONFIG_INSPACE_TELEMETRY_DEBUG 
-  #define DEBUG_FPRINTF(...) fprintf(__VA_ARGS__);
-#else
-  #define DEBUG_FPRINTF(...)
-#endif
 
 // Private Functions
 
@@ -80,37 +72,37 @@ void *logging_main(void *arg)
   struct timespec base_timespec; // Time that file was last modified
   struct timespec new_timespec;  // Time to check against base_time to see if 30 seconds has passed
 
-  DEBUG_FPRINTF(stdout, "Logging thread started.\n");
+  indebug("Logging thread started.\n");
 
   /* Generate flight log file names using the boot number */
   int max_flight_log_boot_number = find_max_boot_number("flog_boot%d_%d.bin");
-  DEBUG_FPRINTF(stdout, "Previous max boot number: %d\n", max_flight_log_boot_number);
+  indebug("Previous max boot number: %d\n", max_flight_log_boot_number);
 
   if (max_flight_log_boot_number < 0)
   {
-    DEBUG_FPRINTF(stderr, "Error finding max boot number: return (%d)\n", max_flight_log_boot_number);
+    inerr("Error finding max boot number: return (%d)\n", max_flight_log_boot_number);
   }
 
   snprintf(flight_filename1, sizeof(flight_filename1), FLIGHT_FNAME_FMT, max_flight_log_boot_number + 1, 1);
   snprintf(flight_filename2, sizeof(flight_filename2), FLIGHT_FNAME_FMT, max_flight_log_boot_number + 1, 2);
 
-  DEBUG_FPRINTF(stdout, "File 1 name: %s\n", flight_filename1);
-  DEBUG_FPRINTF(stdout, "File 2 name: %s\n", flight_filename2);
+  indebug("File 1 name: %s\n", flight_filename1);
+  indebug("File 2 name: %s\n", flight_filename2);
 
   if (strlen(flight_filename1) > MAX_FILENAME) // Check log 1 filename length
   {
-    DEBUG_FPRINTF(stderr, "Log file 1's name (%s) is longer than the maximum size of characters (%d)\n", flight_filename1, MAX_FILENAME);
+    inerr("Log file 1's name (%s) is longer than the maximum size of characters (%d)\n", flight_filename1, MAX_FILENAME);
   }
 
   if (strlen(flight_filename2) > MAX_FILENAME) // Check log 2 filename length
   {
-    DEBUG_FPRINTF(stderr, "Log file 2's name (%s) is longer than the maximum size of characters (%d)\n", flight_filename2, MAX_FILENAME);
+    inerr("Log file 2's name (%s) is longer than the maximum size of characters (%d)\n", flight_filename2, MAX_FILENAME);
   }
 
   err = try_open_file(&storage_file_1, flight_filename1, "wb+");
   if (err < 0 || storage_file_1 == NULL)
   {
-    DEBUG_FPRINTF(stderr, "Error opening log file 1 (%s): %d\n", flight_filename1, err);
+    inerr("Error opening log file 1 (%s): %d\n", flight_filename1, err);
     pthread_exit(err_to_ptr(err)); // TODO: fail more gracefully
   }
 
@@ -120,7 +112,7 @@ void *logging_main(void *arg)
   if (fd < 0)
   {
     err = errno;
-    DEBUG_FPRINTF(stderr, "Error using fileno: %d\n", err);
+    inerr("Error using fileno: %d\n", err);
     fclose(active_storage_file);
   }
 
@@ -128,7 +120,7 @@ void *logging_main(void *arg)
   if (err)
   {
     err = errno;
-    DEBUG_FPRINTF(stderr, "Error using fstat: %d\n", err);
+    inerr("Error using fstat: %d\n", err);
     fclose(active_storage_file);
   }
 
@@ -141,7 +133,7 @@ void *logging_main(void *arg)
     err = state_get_flightstate(state, &flight_state);
     if (err)
     {
-      DEBUG_FPRINTF(stderr, "Error getting flight state: %d\n", err);
+      inerr("Error getting flight state: %d\n", err);
       fclose(active_storage_file);
       // TODO: figure out fail conditions
     }
@@ -153,37 +145,36 @@ void *logging_main(void *arg)
       
       // Switch between files every 30 seconds
 
-      err = state_wait_for_change(state, &version);
       if (err)
       {
         err = errno;
-        DEBUG_FPRINTF(stderr, "Error during state_wait_for_change: %d\n", err);
+        inerr("Error during state_wait_for_change: %d\n", err);
       }
 
       /* Store current system time as new_timespec */
       if (clock_gettime(CLOCK_REALTIME, &new_timespec) < 0)
       {
         err = errno;
-        DEBUG_FPRINTF(stderr, "Error during clock_gettime: %d\n", err);
+        inerr("Error during clock_gettime: %d\n", err);
       }
-      DEBUG_FPRINTF(stdout, "Time: %d:%ld\n", new_timespec.tv_sec, new_timespec.tv_nsec);
+      indebug("Time: %d:%ld\n", new_timespec.tv_sec, new_timespec.tv_nsec);
 
       double time_diff = timespec_diff(&new_timespec, &base_timespec);
       if (time_diff < 0)
       {
-        DEBUG_FPRINTF(stderr, "Error during timespec_diff (Negative difference returned): %f\n", time_diff);
+        inerr("Error during timespec_diff (Negative difference returned): %f\n", time_diff);
       }
 
       if (time_diff >= 30.0)
       {
-        DEBUG_FPRINTF(stdout, "30 seconds passed\n");
+        indebug("30 seconds passed\n");
 
         // Switch active log file
         err = switch_active_log_file(&active_storage_file, storage_file_1, &storage_file_2, flight_filename2);
         if (err < 0)
         {
           err = errno;
-          DEBUG_FPRINTF(stderr, "Error switching active log file: %d\n", err);
+          inerr("Error switching active log file: %d\n", err);
           pthread_exit(err_to_ptr(err)); // TODO: fail more gracefully
         }
         
@@ -216,32 +207,8 @@ void *logging_main(void *arg)
 
       packet_node_t *next_packet = packet_buffer_get_full(buffer);
       ((pkt_hdr_t *)next_packet->packet)->packet_num = seq_num++;
-      log_packet(storage, next_packet->packet, next_packet->end - next_packet->packet);
+      log_packet(active_storage_file, next_packet->packet, next_packet->end - next_packet->packet);
       packet_buffer_put_empty(buffer, next_packet);
-
-      /* Wait for the data to have a change */
-      err = state_read_lock(state); // Should this be before ???
-      if (err)
-      {
-        err = errno;
-        DEBUG_FPRINTF(stderr, "Error during state_read_lock: %d\n", err);
-      }
-
-      /* Log data to active log file*/
-      written = fwrite(&state->data, sizeof(state->data), 1, active_storage_file);
-      DEBUG_FPRINTF(stdout, "Logged %lu bytes\n", written * sizeof(state->data));
-
-      if (written == 0)
-      { 
-        // TODO: Handle error (might happen if file got too large, start another file)
-      }
-
-      err = state_unlock(state);
-      if (err)
-      {
-        DEBUG_FPRINTF(stderr, "Error during state_unlock: %d\n", err);
-      }
-
 
       /* If we are in the idle state, only write the latest n seconds of data*/
       if (flight_state == STATE_IDLE)
@@ -253,19 +220,19 @@ void *logging_main(void *arg)
 
     case STATE_LANDED:
     {
-      DEBUG_FPRINTF(stdout, "Copying files to extraction file system.\n");
+      indebug("Copying files to extraction file system.\n");
 
       /* Generate log file name for extraction file system */
       int max_extraction_log_file_number = find_max_boot_number("elog_boot%d_%d.bin");
       snprintf(land_filename, sizeof(land_filename), EXTR_FNAME_FMT, max_extraction_log_file_number + 1, 1);
-      DEBUG_FPRINTF(stdout, "Extraction file name: %s\n", land_filename);
+      indebug("Extraction file name: %s\n", land_filename);
 
       err = try_open_file(&extract_storage_file, land_filename, "wb+");
       if (err < 0 || extract_storage_file == NULL)
       {
         // If reach here, all attempts to open log file have failed, fatal error
         err = errno;
-        DEBUG_FPRINTF(stderr, "Couldn't open extraction log file '%s' with error: %d\n", land_filename, err);
+        inerr("Couldn't open extraction log file '%s' with error: %d\n", land_filename, err);
         pthread_exit(err_to_ptr(err));
       }
       
@@ -273,7 +240,7 @@ void *logging_main(void *arg)
       err = fseek(active_storage_file, 0, SEEK_SET); 
       if (err)
       {
-        DEBUG_FPRINTF(stderr, "Couldn't seek active file back to start: %d", err);
+        inerr("Couldn't seek active file back to start: %d", err);
       }
       
       /* Copy from one to the other using a buffer */
@@ -292,7 +259,7 @@ void *logging_main(void *arg)
       if (fclose(extract_storage_file) != 0)
       {
         err = errno;
-        DEBUG_FPRINTF(stderr, "Couldn't close extraction log file '%s' with error: %d\n", land_filename, err);
+        inerr("Couldn't close extraction log file '%s' with error: %d\n", land_filename, err);
       }
 
       /* Now that logs are copied to FAT partition, move back to the idle state for another go. */
@@ -301,7 +268,7 @@ void *logging_main(void *arg)
       err = state_set_flightstate(state, STATE_IDLE); 
       if (err < 0)
       {
-        DEBUG_FPRINTF(stderr, "Error during state_set_flightstate: %d\n", err);
+        inerr("Error during state_set_flightstate: %d\n", err);
       } 
     }
     }
@@ -311,43 +278,30 @@ void *logging_main(void *arg)
   if (fclose(storage_file_1) != 0)
   {
     err = errno;
-    DEBUG_FPRINTF(stderr, "Failed to close flight logfile 1 handle: %d\n", err);
+    inerr("Failed to close flight logfile 1 handle: %d\n", err);
   }
 
   if (fclose(storage_file_2) != 0)
   {
     err = errno;
-    DEBUG_FPRINTF(stderr, "Failed to close flight logfile 2 handle: %d\n", err);
+    inerr("Failed to close flight logfile 2 handle: %d\n", err);
   }
 
   pthread_exit(err_to_ptr(err));
 }
 
 static size_t log_packet(FILE *storage, uint8_t *packet, size_t packet_size) {
-  size_t written = fwrite(packet, 1, packet_size, storage);
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-  printf("Logged %lu bytes\n", written);
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
-  if (written == 0) {
-    // TODO: Handle error (might happen if file got too large, start
-    // another file)
-  }
-  return written;
+    size_t written;
+
+    written = fwrite(packet, 1, packet_size, storage);
+    indebug("Logged %zu bytes\n", written);
+    if (written == 0) {
+        // TODO: Handle error (might happen if file got too large, start
+        // another file)
+        inerr("Failted to write data to the logging file\n");
+    }
+    return written;
 }
-
-static size_t log_packet(FILE *storage, uint8_t *packet, size_t packet_size) {
-  size_t written = fwrite(packet, 1, packet_size, storage);
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-  printf("Logged %lu bytes\n", written);
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
-  if (written == 0) {
-    // TODO: Handle error (might happen if file got too large, start
-    // another file)
-  }
-  return written;
-}
-
-
 
 /****************************************************/
 /*                Helper Functions                  */
@@ -369,12 +323,12 @@ static int try_open_file(FILE** file_pointer, char* filename, char* open_option)
     if (*file_pointer == NULL)
     {
       err = errno;
-      DEBUG_FPRINTF(stderr, "Error (Attempt %d) opening '%s' file: %d\n", i, filename, err);
+      inerr("Error (Attempt %d) opening '%s' file: %d\n", i, filename, err);
       usleep(1 * 1000); // Sleep for 1 millisecond before trying again
     }
     else
     {
-      DEBUG_FPRINTF(stdout, "\nOpened File: %s\n\n", filename);
+      indebug("\nOpened File: %s\n\n", filename);
       break;
     }
   }
@@ -431,7 +385,7 @@ static int switch_active_log_file(FILE **active_storage_file, FILE *storage_file
   /* Make sure we aren't dereferencing null pointer later */
   if (*active_storage_file == NULL)
   {
-    DEBUG_FPRINTF(stderr, "Error in switch_active_log_file: active_storage_file is NULL");
+    inerr("Error in switch_active_log_file: active_storage_file is NULL");
     return -1;
   }
   
@@ -446,7 +400,7 @@ static int switch_active_log_file(FILE **active_storage_file, FILE *storage_file
     err = try_open_file(storage_file_2, flight_filename2, "wb+");
     if (err < 0 || *storage_file_2 == NULL)
     {
-      DEBUG_FPRINTF(stderr, "Error (%d) trying to open %s", err, flight_filename2);
+      inerr("Error (%d) trying to open %s", err, flight_filename2);
       return -1;
     }
 
@@ -458,7 +412,7 @@ static int switch_active_log_file(FILE **active_storage_file, FILE *storage_file
   {
     if (storage_file_1 == NULL)
     {
-      DEBUG_FPRINTF(stderr, "ERROR: storage_file_1 is NULL\n");
+      inerr("ERROR: storage_file_1 is NULL\n");
       return -1;
     }
 
@@ -469,7 +423,7 @@ static int switch_active_log_file(FILE **active_storage_file, FILE *storage_file
   err = fseek(*active_storage_file, 0, SEEK_SET);
   if (err)
   {
-    DEBUG_FPRINTF(stderr, "Couldn't seek active file back to start: %d", err);
+    inerr("Couldn't seek active file back to start: %d", err);
   }
 
   return err;

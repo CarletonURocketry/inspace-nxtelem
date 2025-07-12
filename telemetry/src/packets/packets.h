@@ -19,16 +19,17 @@
 
 /* Possible sub-types of data blocks that can be sent. */
 enum block_type_e {
-  DATA_ALT_SEA = 0x0,    /* Altitude above sea level */
-  DATA_ALT_LAUNCH = 0x1, /* Altitude above launch level */
-  DATA_TEMP = 0x2,       /* Temperature data */
-  DATA_PRESSURE = 0x3,   /* Pressure data */
-  DATA_ACCEL_REL = 0x4,  /* Relative linear acceleration data */
+  DATA_ALT_SEA = 0x0,     /* Altitude above sea level */
+  DATA_ALT_LAUNCH = 0x1,  /* Altitude above launch level */
+  DATA_TEMP = 0x2,        /* Temperature data */
+  DATA_PRESSURE = 0x3,    /* Pressure data */
+  DATA_ACCEL_REL = 0x4,   /* Relative linear acceleration data */
   DATA_ANGULAR_VEL = 0x5, /* Angular velocity data */
   DATA_HUMIDITY = 0x6,    /* Humidity data */
   DATA_LAT_LONG = 0x7,    /* Latitude and longitude coordinates */
   DATA_VOLTAGE = 0x8,     /* Voltage in millivolts with a unique ID. */
   DATA_MAGNETIC = 0x9,    /* Magnetic field data */
+  DATA_RES_ABOVE = 0xA,   /* Types unused above this value */
 };
 
 /* Each radio packet will have a header in this format. */
@@ -52,12 +53,6 @@ typedef struct {
   /* The type of this block. */
   uint8_t type;
 } TIGHTLY_PACKED blk_hdr_t;
-
-/* Base type for blocks with a time offset */
-typedef struct {
-  /* The offset from the absolute time in the header in milliseconds */
-  int16_t time_offset;
-} TIGHTLY_PACKED offset_blk;
 
 void blk_hdr_init(blk_hdr_t *b, const enum block_type_e type);
 

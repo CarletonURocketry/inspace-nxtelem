@@ -1,8 +1,14 @@
-# TODO: add all the "dependency" requirements for device drivers
+#
+# For a description of the syntax of this configuration file,
+# see the file kconfig-language.txt in the NuttX tools repository.
+#
 
 config INSPACE_TELEMETRY
     tristate "InSpace Telemetry System"
     default n
+    select SENSORS
+    select USENSOR
+    select UORB
     ---help---
         Enable the Carleton University InSpace telemetry system code.
 
@@ -23,11 +29,45 @@ config INSPACE_TELEMETRY_STACKSIZE
     int "Telemetry system stack size"
     default DEFAULT_TASK_STACKSIZE
 
-config INSPACE_TELEMETRY_DEBUG
-    bool "Debug telemetry system"
-    default n
-    ---help---
-        Enable debugging loggin in the telemetry system application.
+comment "Syslog output options"
+
+config INSPACE_SYSLOG_OUTPUT
+	bool "Enable syslog output"
+	depends on SYSLOG
+	default n
+	---help---
+		Enables options for syslog outputs.
+
+if INSPACE_SYSLOG_OUTPUT
+
+config INSPACE_SYSLOG_DEBUG
+	bool "Debug logs enabled"
+	default n
+	---help---
+		Enables granular debug logs.
+
+config INSPACE_SYSLOG_INFO
+	bool "Information logs enabled"
+	depends on DEBUG_INFO
+	default n
+	---help---
+		Enables informational logs.
+
+config INSPACE_SYSLOG_WARN
+	bool "Warning logs enabled"
+	depends on DEBUG_WARN
+	default n
+	---help---
+		Enables warning logs.
+
+config INSPACE_SYSLOG_ERR
+	bool "Error logs enabled"
+	depends on DEBUG_ERROR
+	default n
+	---help---
+		Enables error logs.
+
+endif # INSPACE_SYSLOG_OUTPUT
 
 config INSPACE_TELEMETRY_RATE
     int "Measurement/logging rate in Hz"
@@ -69,5 +109,11 @@ config INSPACE_TELEMETRY_RADIO
     default "/dev/rn2483"
     ---help---
         The path identifier of the radio device for transmitting.
+
+config INSPACE_TELEMETRY_EEPROM
+    string "Eeprom device"
+    default "/dev/eeprom"
+    ---help---
+        The path identifier of the eeprom device for storing settings.
 
 endif # INSPACE_TELEMETRY
