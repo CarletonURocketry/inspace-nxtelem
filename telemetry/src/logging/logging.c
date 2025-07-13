@@ -104,7 +104,7 @@ void *logging_main(void *arg) {
     err = try_open_file(&storage_file_1, flight_filename1, "wb+");
     if (err < 0 || storage_file_1 == NULL) {
         inerr("Error opening log file 1 (%s): %d\n", flight_filename1, err);
-        pthread_exit(err_to_ptr(err)); // TODO: fail more gracefully
+        goto err_cleanup;
     }
 
     active_storage_file = storage_file_1;
@@ -113,14 +113,14 @@ void *logging_main(void *arg) {
     if (fd < 0) {
         err = errno;
         inerr("Error using fileno: %d\n", err);
-        fclose(active_storage_file);
+        goto err_cleanup;
     }
 
     err = fstat(fd, &file_info);
     if (err) {
         err = errno;
         inerr("Error using fstat: %d\n", err);
-        fclose(active_storage_file);
+        goto err_cleanup;
     }
 
     // Save the time the file was last modified
@@ -131,8 +131,7 @@ void *logging_main(void *arg) {
         err = state_get_flightstate(state, &flight_state);
         if (err) {
             inerr("Error getting flight state: %d\n", err);
-            fclose(active_storage_file);
-            // TODO: figure out fail conditions
+            goto err_cleanup;
         }
 
         switch (flight_state) {
@@ -140,15 +139,11 @@ void *logging_main(void *arg) {
 
             // Switch between files every 30 seconds
 
-            if (err) {
-                err = errno;
-                inerr("Error during state_wait_for_change: %d\n", err);
-            }
-
             /* Store current system time as new_timespec */
             if (clock_gettime(CLOCK_REALTIME, &new_timespec) < 0) {
                 err = errno;
                 inerr("Error during clock_gettime: %d\n", err);
+                continue; // TODO - what to do when we fail here
             }
             indebug("Time: %d:%ld\n", new_timespec.tv_sec, new_timespec.tv_nsec);
 
@@ -165,20 +160,8 @@ void *logging_main(void *arg) {
                 if (err < 0) {
                     err = errno;
                     inerr("Error switching active log file: %d\n", err);
-                    pthread_exit(err_to_ptr(err)); // TODO: fail more gracefully
+                    goto err_cleanup;
                 }
-
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-                if (active_storage_file == storage_file_1) {
-                    printf("File 1 active\n\n");
-                } else if (active_storage_file == storage_file_2) {
-                    printf("File 2 active\n\n");
-                } else if (active_storage_file == NULL) {
-                    printf("ERROR: Active file is NULL\n\n");
-                } else {
-                    printf("ERROR: active file is neither\n\n");
-                }
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
 
                 /* Set Base time to current time to reset*/
                 base_timespec = new_timespec;
@@ -206,7 +189,7 @@ void *logging_main(void *arg) {
                 // If reach here, all attempts to open log file have failed, fatal error
                 err = errno;
                 inerr("Couldn't open extraction log file '%s' with error: %d\n", land_filename, err);
-                pthread_exit(err_to_ptr(err));
+                goto err_cleanup;
             }
 
             copy_out(active_storage_file, extract_storage_file);
@@ -228,13 +211,14 @@ void *logging_main(void *arg) {
         }
     }
 
+err_cleanup:
     /* Close files that may be open */
-    if (fclose(storage_file_1) != 0) {
+    if (storage_file_1 && fclose(storage_file_1) != 0) {
         err = errno;
         inerr("Failed to close flight logfile 1 handle: %d\n", err);
     }
 
-    if (fclose(storage_file_2) != 0) {
+    if (storage_file_2 && fclose(storage_file_2) != 0) {
         err = errno;
         inerr("Failed to close flight logfile 2 handle: %d\n", err);
     }
