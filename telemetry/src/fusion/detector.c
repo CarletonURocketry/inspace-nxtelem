@@ -64,14 +64,14 @@ static int detector_accel_valid(struct detector *detector) {
 static int detector_is_airborne(struct detector *detector) {
   /* Check for an absolute change in altitude from landing, or a high acceleration. If the elevation is set wrong,
    * we may detect being airborne when set on the pad. Ideally, set the elevation correctly before starting to detect events,
-   * but if we do detect based on an incorrect elevation, allow landing detections in airborne so that the consequences of 
+   * but if we do detect based on an incorrect elevation, allow landing detections in airborne so that the consequences of
    * the false detection aren't severe. As long as the rocket is on for a reasonable amount of time (1 min), going through
    * idle -> airborne -> landed -> idle shouldn't cause us to miss the real launch
-   * 
+   *
    * Alternatively, we can also require the altitude criteria to be set AND the acceleration criteria, but we should check
    * the reliability of the accelerometer first
    */
-  return (detector_alt_valid(detector) && fabs(detector_get_alt(detector) - detector->elevation) > AIRBORNE_ALT_THRESHOLD) ||
+  return (detector->elevation_set && detector_alt_valid(detector) && fabs(detector_get_alt(detector) - detector->elevation) > AIRBORNE_ALT_THRESHOLD) ||
          (detector_accel_valid(detector) && detector_get_accel(detector) > AIRBORNE_ACCEL_THRESHOLD);
 }
 
@@ -86,7 +86,7 @@ static int detector_is_landed(struct detector *detector) {
    * and then check that acceleration is below launch levels. Acceleration check is necessary in case
    * the barometer's readings are unreliable when airborne
    */
-  return detector_alt_valid(detector) && window_criteria_satisfied(&detector->alt_window) && 
+  return detector_alt_valid(detector) && window_criteria_satisfied(&detector->alt_window) &&
          detector_accel_valid(detector) && detector_get_accel(detector) < AIRBORNE_ACCEL_THRESHOLD;
 }
 
@@ -206,7 +206,7 @@ void detector_add_accel(struct detector *detector, struct accel_sample *sample) 
 /**
  * Get the current acceleration value being used by the detector, after filtering. Note: this
  * doesn't make use of altitude data. Only direct acceleration measurements are used
- * 
+ *
  * @param detector The detector to use
  * @return The current acceleration that the detector is using
  */
@@ -226,10 +226,6 @@ enum detector_event detector_detect(struct detector *detector) {
    */
   switch (detector->state) {
     case STATE_IDLE: {
-      if (!detector->elevation_set) {
-        /* Don't detect until we have a filtered altitude to use as our landed altitutde */
-        return DETECTOR_NO_EVENT;
-      }
       if (detector_is_airborne(detector)) {
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
         printf("Detected airborne event from the idle state\n");
@@ -287,7 +283,7 @@ void detector_set_state(struct detector *detector, enum flight_state_e state, en
 }
 
 /**
- * Set the elevation (landing altitude) of the detector. The detector will take a reading after a certain amount 
+ * Set the elevation (landing altitude) of the detector. The detector will take a reading after a certain amount
  * of time if the elevation isn't set
  *
  * @param detector The detector to use
