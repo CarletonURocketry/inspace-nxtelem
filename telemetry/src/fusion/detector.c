@@ -12,7 +12,7 @@
 #define LANDED_ALT_WINDOW_SIZE 5.0f
 
 /* The time in microseconds that altitude variation must be within LANDED_ALT_WINDOW_SIZE */
-#define LANDED_ALT_WINDOW_DURATION 5000000 /* 5 seconds in microseconds */
+#define LANDED_ALT_WINDOW_DURATION 10000000 /* 10 seconds in microseconds */
 
 /* The change in altitude when idle to enter the airborne state in meters */
 #define AIRBORNE_ALT_THRESHOLD 20.0f
@@ -241,6 +241,7 @@ enum detector_event detector_detect(struct detector *detector) {
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
             printf("Detected a landing event from the airborne state, unknown substate\n");
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+            detector_set_elevation(detector, detector_get_alt(detector));
             return DETECTOR_LANDING_EVENT;
           }
           /* Fall through */
@@ -257,6 +258,7 @@ enum detector_event detector_detect(struct detector *detector) {
 #if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
             printf("Detected a landing event from the descent state\n");
 #endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+            detector_set_elevation(detector, detector_get_alt(detector));
             return DETECTOR_LANDING_EVENT;
           }
           break;

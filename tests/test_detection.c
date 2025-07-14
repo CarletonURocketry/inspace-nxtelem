@@ -1,4 +1,3 @@
-#include <nuttx/compiler.h>
 #include <testing/unity.h>
 #include <stdlib.h>
 #include <math.h>
@@ -275,9 +274,104 @@ static void test_idle_liftoff_conditions__liftoff_event(void) {
     TEST_ASSERT(check_input_func_generates_output_event(&alt_gen, &accel_gen, 2, &detector, DETECTOR_AIRBORNE_EVENT));
 }
 
-// TODO - airborne apogee event
+static void test_ascent_decreasing_alt_low_accel__apogee_event(void) {
+    enum flight_substate_e substates_to_test[] = {SUBSTATE_UNKNOWN, SUBSTATE_ASCENT};
 
-// TODO - landed event
+    for (int i = 0; i < sizeof(substates_to_test) / sizeof(substates_to_test[0]); i++) {
+        struct detector detector;
+        detector_init(&detector, 0);
+        detector_set_state(&detector, STATE_AIRBORNE, substates_to_test[i]);
+
+        float params[] = { -10, 1000};
+        struct generator alt_gen = { .params = params, .func = &linear_generator };
+        // As if we were falling on the parachute
+        float accel = 9.81;
+        struct generator accel_gen = { .params = &accel, .func = &const_generator };
+
+        char msg[100];
+        snprintf(msg, sizeof(msg), "Testing with substate %d", substates_to_test[i]);
+        TEST_MESSAGE(msg);
+
+        TEST_ASSERT(check_input_func_generates_output_event(&alt_gen, &accel_gen, 10, &detector, DETECTOR_APOGEE_EVENT));
+    }
+}
+
+static void test_ascent_increasing_decreasing_alt_low_accel__apogee_event(void) {
+    enum flight_substate_e substates_to_test[] = {SUBSTATE_UNKNOWN, SUBSTATE_ASCENT};
+
+    for (int i = 0; i < sizeof(substates_to_test) / sizeof(substates_to_test[0]); i++) {
+        struct detector detector;
+        detector_init(&detector, 0);
+        detector_set_state(&detector, STATE_AIRBORNE, substates_to_test[i]);
+
+        float ascent_alt_params[] = {1, 100};
+        float accel = 9.81;
+
+        struct generator alt_gen = { .params = ascent_alt_params, .func = &linear_generator };
+        struct generator accel_gen = { .params = &accel, .func = &const_generator };
+
+        TEST_ASSERT(check_input_func_generates_output_event(&alt_gen, &accel_gen, 10, &detector, DETECTOR_NO_EVENT));
+
+        float descent_alt_params[] = { -10, 1000};
+        // As if we were falling on the parachute
+        alt_gen.params = descent_alt_params;
+
+        char msg[100];
+        snprintf(msg, sizeof(msg), "Testing with substate %d", substates_to_test[i]);
+        TEST_MESSAGE(msg);
+
+        TEST_ASSERT(check_input_func_generates_output_event(&alt_gen, &accel_gen, 10, &detector, DETECTOR_APOGEE_EVENT));
+    }
+}
+
+static void test_descent_static_alt__landed_event(void) {
+    enum flight_substate_e substates_to_test[] = {SUBSTATE_UNKNOWN, SUBSTATE_DESCENT};
+
+    for (int i = 0; i < sizeof(substates_to_test) / sizeof(substates_to_test[0]); i++) {
+        struct detector detector;
+        detector_init(&detector, 0);
+        detector_set_state(&detector, STATE_AIRBORNE, substates_to_test[i]);
+
+        // Make sure can get back to landed without having to be in idle at some point
+
+        float alt = 1000;
+        struct generator alt_gen = { .params = &alt, .func = &const_generator };
+        float accel = 9.81;
+        struct generator accel_gen = { .params = &accel, .func = &const_generator };
+
+        char msg[100];
+        snprintf(msg, sizeof(msg), "Testing with substate %d", substates_to_test[i]);
+        TEST_MESSAGE(msg);
+
+        TEST_ASSERT(check_input_func_generates_output_event(&alt_gen, &accel_gen, 15, &detector, DETECTOR_LANDING_EVENT));
+    }
+}
+
+static void test_descent_landed_alt_diff_than_elevation__landed_event(void) {
+    enum flight_substate_e substates_to_test[] = {SUBSTATE_UNKNOWN, SUBSTATE_DESCENT};
+
+    for (int i = 0; i < sizeof(substates_to_test) / sizeof(substates_to_test[0]); i++) {
+        struct detector detector;
+        detector_init(&detector, 0);
+        detector_set_state(&detector, STATE_AIRBORNE, substates_to_test[i]);
+        detector_set_elevation(&detector, 0);
+
+        float alt = 1000;
+        struct generator alt_gen = { .params = &alt, .func = &const_generator };
+        float accel = 9.81;
+        struct generator accel_gen = { .params = &accel, .func = &const_generator };
+
+        char msg[100];
+        snprintf(msg, sizeof(msg), "Testing with substate %d", substates_to_test[i]);
+        TEST_MESSAGE(msg);
+
+        TEST_ASSERT(check_input_func_generates_output_event(&alt_gen, &accel_gen, 15, &detector, DETECTOR_LANDING_EVENT));
+        detector_set_state(&detector, STATE_IDLE, SUBSTATE_UNKNOWN);
+
+        // Make sure that the new altitude doesn't set off the detector when it goes back to idle
+        TEST_ASSERT(check_input_func_generates_output_event(&alt_gen, &accel_gen, 10, &detector, DETECTOR_NO_EVENT));
+    }
+}
 
 // TODO - Tests with noise
 
@@ -285,10 +379,11 @@ static void test_idle_liftoff_conditions__liftoff_event(void) {
 
 // TODO - Tests with sampling gaps
 
-
 void test_detection(void) {
     RUN_TEST(test_no_samples__no_event);
 
+
+    // Negatives
     RUN_TEST(test_constant_altitudes_idle_state__no_event);
     RUN_TEST(test_constant_accel_idle_state__no_event);
 
@@ -296,8 +391,15 @@ void test_detection(void) {
     RUN_TEST(test_airborne_high_accel__no_event);
     RUN_TEST(test_airborne_decreasing_alt__no_event);
 
+    // Positives
     RUN_TEST(test_idle_increasing_alt__airborne_event);
     RUN_TEST(test_idle_alt_jump__liftoff_event);    
     RUN_TEST(test_idle_high_accel__liftoff_event);
     RUN_TEST(test_idle_liftoff_conditions__liftoff_event);
+
+    RUN_TEST(test_ascent_decreasing_alt_low_accel__apogee_event);
+    RUN_TEST(test_ascent_increasing_decreasing_alt_low_accel__apogee_event);
+
+    RUN_TEST(test_descent_static_alt__landed_event);
+    RUN_TEST(test_descent_landed_alt_diff_than_elevation__landed_event);
 }
