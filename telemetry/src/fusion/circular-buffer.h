@@ -3,19 +3,19 @@
 
 /* A circular buffer without a backing array */
 struct circ_buffer {
-  void *data;    /* The backing array of this buffer */
-  int capacity;  /* The maximum number of elements in this buffer */
-  int head;      /* The next write position in the buffer */
-  int size;      /* the number of elements in the buffer */
-  int elem_size; /* The size of each element in the buffer */
+    void *data;    /* The backing array of this buffer */
+    int capacity;  /* The maximum number of elements in this buffer */
+    int head;      /* The next write position in the buffer */
+    int size;      /* the number of elements in the buffer */
+    int elem_size; /* The size of each element in the buffer */
 };
 
 /* An iterator of struct circ_buffer */
 struct circ_iterator {
-  struct circ_buffer buffer; /* A view of the buffer this iterator refers to */
+    struct circ_buffer buffer; /* A view of the buffer this iterator refers to */
 };
 
-void circ_buffer_init(struct circ_buffer *buffer, void* backing, int max_elems, int elem_size);
+void circ_buffer_init(struct circ_buffer *buffer, void *backing, int max_elems, int elem_size);
 int circ_buffer_size(struct circ_buffer *buffer);
 void circ_buffer_push(struct circ_buffer *buffer, void *data);
 int circ_buffer_push_out(struct circ_buffer *buffer, void *data, void *out);

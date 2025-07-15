@@ -3,12 +3,11 @@
 #include <pthread.h>
 #include <sys/ioctl.h>
 
-#include "../sensors/sensors.h"
 #include "../rocket-state/rocket-state.h"
+#include "../sensors/sensors.h"
 #include "../syslogging.h"
-#include "fusion.h"
 #include "detector.h"
-
+#include "fusion.h"
 
 /* The pressure at sea level in millibar*/
 #define SEA_PRESSURE 1013.25
@@ -44,93 +43,93 @@ static struct fusion_altitude calculate_altitude(struct sensor_baro *baro_data);
 static struct accel_sample calculate_accel_magnitude(struct sensor_accel *accel_data);
 
 void *fusion_main(void *arg) {
-  rocket_state_t *state = ((struct fusion_args *)arg)->state;
-  enum flight_state_e flight_state;
-  enum flight_substate_e flight_substate;
+    rocket_state_t *state = ((struct fusion_args *)arg)->state;
+    enum flight_state_e flight_state;
+    enum flight_substate_e flight_substate;
 
-  state_get_flightstate(state, &flight_state);
-  state_get_flightsubstate(state, &flight_substate);
+    state_get_flightstate(state, &flight_state);
+    state_get_flightsubstate(state, &flight_substate);
 
-  /* Input sensors, may want to directly read instead */
-  struct uorb_inputs sensors;
-  clear_uorb_inputs(&sensors);
-  setup_sensor(&sensors.baro, orb_get_meta("sensor_baro"));
-  setup_sensor(&sensors.accel, orb_get_meta("sensor_accel"));
-  struct sensor_baro baro_data[BARO_INPUT_BUFFER_SIZE];
-  struct sensor_accel accel_data[ACCEL_INPUT_BUFFER_SIZE];
+    /* Input sensors, may want to directly read instead */
+    struct uorb_inputs sensors;
+    clear_uorb_inputs(&sensors);
+    setup_sensor(&sensors.baro, orb_get_meta("sensor_baro"));
+    setup_sensor(&sensors.accel, orb_get_meta("sensor_accel"));
+    struct sensor_baro baro_data[BARO_INPUT_BUFFER_SIZE];
+    struct sensor_accel accel_data[ACCEL_INPUT_BUFFER_SIZE];
 
-  struct detector detector;
-  detector_init(&detector, orb_absolute_time());
-  detector_set_state(&detector, flight_state, flight_substate);
+    struct detector detector;
+    detector_init(&detector, orb_absolute_time());
+    detector_set_state(&detector, flight_state, flight_substate);
 
-  /* Set the elevation, which will either be a remembered value or a sensible default (and convert to meters) */
-  // detector_set_elevation(&detector, init_elevation / 1000);
+    /* Set the elevation, which will either be a remembered value or a sensible default (and convert to meters) */
+    // detector_set_elevation(&detector, init_elevation / 1000);
 
-  /* Currently publishing blank data to start, might be better to try and advertise only on first fusioned data */
-  struct fusion_altitude calculated_altitude;
-  struct accel_sample calculated_accel_mag;
-  int altitude_fd = orb_advertise_multi_queue(ORB_ID(fusion_altitude), NULL, NULL, ALT_FUSION_BUFFER);
-  if (altitude_fd < 0) {
-    inerr("Fusion could not advertise altitude topic: %d\n", altitude_fd);
-  }
+    /* Currently publishing blank data to start, might be better to try and advertise only on first fusioned data */
+    struct fusion_altitude calculated_altitude;
+    struct accel_sample calculated_accel_mag;
+    int altitude_fd = orb_advertise_multi_queue(ORB_ID(fusion_altitude), NULL, NULL, ALT_FUSION_BUFFER);
+    if (altitude_fd < 0) {
+        inerr("Fusion could not advertise altitude topic: %d\n", altitude_fd);
+    }
 
     /* Output sensors */
 
-  for(;;) {
-    /* Wait for new data */
-    poll_sensors(&sensors);
-    int len = get_sensor_data(&sensors.baro, baro_data, sizeof(baro_data));
-    if (len > 0) {
-      for (int i = 0; i < (len / sizeof(struct sensor_baro)); i++) {
-        calculated_altitude = calculate_altitude(&baro_data[i]);
-        detector_add_alt(&detector, (struct altitude_sample *)&calculate_altitude);
-        orb_publish(ORB_ID(fusion_altitude), altitude_fd, &calculated_altitude);
-      }
-    }
-    len = get_sensor_data(&sensors.accel, accel_data, sizeof(accel_data));
-    if (len > 0) {
-      for (int i = 0; i < (len / sizeof(struct sensor_accel)); i++) {
-        calculated_accel_mag = calculate_accel_magnitude(&accel_data[i]);
-        detector_add_accel(&detector, (struct accel_sample *)&calculated_accel_mag);
-      }
-    }
-
-    /* Run detection. Potentially run periodically instead of every update */
-    switch(detector_detect(&detector)) {
-      case DETECTOR_AIRBORNE_EVENT: {
-        /* Make sure we're in the idle state when going to airborne */
-        state_get_flightstate(state, &flight_state);
-        if (flight_state == STATE_IDLE) {
-          state_set_flightstate(state, STATE_AIRBORNE);
-          state_set_flightsubstate(state, SUBSTATE_ASCENT);
-          detector_set_state(&detector, STATE_AIRBORNE, SUBSTATE_ASCENT);
+    for (;;) {
+        /* Wait for new data */
+        poll_sensors(&sensors);
+        int len = get_sensor_data(&sensors.baro, baro_data, sizeof(baro_data));
+        if (len > 0) {
+            for (int i = 0; i < (len / sizeof(struct sensor_baro)); i++) {
+                calculated_altitude = calculate_altitude(&baro_data[i]);
+                detector_add_alt(&detector, (struct altitude_sample *)&calculate_altitude);
+                orb_publish(ORB_ID(fusion_altitude), altitude_fd, &calculated_altitude);
+            }
         }
-      } break;
-
-      case DETECTOR_APOGEE_EVENT: {
-        /* Make sure we're airborne already before setting to descent */
-        state_get_flightstate(state, &flight_state);
-        if (flight_state == STATE_AIRBORNE) {
-          state_set_flightsubstate(state, SUBSTATE_DESCENT);
-          detector_set_state(&detector, STATE_AIRBORNE, SUBSTATE_DESCENT);
-        } else {
-          detector_set_state(&detector, STATE_AIRBORNE, SUBSTATE_ASCENT);
+        len = get_sensor_data(&sensors.accel, accel_data, sizeof(accel_data));
+        if (len > 0) {
+            for (int i = 0; i < (len / sizeof(struct sensor_accel)); i++) {
+                calculated_accel_mag = calculate_accel_magnitude(&accel_data[i]);
+                detector_add_accel(&detector, (struct accel_sample *)&calculated_accel_mag);
+            }
         }
-      } break;
 
-      case DETECTOR_LANDING_EVENT: {
-        /* We can set to landing from anywhere */
-        state_set_flightstate(state, STATE_LANDED);
-        detector_set_state(&detector, STATE_LANDED, SUBSTATE_UNKNOWN);
-      } break;
+        /* Run detection. Potentially run periodically instead of every update */
+        switch (detector_detect(&detector)) {
+        case DETECTOR_AIRBORNE_EVENT: {
+            /* Make sure we're in the idle state when going to airborne */
+            state_get_flightstate(state, &flight_state);
+            if (flight_state == STATE_IDLE) {
+                state_set_flightstate(state, STATE_AIRBORNE);
+                state_set_flightsubstate(state, SUBSTATE_ASCENT);
+                detector_set_state(&detector, STATE_AIRBORNE, SUBSTATE_ASCENT);
+            }
+        } break;
 
-      default:
-        /* Includes DETECTOR_NO_EVENT
-         * The landed to idle state transition is done by the thread responsible for copying out the flight data
-         */
-        break;
+        case DETECTOR_APOGEE_EVENT: {
+            /* Make sure we're airborne already before setting to descent */
+            state_get_flightstate(state, &flight_state);
+            if (flight_state == STATE_AIRBORNE) {
+                state_set_flightsubstate(state, SUBSTATE_DESCENT);
+                detector_set_state(&detector, STATE_AIRBORNE, SUBSTATE_DESCENT);
+            } else {
+                detector_set_state(&detector, STATE_AIRBORNE, SUBSTATE_ASCENT);
+            }
+        } break;
+
+        case DETECTOR_LANDING_EVENT: {
+            /* We can set to landing from anywhere */
+            state_set_flightstate(state, STATE_LANDED);
+            detector_set_state(&detector, STATE_LANDED, SUBSTATE_UNKNOWN);
+        } break;
+
+        default:
+            /* Includes DETECTOR_NO_EVENT
+             * The landed to idle state transition is done by the thread responsible for copying out the flight data
+             */
+            break;
+        }
     }
-  }
 }
 
 /**
@@ -153,9 +152,9 @@ struct fusion_altitude calculate_altitude(struct sensor_baro *baro_data) {
  * @return The calculated magnitude and the timestamp from accel_data
  */
 static struct accel_sample calculate_accel_magnitude(struct sensor_accel *accel_data) {
-  struct accel_sample output;
-  output.time = accel_data->timestamp;
+    struct accel_sample output;
+    output.time = accel_data->timestamp;
 
-  output.acceleration = sqrtf(powf(accel_data->x, 2) + powf(accel_data->y, 2) + powf(accel_data->z, 2));
-  return output;
+    output.acceleration = sqrtf(powf(accel_data->x, 2) + powf(accel_data->y, 2) + powf(accel_data->z, 2));
+    return output;
 }

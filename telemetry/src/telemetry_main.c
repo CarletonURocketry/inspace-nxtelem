@@ -1,7 +1,6 @@
 #include <pthread.h>
 #include <sched.h>
 #include <stdatomic.h>
-#include <stdio.h>
 #include <stdlib.h>
 
 #include "rocket-state/rocket-state.h"

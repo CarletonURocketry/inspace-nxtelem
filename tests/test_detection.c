@@ -1,15 +1,10 @@
 #include <testing/unity.h>
-#include <stdlib.h>
-#include <math.h>
 
-
-#include "test_runners.h"
 #include "../telemetry/src/fusion/detector.h"
+#include "test_runners.h"
 
 /* Convert a time in seconds to a time in microseconds*/
-static unsigned long to_micro(float seconds) {
-    return seconds * 1000000;
-}
+static unsigned long to_micro(float seconds) { return seconds * 1000000; }
 
 /* Information needed to generate altitude or acceleration samples for testing */
 struct generator {
@@ -29,10 +24,12 @@ struct generator {
  * @param accel_gen Function and its context for generating accel samples
  * @param duration The number of simulated seconds over which data will be input
  * @param detector The detector to use, initialized
- * @param expected_event The only event that should be output besides DETECTOR_NO_EVENT, and which must be output at least one time
+ * @param expected_event The only event that should be output besides DETECTOR_NO_EVENT, and which must be output at
+ * least one time
  */
-static int check_input_func_generates_output_event(struct generator *alt_gen, struct generator *accel_gen, 
-                                                   float duration, struct detector *detector, enum detector_event expected_event) {
+static int check_input_func_generates_output_event(struct generator *alt_gen, struct generator *accel_gen,
+                                                   float duration, struct detector *detector,
+                                                   enum detector_event expected_event) {
     int got_expected_event = 0;
     struct altitude_sample alt = {0};
     struct accel_sample accel = {0};
@@ -51,7 +48,8 @@ static int check_input_func_generates_output_event(struct generator *alt_gen, st
             got_expected_event = 1;
         } else if (event != DETECTOR_NO_EVENT) {
             char msg[100];
-            snprintf(msg, sizeof(msg), "Test failure: expected event %d, got %d at time %f", expected_event, event, time);
+            snprintf(msg, sizeof(msg), "Test failure: expected event %d, got %d at time %f", expected_event, event,
+                     time);
             TEST_MESSAGE(msg);
             return 0;
         }
@@ -72,11 +70,10 @@ static int const_generator(float *params, float time, float *to_fill) {
 
 /* Generate missing float values by always saying not to use to_fill, where params is unused
  */
-static int missing_generator(float *params, float time, float *to_fill) {
-    return 0;
-}
+static int missing_generator(float *params, float time, float *to_fill) { return 0; }
 
-/* Generate a one value, then another. Params is an array of length three describing the time threshold, first value, and second value
+/* Generate a one value, then another. Params is an array of length three describing the time threshold, first value,
+ * and second value
  */
 static int edge_generator(float *params, float time, float *to_fill) {
     float time_threshold = params[0];
@@ -103,8 +100,8 @@ static void check_constant_altitude_no_event(float altitude) {
     // Substate shouldn't matter here
     detector_set_state(&detector, STATE_IDLE, SUBSTATE_UNKNOWN);
     /* Test with an altitude of 0 */
-    struct generator alt_gen = { .params = &altitude, .func = &const_generator };
-    struct generator accel_gen = { .func = &missing_generator };
+    struct generator alt_gen = {.params = &altitude, .func = &const_generator};
+    struct generator accel_gen = {.func = &missing_generator};
     TEST_ASSERT(check_input_func_generates_output_event(&alt_gen, &accel_gen, 10, &detector, DETECTOR_NO_EVENT));
 }
 
@@ -136,8 +133,8 @@ static void test_constant_accel_idle_state__no_event(void) {
     detector_set_state(&detector, STATE_IDLE, SUBSTATE_UNKNOWN);
     /* Test with an altitude of 0 */
     float accel = 9.81;
-    struct generator alt_gen = { .func = &missing_generator };
-    struct generator accel_gen = { .params = &accel, .func = &const_generator };
+    struct generator alt_gen = {.func = &missing_generator};
+    struct generator accel_gen = {.params = &accel, .func = &const_generator};
     TEST_ASSERT(check_input_func_generates_output_event(&alt_gen, &accel_gen, 10, &detector, DETECTOR_NO_EVENT));
 }
 
@@ -150,19 +147,21 @@ static void test_airborne_increasing_alt__no_event(void) {
         detector_set_state(&detector, STATE_AIRBORNE, substates_to_test[i]);
 
         // Following the equation y = 100x + 100, where x is the current time, in seconds
-        float params[] = { 100, 100};
-        struct generator alt_gen = { .params = params, .func = &linear_generator };
-        struct generator accel_gen = { .func = &missing_generator };
+        float params[] = {100, 100};
+        struct generator alt_gen = {.params = params, .func = &linear_generator};
+        struct generator accel_gen = {.func = &missing_generator};
 
         char msg[100];
-        snprintf(msg, sizeof(msg), "Testing increasing altitude in airborne state with substate %d", substates_to_test[i]);
+        snprintf(msg, sizeof(msg), "Testing increasing altitude in airborne state with substate %d",
+                 substates_to_test[i]);
         TEST_MESSAGE(msg);
         TEST_ASSERT(check_input_func_generates_output_event(&alt_gen, &accel_gen, 10, &detector, DETECTOR_NO_EVENT));
     }
 }
 
 static void test_airborne_high_accel__no_event(void) {
-    /* This test is trying the type of conditions found in transonic flight, where altitude appears to be decreasing even though acceleration is high */
+    /* This test is trying the type of conditions found in transonic flight, where altitude appears to be decreasing
+     * even though acceleration is high */
     enum flight_substate_e substates_to_test[] = {SUBSTATE_UNKNOWN, SUBSTATE_ASCENT};
 
     for (int i = 0; i < sizeof(substates_to_test) / sizeof(substates_to_test[0]); i++) {
@@ -171,11 +170,11 @@ static void test_airborne_high_accel__no_event(void) {
         detector_set_state(&detector, STATE_AIRBORNE, substates_to_test[i]);
 
         // Following the equation y = -1x + 100, where x is the current time in seconds
-        float params[] = { -1, 1000};
-        struct generator alt_gen = { .params = params, .func = &linear_generator };
+        float params[] = {-1, 1000};
+        struct generator alt_gen = {.params = params, .func = &linear_generator};
         // A high acceleration of 15 m/s^2 should prevent us from moving between states
         float accel = 15;
-        struct generator accel_gen = { .params = &accel, .func = &const_generator };
+        struct generator accel_gen = {.params = &accel, .func = &const_generator};
 
         char msg[100];
         snprintf(msg, sizeof(msg), "Testing high accel in airborne state with substate %d", substates_to_test[i]);
@@ -193,11 +192,11 @@ static void test_airborne_decreasing_alt__no_event(void) {
         detector_set_state(&detector, STATE_AIRBORNE, substates_to_test[i]);
 
         // Following the equation y = -1.5x + 100, where x is the current time in seconds
-        float params[] = { -1.5, 1000};
-        struct generator alt_gen = { .params = params, .func = &linear_generator };
+        float params[] = {-1.5, 1000};
+        struct generator alt_gen = {.params = params, .func = &linear_generator};
         // As if we were falling on the parachute
         float accel = 9.81;
-        struct generator accel_gen = { .params = &accel, .func = &const_generator };
+        struct generator accel_gen = {.params = &accel, .func = &const_generator};
 
         char msg[100];
         snprintf(msg, sizeof(msg), "Testing slow descent in airborne state with substate %d", substates_to_test[i]);
@@ -213,10 +212,10 @@ static void test_idle_increasing_alt__airborne_event(void) {
     detector_set_state(&detector, STATE_IDLE, SUBSTATE_UNKNOWN);
 
     // Following the equation y = 50x + 100, where x is the current time in seconds
-    float params[] = { 50, 100};
-    struct generator alt_gen = { .params = params, .func = &linear_generator };
+    float params[] = {50, 100};
+    struct generator alt_gen = {.params = params, .func = &linear_generator};
     float accel = 9.81;
-    struct generator accel_gen = { .params = &accel, .func = &const_generator };
+    struct generator accel_gen = {.params = &accel, .func = &const_generator};
 
     // Give five seconds to recognize liftoff, to let the idle altitude be chosen
     TEST_ASSERT(check_input_func_generates_output_event(&alt_gen, &accel_gen, 5, &detector, DETECTOR_AIRBORNE_EVENT));
@@ -228,10 +227,10 @@ static void test_idle_alt_jump__liftoff_event(void) {
     detector_set_state(&detector, STATE_IDLE, SUBSTATE_UNKNOWN);
 
     // After 3 seconds, jump from 100 to 200 meters altitude
-    float params[] = { 3, 100, 200 };
-    struct generator alt_gen = { .params = params, .func = &edge_generator };
+    float params[] = {3, 100, 200};
+    struct generator alt_gen = {.params = params, .func = &edge_generator};
     float accel = 9.81;
-    struct generator accel_gen = { .params = &accel, .func = &const_generator };
+    struct generator accel_gen = {.params = &accel, .func = &const_generator};
 
     // Give 2 seconds to recognize the liftoff condition
     TEST_ASSERT(check_input_func_generates_output_event(&alt_gen, &accel_gen, 5, &detector, DETECTOR_AIRBORNE_EVENT));
@@ -242,9 +241,9 @@ static void test_idle_high_accel__liftoff_event(void) {
     detector_init(&detector, 0);
     detector_set_state(&detector, STATE_IDLE, SUBSTATE_UNKNOWN);
 
-    struct generator alt_gen = { .func = &missing_generator };
+    struct generator alt_gen = {.func = &missing_generator};
     float accel = 20;
-    struct generator accel_gen = { .params = &accel, .func = &const_generator };
+    struct generator accel_gen = {.params = &accel, .func = &const_generator};
 
     // Only give 2 seconds to recognize the liftoff condition
     TEST_ASSERT(check_input_func_generates_output_event(&alt_gen, &accel_gen, 2, &detector, DETECTOR_AIRBORNE_EVENT));
@@ -256,13 +255,12 @@ static void test_idle_liftoff_conditions__liftoff_event(void) {
     detector_set_state(&detector, STATE_IDLE, SUBSTATE_UNKNOWN);
 
     float idle_alt = 1000;
-    struct generator alt_gen = { .params = &idle_alt, .func = &const_generator };
+    struct generator alt_gen = {.params = &idle_alt, .func = &const_generator};
     float idle_accel = 9.81;
-    struct generator accel_gen = { .params = &idle_accel, .func = &const_generator };
+    struct generator accel_gen = {.params = &idle_accel, .func = &const_generator};
 
     // Let the detector get used to idle conditions
     TEST_ASSERT(check_input_func_generates_output_event(&alt_gen, &accel_gen, 2, &detector, DETECTOR_NO_EVENT));
-
 
     float liftoff_alt_params[] = {100, idle_alt};
     alt_gen.params = liftoff_alt_params;
@@ -282,17 +280,18 @@ static void test_ascent_decreasing_alt_low_accel__apogee_event(void) {
         detector_init(&detector, 0);
         detector_set_state(&detector, STATE_AIRBORNE, substates_to_test[i]);
 
-        float params[] = { -10, 1000};
-        struct generator alt_gen = { .params = params, .func = &linear_generator };
+        float params[] = {-10, 1000};
+        struct generator alt_gen = {.params = params, .func = &linear_generator};
         // As if we were falling on the parachute
         float accel = 9.81;
-        struct generator accel_gen = { .params = &accel, .func = &const_generator };
+        struct generator accel_gen = {.params = &accel, .func = &const_generator};
 
         char msg[100];
         snprintf(msg, sizeof(msg), "Testing with substate %d", substates_to_test[i]);
         TEST_MESSAGE(msg);
 
-        TEST_ASSERT(check_input_func_generates_output_event(&alt_gen, &accel_gen, 10, &detector, DETECTOR_APOGEE_EVENT));
+        TEST_ASSERT(
+            check_input_func_generates_output_event(&alt_gen, &accel_gen, 10, &detector, DETECTOR_APOGEE_EVENT));
     }
 }
 
@@ -307,12 +306,12 @@ static void test_ascent_increasing_decreasing_alt_low_accel__apogee_event(void) 
         float ascent_alt_params[] = {1, 100};
         float accel = 9.81;
 
-        struct generator alt_gen = { .params = ascent_alt_params, .func = &linear_generator };
-        struct generator accel_gen = { .params = &accel, .func = &const_generator };
+        struct generator alt_gen = {.params = ascent_alt_params, .func = &linear_generator};
+        struct generator accel_gen = {.params = &accel, .func = &const_generator};
 
         TEST_ASSERT(check_input_func_generates_output_event(&alt_gen, &accel_gen, 10, &detector, DETECTOR_NO_EVENT));
 
-        float descent_alt_params[] = { -10, 1000};
+        float descent_alt_params[] = {-10, 1000};
         // As if we were falling on the parachute
         alt_gen.params = descent_alt_params;
 
@@ -320,7 +319,8 @@ static void test_ascent_increasing_decreasing_alt_low_accel__apogee_event(void) 
         snprintf(msg, sizeof(msg), "Testing with substate %d", substates_to_test[i]);
         TEST_MESSAGE(msg);
 
-        TEST_ASSERT(check_input_func_generates_output_event(&alt_gen, &accel_gen, 10, &detector, DETECTOR_APOGEE_EVENT));
+        TEST_ASSERT(
+            check_input_func_generates_output_event(&alt_gen, &accel_gen, 10, &detector, DETECTOR_APOGEE_EVENT));
     }
 }
 
@@ -335,15 +335,16 @@ static void test_descent_static_alt__landed_event(void) {
         // Make sure can get back to landed without having to be in idle at some point
 
         float alt = 1000;
-        struct generator alt_gen = { .params = &alt, .func = &const_generator };
+        struct generator alt_gen = {.params = &alt, .func = &const_generator};
         float accel = 9.81;
-        struct generator accel_gen = { .params = &accel, .func = &const_generator };
+        struct generator accel_gen = {.params = &accel, .func = &const_generator};
 
         char msg[100];
         snprintf(msg, sizeof(msg), "Testing with substate %d", substates_to_test[i]);
         TEST_MESSAGE(msg);
 
-        TEST_ASSERT(check_input_func_generates_output_event(&alt_gen, &accel_gen, 15, &detector, DETECTOR_LANDING_EVENT));
+        TEST_ASSERT(
+            check_input_func_generates_output_event(&alt_gen, &accel_gen, 15, &detector, DETECTOR_LANDING_EVENT));
     }
 }
 
@@ -357,15 +358,16 @@ static void test_descent_landed_alt_diff_than_elevation__landed_event(void) {
         detector_set_elevation(&detector, 0);
 
         float alt = 1000;
-        struct generator alt_gen = { .params = &alt, .func = &const_generator };
+        struct generator alt_gen = {.params = &alt, .func = &const_generator};
         float accel = 9.81;
-        struct generator accel_gen = { .params = &accel, .func = &const_generator };
+        struct generator accel_gen = {.params = &accel, .func = &const_generator};
 
         char msg[100];
         snprintf(msg, sizeof(msg), "Testing with substate %d", substates_to_test[i]);
         TEST_MESSAGE(msg);
 
-        TEST_ASSERT(check_input_func_generates_output_event(&alt_gen, &accel_gen, 15, &detector, DETECTOR_LANDING_EVENT));
+        TEST_ASSERT(
+            check_input_func_generates_output_event(&alt_gen, &accel_gen, 15, &detector, DETECTOR_LANDING_EVENT));
         detector_set_state(&detector, STATE_IDLE, SUBSTATE_UNKNOWN);
 
         // Make sure that the new altitude doesn't set off the detector when it goes back to idle
@@ -382,7 +384,6 @@ static void test_descent_landed_alt_diff_than_elevation__landed_event(void) {
 void test_detection(void) {
     RUN_TEST(test_no_samples__no_event);
 
-
     // Negatives
     RUN_TEST(test_constant_altitudes_idle_state__no_event);
     RUN_TEST(test_constant_accel_idle_state__no_event);
@@ -393,7 +394,7 @@ void test_detection(void) {
 
     // Positives
     RUN_TEST(test_idle_increasing_alt__airborne_event);
-    RUN_TEST(test_idle_alt_jump__liftoff_event);    
+    RUN_TEST(test_idle_alt_jump__liftoff_event);
     RUN_TEST(test_idle_high_accel__liftoff_event);
     RUN_TEST(test_idle_liftoff_conditions__liftoff_event);
 

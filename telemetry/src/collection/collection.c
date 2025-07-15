@@ -248,7 +248,7 @@ static uint8_t *add_or_new(collection_info_t *collection, enum block_type_e type
     uint8_t *next_block = add_block(collection, type, mission_time);
     // Can't add to this packet, it's full or we can just assume its done being asssembled
     if (next_block == NULL) {
-        indebug("Completed a packet length %d\n", collection->current->end - collection->current->packet);
+        indebug("Completed a packet length %ld\n", collection->current->end - collection->current->packet);
         packet_buffer_put_full(collection->buffer, collection->current);
         collection->current = packet_buffer_get_empty(collection->buffer);
         reset_block_count(collection);

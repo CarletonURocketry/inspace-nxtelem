@@ -1,4 +1,3 @@
-#include <stdio.h>
 #include <nuttx/config.h>
 #include <testing/unity.h>
 
@@ -10,10 +9,10 @@ void setUp(void) {}
 void tearDown(void) {}
 
 int main(void) {
-  UNITY_BEGIN();
-  test_rocket_state();
-  test_detection();
-  test_circular_buffer();
-  test_filtering();
-  return UNITY_END();
+    UNITY_BEGIN();
+    test_rocket_state();
+    test_detection();
+    test_circular_buffer();
+    test_filtering();
+    return UNITY_END();
 }
