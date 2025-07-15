@@ -1,17 +1,14 @@
-#include <pthread.h>
-#include <nuttx/sensors/sensor.h>
-#include <sys/ioctl.h>
 #include <math.h>
+#include <nuttx/sensors/sensor.h>
+#include <pthread.h>
+#include <sys/ioctl.h>
 
 #include "../sensors/sensors.h"
 #include "../rocket-state/rocket-state.h"
+#include "../syslogging.h"
 #include "fusion.h"
 #include "detector.h"
 
-
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-#include <stdio.h>
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
 
 /* The pressure at sea level in millibar*/
 #define SEA_PRESSURE 1013.25
@@ -29,12 +26,13 @@
 #define KELVIN 273
 
 /* UORB declarations */
+
 #if defined(CONFIG_DEBUG_UORB)
 static const char fusion_alt_format[] = "fusioned altitude - timestamp:%" PRIu64 ",altitude:%hf";
 ORB_DEFINE(fusion_altitude, struct fusion_altitude, fusion_alt_format);
 #else
 ORB_DEFINE(fusion_altitude, struct fusion_altitude, 0);
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+#endif
 
 /* Buffers for inputs, best to match to the size of the internal sensor buffers */
 #define BARO_INPUT_BUFFER_SIZE 5
@@ -69,16 +67,14 @@ void *fusion_main(void *arg) {
   // detector_set_elevation(&detector, init_elevation / 1000);
 
   /* Currently publishing blank data to start, might be better to try and advertise only on first fusioned data */
-  struct fusion_altitude calculated_altitude = {.altitude = 0, .timestamp = orb_absolute_time()};
-  struct accel_sample calculated_accel_mag = {0};
-  int altitude_fd = orb_advertise_multi_queue(ORB_ID(fusion_altitude), &calculated_altitude, NULL, ALT_FUSION_BUFFER);
+  struct fusion_altitude calculated_altitude;
+  struct accel_sample calculated_accel_mag;
+  int altitude_fd = orb_advertise_multi_queue(ORB_ID(fusion_altitude), NULL, NULL, ALT_FUSION_BUFFER);
   if (altitude_fd < 0) {
-#if defined(CONFIG_INSPACE_TELEMETRY_DEBUG)
-    fprintf(stderr, "Fusion could not advertise altitude topic: %d\n", altitude_fd);
-#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+    inerr("Fusion could not advertise altitude topic: %d\n", altitude_fd);
   }
 
-  /* Perform fusion on sensor data endlessly */
+    /* Output sensors */
 
   for(;;) {
     /* Wait for new data */
@@ -142,13 +138,13 @@ void *fusion_main(void *arg) {
  * @param baro_data The barometer data to use for the calculation
  * @return The calculated altitude and the timestamp from baro_data
  */
-static struct fusion_altitude calculate_altitude(struct sensor_baro *baro_data) {
-  struct fusion_altitude output;
-  output.timestamp = baro_data->timestamp;
+struct fusion_altitude calculate_altitude(struct sensor_baro *baro_data) {
+    struct fusion_altitude output;
+    output.timestamp = baro_data->timestamp;
 
-  /* Assume barometric reading is temperature adjusted */
-  output.altitude = -(GAS_CONSTANT * KELVIN) / (MOLAR_MASS * GRAVITY) * log(baro_data->pressure / SEA_PRESSURE);
-  return output;
+    /* Assume barometric reading is temperature adjusted */
+    output.altitude = -(GAS_CONSTANT * KELVIN) / (MOLAR_MASS * GRAVITY) * log(baro_data->pressure / SEA_PRESSURE);
+    return output;
 }
 
 /**

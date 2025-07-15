@@ -1,5 +1,4 @@
 *.o
-.clang-format
 .cache/
 .kconfig
 .depend
@@ -11,3 +10,4 @@ Make.dep
 *.gcda
 *.gcno
 .vscode
+compile_commands.json
