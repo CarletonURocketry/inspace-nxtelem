@@ -28,12 +28,6 @@
 /* Constant for the conversion from Celsius to Kelvin */
 #define KELVIN 273
 
-/* Don't do any detection until we have time to collect some data so we can filter out noise.
- * Although this would add a delay to the detection of events if the rocket regains power mid-flight,
- * it is probably worth doing
- */
-#define DETECTION_INIT_LOCKOUT 100000
-
 /* UORB declarations */
 #if defined(CONFIG_DEBUG_UORB)
 static const char fusion_alt_format[] = "fusioned altitude - timestamp:%" PRIu64 ",altitude:%hf";
@@ -86,10 +80,6 @@ void *fusion_main(void *arg) {
 
   /* Perform fusion on sensor data endlessly */
 
-  /* The time included with data is based on the uORB time so use that to calculate when detection should be turned on */
-  int detection_lockout = 1;
-  uint64_t detection_enable_time = orb_absolute_time() + DETECTION_INIT_LOCKOUT;
-
   for(;;) {
     /* Wait for new data */
     poll_sensors(&sensors);
@@ -107,13 +97,6 @@ void *fusion_main(void *arg) {
         calculated_accel_mag = calculate_accel_magnitude(&accel_data[i]);
         detector_add_accel(&detector, (struct accel_sample *)&calculated_accel_mag);
       }
-    }
-
-    /* Skip detection of events for a small amount of time */
-    if (detection_lockout && (orb_absolute_time() > detection_enable_time)) {
-      detection_lockout = 0;
-    } else {
-      continue;
     }
 
     /* Run detection. Potentially run periodically instead of every update */
@@ -143,10 +126,6 @@ void *fusion_main(void *arg) {
         /* We can set to landing from anywhere */
         state_set_flightstate(state, STATE_LANDED);
         detector_set_state(&detector, STATE_LANDED, SUBSTATE_UNKNOWN);
-
-        /* Update our elevation so that we don't get false readings in IDLE and detect liftoff again */
-        float elevation = detector_get_alt(&detector);
-        detector_set_elevation(&detector, elevation);
       } break;
 
       default:
