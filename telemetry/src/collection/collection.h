@@ -2,6 +2,7 @@
 #define _COLLECTION_H_
 
 #include "../packets/buffering.h"
+#include "../rocket-state/rocket-state.h"
 
 struct collection_args {
     rocket_state_t *state;
@@ -12,4 +13,3 @@ struct collection_args {
 void *collection_main(void *arg);
 
 #endif // _COLLECTION_H_
-
