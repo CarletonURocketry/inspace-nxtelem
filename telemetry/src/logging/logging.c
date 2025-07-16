@@ -1,25 +1,20 @@
+#include <nuttx/config.h>
+
+#include <dirent.h>
 #include <errno.h>
+#include <limits.h>
 #include <pthread.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <time.h>
+#include <unistd.h>
 
 #include "../fusion/fusion.h"
 #include "../packets/packets.h"
-#include <fcntl.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <unistd.h>
-
-#include "../sensors/sensors.h"
 #include "../syslogging.h"
 #include "logging.h"
-#include <dirent.h>
-#include <time.h>
-
-/* The maximum size of a log file's file name. */
-
-#define MAX_FILENAME 32
 
 /* The format for flight log file names */
 
@@ -37,14 +32,22 @@
 
 #define NUM_TIMES_TRY_OPEN 3
 
+/* The number of seconds of guaranteed data before liftoff */
+
+// TODO - make configurable
+#define PING_PONG_DURATION 1.0f
+
 // Private Functions
 
-static int find_max_boot_number(char *format_string);
-static int switch_active_log_file(FILE **active_storage_file, FILE *storage_file_1, FILE **storage_file_2,
-                                  char *flight_filename2);
+static int should_swap(struct timespec *last_swap);
+static int swap_files(FILE **active_file, FILE **standby_file, struct timespec *last_swap);
+static int find_max_boot_number(const char *dir, const char *format);
+static int choose_flight_number(const char *dir, const char *format);
+static int open_log_file(FILE **opened_file, const char *format, int flight_number, int serial_number,
+                         const char *mode);
+static int get_last_modified_time(FILE *file, struct timespec *last_modified);
 static double timespec_diff(struct timespec *new_time, struct timespec *old_time);
 static int try_open_file(FILE **file_to_open, char *filename, char *open_option);
-
 static size_t log_packet(FILE *storage, uint8_t *packet, size_t packet_size);
 static int copy_out(FILE *active_file, FILE *extract_file);
 
@@ -57,77 +60,46 @@ void *logging_main(void *arg) {
     struct logging_args *unpacked_args = (struct logging_args *)(arg);
     rocket_state_t *state = unpacked_args->state;
     packet_buffer_t *buffer = unpacked_args->buffer;
-    uint32_t seq_num = 0;
+    int packet_seq_num = 0;
 
-    char flight_filename1[sizeof(CONFIG_INSPACE_TELEMETRY_FLIGHT_FS) + MAX_FILENAME];
-    char flight_filename2[sizeof(CONFIG_INSPACE_TELEMETRY_FLIGHT_FS) + MAX_FILENAME];
-    char land_filename[sizeof(CONFIG_INSPACE_TELEMETRY_LANDED_FS) + MAX_FILENAME];
-
-    FILE *storage_file_1 = NULL;      // File pointer for first logging file
-    FILE *storage_file_2 = NULL;      // File pointer for second logging file
-    FILE *active_storage_file = NULL; // File pointer for active logging file
-
-    FILE *extract_storage_file; // File pointer for extraction logging file
-
-    struct stat file_info;         // Stat struct to hold fstat return
-    struct timespec base_timespec; // Time that file was last modified
-    struct timespec new_timespec;  // Time to check against base_time to see if 30 seconds has passed
+    FILE *active_file = NULL;
+    FILE *standby_file = NULL;
+    struct timespec last_swap;
 
     indebug("Logging thread started.\n");
 
     /* Generate flight log file names using the boot number */
-    int max_flight_log_boot_number = find_max_boot_number(FLIGHT_FNAME_FMT);
-    indebug("Previous max boot number: %d\n", max_flight_log_boot_number);
+    int flight_number = choose_flight_number(CONFIG_INSPACE_TELEMETRY_FLIGHT_FS, FLIGHT_FNAME_FMT);
+    int flight_ser_num = 0;
 
-    if (max_flight_log_boot_number < 0) {
-        inerr("Error finding max boot number: return (%d)\n", max_flight_log_boot_number);
-    }
+    int extract_number = choose_flight_number(CONFIG_INSPACE_TELEMETRY_LANDED_FS, EXTR_FNAME_FMT);
+    int extract_ser_num = 0;
 
-    snprintf(flight_filename1, sizeof(flight_filename1), FLIGHT_FNAME_FMT, max_flight_log_boot_number + 1, 1);
-    snprintf(flight_filename2, sizeof(flight_filename2), FLIGHT_FNAME_FMT, max_flight_log_boot_number + 1, 2);
-
-    indebug("File 1 name: %s\n", flight_filename1);
-    indebug("File 2 name: %s\n", flight_filename2);
-
-    if (strlen(flight_filename1) > MAX_FILENAME) // Check log 1 filename length
-    {
-        inerr("Log file 1's name (%s) is longer than the maximum size of characters (%d)\n", flight_filename1,
-              MAX_FILENAME);
-    }
-
-    if (strlen(flight_filename2) > MAX_FILENAME) // Check log 2 filename length
-    {
-        inerr("Log file 2's name (%s) is longer than the maximum size of characters (%d)\n", flight_filename2,
-              MAX_FILENAME);
-    }
-
-    err = try_open_file(&storage_file_1, flight_filename1, "wb+");
-    if (err < 0 || storage_file_1 == NULL) {
-        inerr("Error opening log file 1 (%s): %d\n", flight_filename1, err);
+    err = open_log_file(&active_file, FLIGHT_FNAME_FMT, flight_number, flight_ser_num++, "wb+");
+    if (err < 0) {
+        inerr("Error opening log file with flight number %d, serial number: %d: %d", flight_number, flight_ser_num,
+              err);
+        // As an error handling step, may want to retry with a random flight number
         goto err_cleanup;
     }
 
-    active_storage_file = storage_file_1;
+    err = open_log_file(&standby_file, FLIGHT_FNAME_FMT, flight_number, flight_ser_num++, "wb+");
+    if (err < 0) {
+        inerr("Error opening log file with flight number %d, serial number: %d: %d", flight_number, flight_ser_num,
+              err);
+        // As an error handling step, may want to retry with a random flight number
+        goto err_cleanup;
+    }
 
-    int fd = fileno(active_storage_file);
-    if (fd < 0) {
+    // Since both files were just overwritten, neither has any data
+    if (clock_gettime(CLOCK_REALTIME, &last_swap) < 0) {
         err = errno;
-        inerr("Error using fileno: %d\n", err);
-        goto err_cleanup;
+        inerr("Error during clock_gettime: %d\n", err);
     }
-
-    err = fstat(fd, &file_info);
-    if (err) {
-        err = errno;
-        inerr("Error using fstat: %d\n", err);
-        goto err_cleanup;
-    }
-
-    // Save the time the file was last modified
-    base_timespec = (struct timespec){file_info.st_mtime, 0};
 
     /* Infinite loop to handle states */
     for (;;) {
+
         err = state_get_flightstate(state, &flight_state);
         if (err) {
             inerr("Error getting flight state: %d\n", err);
@@ -136,72 +108,46 @@ void *logging_main(void *arg) {
 
         switch (flight_state) {
         case STATE_IDLE: {
-
-            // Switch between files every 30 seconds
-
-            /* Store current system time as new_timespec */
-            if (clock_gettime(CLOCK_REALTIME, &new_timespec) < 0) {
-                err = errno;
-                inerr("Error during clock_gettime: %d\n", err);
-                continue; // TODO - what to do when we fail here
-            }
-            indebug("Time: %d:%ld\n", new_timespec.tv_sec, new_timespec.tv_nsec);
-
-            double time_diff = timespec_diff(&new_timespec, &base_timespec);
-            if (time_diff < 0) {
-                inerr("Error during timespec_diff (Negative difference returned): %f\n", time_diff);
+            if (should_swap(&last_swap)) {
+                swap_files(&active_file, &standby_file, &last_swap);
+                ininfo("Swapped logging files");
             }
 
-            if (time_diff >= 30.0) {
-                indebug("30 seconds passed\n");
-
-                // Switch active log file
-                err = switch_active_log_file(&active_storage_file, storage_file_1, &storage_file_2, flight_filename2);
-                if (err < 0) {
-                    err = errno;
-                    inerr("Error switching active log file: %d\n", err);
-                    goto err_cleanup;
-                }
-
-                /* Set Base time to current time to reset*/
-                base_timespec = new_timespec;
-            }
-        }
-        /* Purposeful fall-through */
+        } /* Purposeful fall-through */
 
         case STATE_AIRBORNE: {
             packet_node_t *next_packet = packet_buffer_get_full(buffer);
-            ((pkt_hdr_t *)next_packet->packet)->packet_num = seq_num++;
-            log_packet(active_storage_file, next_packet->packet, next_packet->end - next_packet->packet);
+            ((pkt_hdr_t *)next_packet->packet)->packet_num = packet_seq_num++;
+            log_packet(active_file, next_packet->packet, next_packet->end - next_packet->packet);
             packet_buffer_put_empty(buffer, next_packet);
         } break;
 
         case STATE_LANDED: {
+
+            FILE *extract_file = NULL;
+            // Don't overwrite if there's anything in there already
+            err = open_log_file(&extract_file, EXTR_FNAME_FMT, extract_number, extract_ser_num++, "a");
+            if (err < 0) {
+                inerr("Error opening log file with flight number %d, serial number: %d: %d", extract_number,
+                      extract_ser_num, err);
+                // TODO - add more error handling here, should try harder to get data
+                break;
+            }
             indebug("Copying files to extraction file system.\n");
 
-            /* Generate log file name for extraction file system */
-            int max_extraction_log_file_number = find_max_boot_number(EXTR_FNAME_FMT);
-            snprintf(land_filename, sizeof(land_filename), EXTR_FNAME_FMT, max_extraction_log_file_number + 1, 1);
-            indebug("Extraction file name: %s\n", land_filename);
-
-            err = try_open_file(&extract_storage_file, land_filename, "wb+");
-            if (err < 0 || extract_storage_file == NULL) {
-                // If reach here, all attempts to open log file have failed, fatal error
-                err = errno;
-                inerr("Couldn't open extraction log file '%s' with error: %d\n", land_filename, err);
-                goto err_cleanup;
-            }
-
-            copy_out(active_storage_file, extract_storage_file);
+            // Copy out both the standby and the active. If standby doesn't have data it'll be empty and this is a no-op
+            copy_out(standby_file, extract_file);
+            copy_out(active_file, extract_file);
 
             /* Once done copying, close extraction file */
-            if (fclose(extract_storage_file) != 0) {
+            if (fclose(extract_file) != 0) {
                 err = errno;
-                inerr("Couldn't close extraction log file '%s' with error: %d\n", land_filename, err);
+                inerr("Couldn't close extraction log file: %d\n", err);
             }
 
             /* Now that logs are copied to FAT partition, move back to the idle state for another go. */
             flight_state = STATE_IDLE;
+            // TODO - delete old storage files or clear data in some way, to recover their space
 
             err = state_set_flightstate(state, STATE_IDLE);
             if (err < 0) {
@@ -213,12 +159,12 @@ void *logging_main(void *arg) {
 
 err_cleanup:
     /* Close files that may be open */
-    if (storage_file_1 && fclose(storage_file_1) != 0) {
+    if (active_file && fclose(active_file) != 0) {
         err = errno;
         inerr("Failed to close flight logfile 1 handle: %d\n", err);
     }
 
-    if (storage_file_2 && fclose(storage_file_2) != 0) {
+    if (standby_file && fclose(standby_file) != 0) {
         err = errno;
         inerr("Failed to close flight logfile 2 handle: %d\n", err);
     }
@@ -244,16 +190,118 @@ static size_t log_packet(FILE *storage, uint8_t *packet, size_t packet_size) {
 /****************************************************/
 
 /**
+ * Checks if its been at least the amount of time specified by PING_PONG_DURATION since last_swap
+ *
+ * @param last_swap The last time the active and standby files were swapped
+ * @return 1 if they should be swapped, 0 otherwise
+ */
+static int should_swap(struct timespec *last_swap) {
+    int err = 0;
+    struct timespec now;
+    if (clock_gettime(CLOCK_REALTIME, &now) < 0) {
+        err = errno;
+        inerr("Error during clock_gettime: %d\n", err);
+        return 0;
+    }
+
+    double time_diff = timespec_diff(&now, last_swap);
+    if (time_diff < 0) {
+        inerr("Time difference is negative\n");
+    }
+
+    ininfo("time diff is %f\n", time_diff);
+    return time_diff > PING_PONG_DURATION;
+}
+
+/**
+ * Swaps the active and standby files, resetting the new active file and setting the new last_swap time
+ *
+ * @param active_file The current active file, to be swapped with standby_file
+ * @param standby_file The current standby file, to be swapped with active_file
+ * @return 0 if successful, or a negative error code
+ */
+static int swap_files(FILE **active_file, FILE **standby_file, struct timespec *last_swap) {
+    int err = 0;
+    struct timespec now;
+    if (clock_gettime(CLOCK_REALTIME, &now) < 0) {
+        err = errno;
+        inerr("Error during clock_gettime: %d\n", err);
+    } else {
+        *last_swap = now;
+    }
+
+    // Switch active log file
+    FILE *tmp = *active_file;
+    *active_file = *standby_file;
+    *standby_file = tmp;
+
+    err = fseek(*active_file, 0, SEEK_SET);
+    if (err) {
+        err = errno;
+        inerr("Couldn't seek active file back to start: %d", err);
+        // Not a huge deal
+    }
+    return -err;
+}
+
+/**
+ * Gets the time that a file was last modified and stores it in a timespec struct
+ *
+ * @param file The file to check the modified time for
+ * @param last_modified To be filled with information about when the file was last modified
+ * @return 0 if successful, or a negative error code
+ */
+static int get_last_modified_time(FILE *file, struct timespec *last_modified) {
+    int err = 0;
+
+    // Need for fstat
+    int fd = fileno(file);
+    if (fd < 0) {
+        err = errno;
+        inerr("Error using fileno: %d\n", err);
+        return -err;
+    }
+
+    struct stat file_info;
+    err = fstat(fd, &file_info);
+    if (err) {
+        err = errno;
+        inerr("Error using fstat: %d\n", err);
+        return -err;
+    }
+
+    // Last modified time
+    last_modified->tv_sec = file_info.st_mtime;
+    last_modified->tv_nsec = 0;
+    return -err;
+}
+
+/**
+ * Open a file using the specified format and serial numbers for its name
+ *
+ * @param opened_file The pointer to the file to update
+ * @param format A format string with two integer print codes
+ * @param flight_number The integer to use with the first print code
+ * @param serial_number The integer to use with the second print code
+ * @param mode The open options for fopen
+ */
+static int open_log_file(FILE **opened_file, const char *format, int flight_number, int serial_number,
+                         const char *mode) {
+    static char filename[NAME_MAX]; // This should really be PATH_MAX, with a check on how large the filename part is
+    snprintf(filename, sizeof(filename), format, flight_number, serial_number);
+    return try_open_file(opened_file, filename, "wb+");
+}
+
+/**
  * Attempt to open file given filename and flag option multiple times. Once opened, update active file pointer.
  *
  * @param active_file_pointer The pointer to the file to update
  * @param filename The file name of the file to open
- * @param open_option The string option passed to fopen (r, rb, rb+, etc)
- * @return 0 if succesful, else error from errno
+ * @param open_option An open option like fopen would expect
+ * @return 0 if succesful, otherwise a negative error code
  */
 static int try_open_file(FILE **file_pointer, char *filename, char *open_option) {
     int err = 0;
-    // Matteo recomendeded trying multiple times, in case singular one fails.
     for (int i = 0; i < NUM_TIMES_TRY_OPEN; i++) {
         *file_pointer = fopen(filename, open_option);
         if (*file_pointer == NULL) {
@@ -261,32 +309,34 @@ static int try_open_file(FILE **file_pointer, char *filename, char *open_option)
             inerr("Error (Attempt %d) opening '%s' file: %d\n", i, filename, err);
             usleep(1 * 1000); // Sleep for 1 millisecond before trying again
         } else {
-            indebug("\nOpened File: %s\n\n", filename);
+            indebug("Opened File: %s", filename);
             break;
         }
     }
 
-    return err;
+    return -err;
 }
 
 /**
  * Find max boot number of logging files that already exist
  *
- * @param format_string The formatted string to sscanf to extract the boot number from. eg.) "flog_boot%d_%d.bin"
- * @return The maximum boot number found of previous files, -1 if error
+ * @param dir The directory to look for the boot number in
+ * @param format The filename format to look using (which has two integer print codes in it)
+ * @return The maximum boot number found of previous files, 0 if none are found, or a negative error code
  */
-static int find_max_boot_number(char *format_string) {
-    DIR *directory_pointer = opendir("/tmp");
+static int find_max_boot_number(const char *dir, const char *format) {
+    DIR *directory_pointer = opendir(dir);
     if (directory_pointer == NULL) {
-        perror("Couldn't open the directory: ");
-        return -1;
+        int err = errno;
+        inerr("Could not open the directory to read the boot number: %d", err);
+        return -err;
     }
 
     int max_boot_number = 0, boot_number = 0, file_number = 0;
 
     struct dirent *entry;
     while ((entry = readdir(directory_pointer)) != NULL) {
-        if (sscanf(entry->d_name, format_string, &boot_number, &file_number) == 2) {
+        if (sscanf(entry->d_name, format, &boot_number, &file_number) == 2) {
             if (boot_number > max_boot_number) {
                 max_boot_number = boot_number;
             }
@@ -298,57 +348,22 @@ static int find_max_boot_number(char *format_string) {
 }
 
 /**
- * Switch the active file pointer for the ping pong buffer
+ * Pick a flight number using previous files in a directory to avoid naming conflicts
  *
- * @param active_storage_file The active log file pointer
- * @param storage_file_1 The pointer to the first log file
- * @param storage_file_2 The pointer to the second log file
- * @param flight_filename2 The name of the second log file
- * @return 0 if succesful, -1 on error
+ * @param dir The directory to look for previous files in
+ * @param format The filename format to look using (which has two integer print codes in it)
+ * @return A flight number to use with the format string as the first
  */
-static int switch_active_log_file(FILE **active_storage_file, FILE *storage_file_1, FILE **storage_file_2,
-                                  char *flight_filename2) {
-    int err = 0;
-
-    /* Make sure we aren't dereferencing null pointer later */
-    if (*active_storage_file == NULL) {
-        inerr("Error in switch_active_log_file: active_storage_file is NULL");
-        return -1;
+static int choose_flight_number(const char *dir, const char *format) {
+    int flight_number = find_max_boot_number(CONFIG_INSPACE_TELEMETRY_FLIGHT_FS, FLIGHT_FNAME_FMT);
+    if (flight_number < 0) {
+        inerr("Error finding max boot number: %d, picking a random number instead\n", flight_number);
+        flight_number = rand();
+    } else {
+        indebug("Previous max boot number: %d\n", flight_number);
+        flight_number += 1;
     }
-
-    if (*active_storage_file == storage_file_1) {
-        if (*storage_file_2 != NULL) {
-            *active_storage_file = *storage_file_2;
-            return err;
-        }
-
-        /* If reach here, file 2 is not opened yet, so open it*/
-        err = try_open_file(storage_file_2, flight_filename2, "wb+");
-        if (err < 0 || *storage_file_2 == NULL) {
-            inerr("Error (%d) trying to open %s", err, flight_filename2);
-            return -1;
-        }
-
-        *active_storage_file = *storage_file_2;
-    }
-
-    // If file_2 is currently active, that means file_1 was opened successfully, so just switch the pointer
-    else if (*active_storage_file == *storage_file_2) {
-        if (storage_file_1 == NULL) {
-            inerr("ERROR: storage_file_1 is NULL\n");
-            return -1;
-        }
-
-        *active_storage_file = storage_file_1;
-    }
-
-    /* Roll active log file pointer back to beginning */
-    err = fseek(*active_storage_file, 0, SEEK_SET);
-    if (err) {
-        inerr("Couldn't seek active file back to start: %d", err);
-    }
-
-    return err;
+    return flight_number;
 }
 
 /**
