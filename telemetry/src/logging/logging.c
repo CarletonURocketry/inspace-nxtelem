@@ -136,8 +136,26 @@ void *logging_main(void *arg) {
             indebug("Copying files to extraction file system.\n");
 
             // Copy out both the standby and the active. If standby doesn't have data it'll be empty and this is a no-op
-            copy_out(standby_file, extract_file);
-            copy_out(active_file, extract_file);
+            if (copy_out(standby_file, extract_file) < 0) {
+                // Ignoring any error here, since we'll be opening a new file anyways
+                fclose(standby_file);
+                err = open_log_file(&standby_file, FLIGHT_FNAME_FMT, flight_number, flight_ser_num++, "wb+");
+                if (err < 0) {
+                    inerr("Error opening new standby log file with flight number %d, serial number: %d: %d\n",
+                          flight_number, flight_ser_num, err);
+                    goto err_cleanup;
+                }
+            }
+
+            if (copy_out(active_file, extract_file) < 0) {
+                fclose(active_file);
+                err = open_log_file(&active_file, FLIGHT_FNAME_FMT, flight_number, flight_ser_num++, "wb+");
+                if (err < 0) {
+                    inerr("Error opening new active log file with flight number %d, serial number: %d: %d\n",
+                          flight_number, flight_ser_num, err);
+                    goto err_cleanup;
+                }
+            }
 
             /* Once done copying, close extraction file */
             if (fclose(extract_file) != 0) {
@@ -401,14 +419,34 @@ static int copy_out(FILE *active_file, FILE *extract_file) {
         nbytes = sizeof(buf) * fread(buf, sizeof(buf), 1, active_file);
         if (nbytes == 0) {
             err = errno;
-            inerr("Failed to read from the active file");
+            inerr("Failed to read from the active file\n");
             return -err;
         }
         nbytes = sizeof(buf) * fwrite(buf, nbytes, 1, extract_file);
         if (nbytes == 0) {
-            inerr("Failed to write to the extraction file");
+            err = errno;
+            inerr("Failed to write to the extraction file\n");
             // Don't break here, in case writing only fails once
         }
     }
-    return 0;
+
+    /* Don't truncate the file if the write out fails */
+    if (err != 0) {
+        return -err;
+    }
+
+    int fd = fileno(active_file);
+    if (fd < 0) {
+        err = errno;
+        inerr("Failed to get file number (file stream invalid)\n");
+        return -err;
+    }
+
+    if (ftruncate(fd, 0) < 0) {
+        err = errno;
+        inerr("Could not truncate file\n");
+        return -err;
+    }
+
+    return err;
 }
