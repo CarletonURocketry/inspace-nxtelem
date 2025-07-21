@@ -93,7 +93,6 @@ void *logging_main(void *arg) {
 
     /* Infinite loop to handle states */
     for (;;) {
-
         err = state_get_flightstate(state, &flight_state);
         if (err) {
             inerr("Error getting flight state: %d\n", err);
@@ -220,6 +219,34 @@ static int should_swap(struct timespec *now, struct timespec *last_swap) {
 }
 
 /**
+ * Set the length of a file to zero, and reset its write position
+ *
+ * @param to_clear The file to clear the contents of
+ * @return 0 if the file was cleared successfully, or a negative error code
+ */
+static int clear_file(FILE *to_clear) {
+    int err = fseek(to_clear, 0, SEEK_SET);
+    if (err) {
+        err = errno;
+        inerr("Couldn't seek active file back to start: %d\n", err);
+        return -err;
+    }
+
+    int fd = fileno(to_clear);
+    if (fd < 0) {
+        err = errno;
+        inerr("Failed to get file number (file stream invalid)\n");
+        return -err;
+    }
+    if (ftruncate(fd, 0) < 0) {
+        err = errno;
+        inerr("Could not truncate file\n");
+        return -err;
+    }
+    return -err;
+}
+
+/**
  * Swaps the active and standby files, resetting the new active file and setting the new last_swap time
  *
  * @param active_file The current active file, to be swapped with standby_file
@@ -227,24 +254,12 @@ static int should_swap(struct timespec *now, struct timespec *last_swap) {
  * @return 0 if successful, or a negative error code
  */
 static int swap_files(FILE **active_file, FILE **standby_file) {
-    int err = 0;
-    struct timespec now;
-    if (clock_gettime(CLOCK_REALTIME, &now) < 0) {
-        err = errno;
-        inerr("Error during clock_gettime: %d\n", err);
-    }
-
     // Switch active log file
     FILE *tmp = *active_file;
     *active_file = *standby_file;
     *standby_file = tmp;
-
-    err = fseek(*active_file, 0, SEEK_SET);
-    if (err) {
-        err = errno;
-        inerr("Couldn't seek active file back to start: %d\n", err);
-    }
-    return -err;
+    int err = clear_file(*active_file);
+    return err;
 }
 
 /**
@@ -385,19 +400,7 @@ static int copy_out(FILE *active_file, FILE *extract_file) {
     if (err != 0) {
         return -err;
     }
+    err = clear_file(active_file);
 
-    int fd = fileno(active_file);
-    if (fd < 0) {
-        err = errno;
-        inerr("Failed to get file number (file stream invalid)\n");
-        return -err;
-    }
-
-    if (ftruncate(fd, 0) < 0) {
-        err = errno;
-        inerr("Could not truncate file\n");
-        return -err;
-    }
-
-    return err;
+    return -err;
 }
