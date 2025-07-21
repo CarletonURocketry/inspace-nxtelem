@@ -18,11 +18,11 @@
 
 /* The format for flight log file names */
 
-#define FLIGHT_FNAME_FMT CONFIG_INSPACE_TELEMETRY_FLIGHT_FS "flog_boot%d_%d.bin"
+#define FLIGHT_FNAME_FMT CONFIG_INSPACE_TELEMETRY_FLIGHT_FS "flog_%d_%d.bin"
 
 /* The format for extraction log file names */
 
-#define EXTR_FNAME_FMT CONFIG_INSPACE_TELEMETRY_LANDED_FS "elog_boot%d_%d.bin"
+#define EXTR_FNAME_FMT CONFIG_INSPACE_TELEMETRY_LANDED_FS "elog_%d_%d.bin"
 
 /* Cast an error to a void pointer */
 
@@ -34,18 +34,14 @@
 
 /* The number of seconds of guaranteed data before liftoff */
 
-// TODO - make configurable
-#define PING_PONG_DURATION 1.0f
+#define PING_PONG_DURATION 30.0f
 
-// Private Functions
-
-static int should_swap(struct timespec *last_swap);
-static int swap_files(FILE **active_file, FILE **standby_file, struct timespec *last_swap);
+static int should_swap(struct timespec *last_swap, struct timespec *now);
+static int swap_files(FILE **active_file, FILE **standby_file);
 static int find_max_boot_number(const char *dir, const char *format);
 static int choose_flight_number(const char *dir, const char *format);
 static int open_log_file(FILE **opened_file, const char *format, int flight_number, int serial_number,
                          const char *mode);
-static int get_last_modified_time(FILE *file, struct timespec *last_modified);
 static double timespec_diff(struct timespec *new_time, struct timespec *old_time);
 static int try_open_file(FILE **file_to_open, char *filename, char *open_option);
 static size_t log_packet(FILE *storage, uint8_t *packet, size_t packet_size);
@@ -77,17 +73,15 @@ void *logging_main(void *arg) {
 
     err = open_log_file(&active_file, FLIGHT_FNAME_FMT, flight_number, flight_ser_num++, "wb+");
     if (err < 0) {
-        inerr("Error opening log file with flight number %d, serial number: %d: %d", flight_number, flight_ser_num,
+        inerr("Error opening log file with flight number %d, serial number: %d: %d\n", flight_number, flight_ser_num,
               err);
-        // As an error handling step, may want to retry with a random flight number
         goto err_cleanup;
     }
 
     err = open_log_file(&standby_file, FLIGHT_FNAME_FMT, flight_number, flight_ser_num++, "wb+");
     if (err < 0) {
-        inerr("Error opening log file with flight number %d, serial number: %d: %d", flight_number, flight_ser_num,
+        inerr("Error opening log file with flight number %d, serial number: %d: %d\n", flight_number, flight_ser_num,
               err);
-        // As an error handling step, may want to retry with a random flight number
         goto err_cleanup;
     }
 
@@ -108,14 +102,21 @@ void *logging_main(void *arg) {
 
         switch (flight_state) {
         case STATE_IDLE: {
-            if (should_swap(&last_swap)) {
-                swap_files(&active_file, &standby_file, &last_swap);
-                ininfo("Swapped logging files");
+            struct timespec now;
+            if (clock_gettime(CLOCK_REALTIME, &now) < 0) {
+                err = errno;
+                inerr("Error during clock_gettime: %d\n", err);
+            }
+            if (should_swap(&now, &last_swap)) {
+                swap_files(&active_file, &standby_file);
+                last_swap = now;
+                ininfo("Swapped logging files\n");
             }
 
         } /* Purposeful fall-through */
 
         case STATE_AIRBORNE: {
+            // Get the next packet, or wait if there isn't one yet
             packet_node_t *next_packet = packet_buffer_get_full(buffer);
             ((pkt_hdr_t *)next_packet->packet)->packet_num = packet_seq_num++;
             log_packet(active_file, next_packet->packet, next_packet->end - next_packet->packet);
@@ -123,12 +124,11 @@ void *logging_main(void *arg) {
         } break;
 
         case STATE_LANDED: {
-
             FILE *extract_file = NULL;
             // Don't overwrite if there's anything in there already
             err = open_log_file(&extract_file, EXTR_FNAME_FMT, extract_number, extract_ser_num++, "a");
             if (err < 0) {
-                inerr("Error opening log file with flight number %d, serial number: %d: %d", extract_number,
+                inerr("Error opening log file with flight number %d, serial number: %d: %d\n", extract_number,
                       extract_ser_num, err);
                 // TODO - add more error handling here, should try harder to get data
                 break;
@@ -179,21 +179,19 @@ err_cleanup:
     /* Close files that may be open */
     if (active_file && fclose(active_file) != 0) {
         err = errno;
-        inerr("Failed to close flight logfile 1 handle: %d\n", err);
+        inerr("Failed to close active file: %d\n", err);
     }
 
     if (standby_file && fclose(standby_file) != 0) {
         err = errno;
-        inerr("Failed to close flight logfile 2 handle: %d\n", err);
+        inerr("Failed to close standby file: %d\n", err);
     }
 
     pthread_exit(err_to_ptr(err));
 }
 
 static size_t log_packet(FILE *storage, uint8_t *packet, size_t packet_size) {
-    size_t written;
-
-    written = fwrite(packet, 1, packet_size, storage);
+    size_t written = fwrite(packet, 1, packet_size, storage);
     indebug("Logged %zu bytes\n", written);
     if (written == 0) {
         // TODO: Handle error (might happen if file got too large, start
@@ -213,21 +211,11 @@ static size_t log_packet(FILE *storage, uint8_t *packet, size_t packet_size) {
  * @param last_swap The last time the active and standby files were swapped
  * @return 1 if they should be swapped, 0 otherwise
  */
-static int should_swap(struct timespec *last_swap) {
-    int err = 0;
-    struct timespec now;
-    if (clock_gettime(CLOCK_REALTIME, &now) < 0) {
-        err = errno;
-        inerr("Error during clock_gettime: %d\n", err);
-        return 0;
-    }
-
-    double time_diff = timespec_diff(&now, last_swap);
+static int should_swap(struct timespec *now, struct timespec *last_swap) {
+    double time_diff = timespec_diff(now, last_swap);
     if (time_diff < 0) {
         inerr("Time difference is negative\n");
     }
-
-    ininfo("time diff is %f\n", time_diff);
     return time_diff > PING_PONG_DURATION;
 }
 
@@ -238,14 +226,12 @@ static int should_swap(struct timespec *last_swap) {
  * @param standby_file The current standby file, to be swapped with active_file
  * @return 0 if successful, or a negative error code
  */
-static int swap_files(FILE **active_file, FILE **standby_file, struct timespec *last_swap) {
+static int swap_files(FILE **active_file, FILE **standby_file) {
     int err = 0;
     struct timespec now;
     if (clock_gettime(CLOCK_REALTIME, &now) < 0) {
         err = errno;
         inerr("Error during clock_gettime: %d\n", err);
-    } else {
-        *last_swap = now;
     }
 
     // Switch active log file
@@ -256,41 +242,8 @@ static int swap_files(FILE **active_file, FILE **standby_file, struct timespec *
     err = fseek(*active_file, 0, SEEK_SET);
     if (err) {
         err = errno;
-        inerr("Couldn't seek active file back to start: %d", err);
-        // Not a huge deal
+        inerr("Couldn't seek active file back to start: %d\n", err);
     }
-    return -err;
-}
-
-/**
- * Gets the time that a file was last modified and stores it in a timespec struct
- *
- * @param file The file to check the modified time for
- * @param last_modified To be filled with information about when the file was last modified
- * @return 0 if successful, or a negative error code
- */
-static int get_last_modified_time(FILE *file, struct timespec *last_modified) {
-    int err = 0;
-
-    // Need for fstat
-    int fd = fileno(file);
-    if (fd < 0) {
-        err = errno;
-        inerr("Error using fileno: %d\n", err);
-        return -err;
-    }
-
-    struct stat file_info;
-    err = fstat(fd, &file_info);
-    if (err) {
-        err = errno;
-        inerr("Error using fstat: %d\n", err);
-        return -err;
-    }
-
-    // Last modified time
-    last_modified->tv_sec = file_info.st_mtime;
-    last_modified->tv_nsec = 0;
     return -err;
 }
 
@@ -327,11 +280,10 @@ static int try_open_file(FILE **file_pointer, char *filename, char *open_option)
             inerr("Error (Attempt %d) opening '%s' file: %d\n", i, filename, err);
             usleep(1 * 1000); // Sleep for 1 millisecond before trying again
         } else {
-            indebug("Opened File: %s", filename);
+            indebug("Opened File: %s\n", filename);
             break;
         }
     }
-
     return -err;
 }
 
@@ -346,7 +298,7 @@ static int find_max_boot_number(const char *dir, const char *format) {
     DIR *directory_pointer = opendir(dir);
     if (directory_pointer == NULL) {
         int err = errno;
-        inerr("Could not open the directory to read the boot number: %d", err);
+        inerr("Could not open the directory to read the boot number: %d\n", err);
         return -err;
     }
 
@@ -360,7 +312,6 @@ static int find_max_boot_number(const char *dir, const char *format) {
             }
         }
     }
-
     (void)closedir(directory_pointer);
     return max_boot_number;
 }
@@ -407,7 +358,7 @@ static int copy_out(FILE *active_file, FILE *extract_file) {
     int err = fseek(active_file, 0, SEEK_SET);
     if (err) {
         err = errno;
-        inerr("Couldn't seek active file back to start: %d", err);
+        inerr("Couldn't seek active file back to start: %d\n", err);
         return -err;
     }
 
