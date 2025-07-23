@@ -17,5 +17,6 @@ void tearDown(void) {
 int main(void) {
   UNITY_BEGIN();
   test_rocket_state();
+  test_logging();
   return UNITY_END();
 }
