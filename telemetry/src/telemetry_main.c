@@ -1,9 +1,7 @@
 #include <pthread.h>
 #include <sched.h>
 #include <stdatomic.h>
-#include <stdio.h>
 #include <stdlib.h>
-#include <time.h>
 
 #include "rocket-state/rocket-state.h"
 
@@ -40,7 +38,7 @@ int main(int argc, char **argv) {
         inerr("State not loaded properly, ensuring airborne state set: %d\n", err);
         err = state_set_flightstate(&state, STATE_AIRBORNE);
         if (err) {
-            fprintf(stderr, "Could not set flight state properly either, continuing anyways: %d\n", err);
+            inerr("Could not set flight state properly either, continuing anyways: %d\n", err);
         }
     }
 
@@ -80,7 +78,8 @@ int main(int argc, char **argv) {
         exit(EXIT_FAILURE);
     }
 
-    err = pthread_create(&fusion_thread, NULL, fusion_main, &state);
+    struct fusion_args fusion_thread_args = {.state = &state};
+    err = pthread_create(&fusion_thread, NULL, fusion_main, &fusion_thread_args);
     if (err) {
         inerr("Problem starting fusion thread: %d\n", err);
         exit(EXIT_FAILURE);
