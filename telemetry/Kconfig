@@ -83,14 +83,14 @@ config INSPACE_TELEMETRY_STARTBUFFER
 
 config INSPACE_TELEMETRY_FLIGHT_FS
     string "Flight logging filesystem"
-    default "/flight/"
+    default "/mnt/pwrfs"
     ---help---
         The path identifier of the filesystem to log data to during flight.
         Should be a power-failure safe filesystem.
 
 config INSPACE_TELEMETRY_LANDED_FS
     string "Landing logging filesystem"
-    default "/landed/"
+    default "/mnt/usrfs"
     ---help---
         The path identifier of the filesystem to log data to after landing.
         Should be a FAT file system or something easily accessed from a host
