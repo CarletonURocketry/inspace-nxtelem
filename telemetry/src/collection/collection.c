@@ -10,12 +10,6 @@
 #include "../syslogging.h"
 #include "collection.h"
 
-/* Measurement interval in nanoseconds */
-
-#if CONFIG_INSPACE_TELEMETRY_RATE != 0
-#define INTERVAL (1e9 / CONFIG_INSPACE_TELEMETRY_RATE)
-#endif /* CONFIG_INSPACE_TELEMETRY_RATE != 0 */
-
 /* Cast an error to a void pointer */
 
 #define err_to_ptr(err) ((void *)((err)))

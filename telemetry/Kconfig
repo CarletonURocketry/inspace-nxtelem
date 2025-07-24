@@ -6,13 +6,15 @@
 config INSPACE_TELEMETRY
     tristate "InSpace Telemetry System"
     default n
-    select SENSORS
-    select USENSOR
-    select UORB
+    depends on SENSORS
+    depends on USENSOR
+    depends on UORB
     ---help---
         Enable the Carleton University InSpace telemetry system code.
 
 if INSPACE_TELEMETRY
+
+comment "Program options"
 
 config INSPACE_TELEMETRY_PROGNAME
     string "Program name"
@@ -69,10 +71,7 @@ config INSPACE_SYSLOG_ERR
 
 endif # INSPACE_SYSLOG_OUTPUT
 
-config INSPACE_TELEMETRY_RATE
-    int "Measurement/logging rate in Hz"
-    default 10
-    range 0 100
+comment "Logging options"
 
 config INSPACE_TELEMETRY_STARTBUFFER
     int "Start buffering in seconds"
@@ -81,13 +80,6 @@ config INSPACE_TELEMETRY_STARTBUFFER
         When the telemetry system starts, a rolling buffer of the last `n`
         seconds is kept up to date. This ensures that lift-off detection latency
         does not cause data loss about the initial lift-off.
-
-config INSPACE_TELEMETRY_CALLSIGN
-    string "HAM radio call sign"
-    ---help---
-        In order to transmit radio messages legally, an amateur radio call sign
-        is required. This is used in the packet format transmitted by the
-        telemetry system.
 
 config INSPACE_TELEMETRY_FLIGHT_FS
     string "Flight logging filesystem"
@@ -103,6 +95,17 @@ config INSPACE_TELEMETRY_LANDED_FS
         The path identifier of the filesystem to log data to after landing.
         Should be a FAT file system or something easily accessed from a host
         computer.
+
+comment "EEPROM configuration settings"
+
+config INSPACE_TELEMETRY_CALLSIGN
+    string "HAM radio call sign"
+    ---help---
+        In order to transmit radio messages legally, an amateur radio call sign
+        is required. This is used in the packet format transmitted by the
+        telemetry system.
+
+comment "Device paths"
 
 config INSPACE_TELEMETRY_RADIO
     string "Radio device"
