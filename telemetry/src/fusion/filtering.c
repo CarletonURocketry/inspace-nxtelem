@@ -1,5 +1,29 @@
-#include "filtering.h"
 #include <float.h>
+
+#include <nuttx/circbuf.h>
+
+#include "filtering.h"
+
+/* Helper function to overwrite old data with new data and keep the old value.
+ * @param circ The circular buffer
+ * @param new The new data pushed in
+ * @param old The old data pushed out
+ * @param size The size of the data
+ * @return 1 if the buffer was full and the oldest element was copied out, 0 otherwise
+ */
+
+static int circbuf_push_out(struct circbuf_s *circ, void *new, void *old, size_t size) {
+    if (!circbuf_is_full(circ)) {
+        circbuf_write(circ, new, size);
+        return 0;
+    }
+
+    /* If here, the circular buffer was full. Read the oldest data */
+
+    circbuf_read(circ, old, size);
+    circbuf_write(circ, new, size);
+    return 1;
+}
 
 /**
  * Remove a value from a sorted array by shifting all elements after the removed one to the left
@@ -54,7 +78,7 @@ static void insert_into_sorted(float value, float *sorted, int num_elements) {
 void median_filter_init(struct median_filter *filter, float *sorted, float *time_ordered, int size) {
     filter->size = 0;
     filter->sorted = sorted;
-    circ_buffer_init(&filter->time_ordered, time_ordered, size, sizeof(float));
+    circbuf_init(&filter->time_ordered, time_ordered, size);
 }
 
 /**
@@ -66,7 +90,7 @@ void median_filter_init(struct median_filter *filter, float *sorted, float *time
  */
 float median_filter_add(struct median_filter *filter, float new_value) {
     float to_remove = 0.0f;
-    if (circ_buffer_push_out(&filter->time_ordered, &new_value, &to_remove)) {
+    if (circbuf_push_out(&filter->time_ordered, &new_value, &to_remove, sizeof(float))) {
         remove_from_sorted(to_remove, filter->sorted, filter->size);
         filter->size--;
     }
@@ -84,7 +108,7 @@ float median_filter_add(struct median_filter *filter, float new_value) {
  * @param size The size of buffer in bytes
  */
 void average_filter_init(struct average_filter *filter, float *buffer, int size) {
-    circ_buffer_init(&filter->buffer, buffer, size, sizeof(float));
+    circbuf_init(&filter->buffer, buffer, size);
     filter->sum = 0.0f;
 }
 
@@ -97,11 +121,11 @@ void average_filter_init(struct average_filter *filter, float *buffer, int size)
  */
 float average_filter_add(struct average_filter *filter, float new_value) {
     float old_value = 0.0f;
-    if (circ_buffer_push_out(&filter->buffer, &new_value, &old_value)) {
+    if (circbuf_push_out(&filter->buffer, &new_value, &old_value, sizeof(float))) {
         filter->sum -= old_value;
     }
     filter->sum += new_value;
-    return filter->sum / circ_buffer_size(&filter->buffer);
+    return filter->sum / (circbuf_size(&filter->buffer) / sizeof(float));
 }
 
 /**
