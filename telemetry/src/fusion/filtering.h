@@ -3,15 +3,15 @@
 
 #include <stdint.h>
 
-#include "circular-buffer.h"
+#include <nuttx/circbuf.h>
 
 /* Median filter - rejects sudden spikes in readings better than an averaging.
  * This type of filter is best kept small because it requires sorting
  */
 struct median_filter {
-    int size;                        /* The number of elements in the sorted array */
-    float *sorted;                   /* The elements in the circular buffer, sorted */
-    struct circ_buffer time_ordered; /* Circular buffer of floating point values */
+    int size;                      /* The number of elements in the sorted array */
+    float *sorted;                 /* The elements in the circular buffer, sorted */
+    struct circbuf_s time_ordered; /* Circular buffer of floating point values */
 };
 
 /* Moving average - smooths data to get rid of random noise.
@@ -19,8 +19,8 @@ struct median_filter {
  * appprox half the size of the filter
  */
 struct average_filter {
-    struct circ_buffer buffer; /* Circular buffer of floating point values */
-    float sum;                 /* The sum of the elements in the circular buffer */
+    struct circbuf_s buffer; /* Circular buffer of floating point values */
+    float sum;               /* The sum of the elements in the circular buffer */
 };
 
 /* Moving window - makes sure that minimum and maximum values stay within a certain range
