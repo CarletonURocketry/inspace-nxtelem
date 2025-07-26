@@ -1,0 +1,58 @@
+#
+# For a description of the syntax of this configuration file,
+# see the file kconfig-language.txt in the NuttX tools repository.
+#
+
+config INSPACE_SELFTEST
+	tristate "Josh self test"
+	default n
+	depends on TESTING_UNITY
+	---help---
+		Board self-test of all hardware to ensure hardware is working.
+
+if INSPACE_SELFTEST
+
+comment "Program options"
+
+config INSPACE_SELFTEST_PROGNAME
+	string "Program name"
+	default "inspace_selftest"
+	---help---
+		This is the name of the program that self-tests Josh.
+
+config INSPACE_SELFTEST_PRIORITY
+    int "Selftest task priority"
+    default 100
+
+config INSPACE_SELFTEST_STACKSIZE
+    int "Selftest system stack size"
+    default DEFAULT_TASK_STACKSIZE
+
+comment "Device paths"
+
+config INSPACE_SELFTEST_RADIO
+    string "Radio device"
+    default "/dev/rn2483"
+    ---help---
+        The path identifier of the radio device for transmitting.
+
+config INSPACE_SELFTEST_EEPROM
+    string "Eeprom device"
+    default "/dev/eeprom"
+    ---help---
+        The path identifier of the eeprom device for storing settings.
+
+config INSPACE_SELFTEST_FLIGHT_FS
+    string "Flight logging filesystem"
+    default "/mnt/pwrfs"
+    ---help---
+        The path identifier of the filesystem to log data to during flight.
+
+config INSPACE_SELFTEST_LANDED_FS
+    string "Landing logging filesystem"
+    default "/mnt/usrfs"
+    ---help---
+		The path identifier of the FAT filesystem where data is copied
+		post-flight.
+
+endif # INSPACE_SELFTEST
