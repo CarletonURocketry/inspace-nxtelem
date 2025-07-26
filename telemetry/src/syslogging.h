@@ -25,7 +25,7 @@
 /* Warning output */ 
 
 #ifdef CONFIG_INSPACE_SYSLOG_WARN
-#define inwarn(fstring, ...) syslog(LOG_WARN | LOG_USER, __HLOGSTR(fstring), __FUNCTION__ __VA_OPT__(, ) __VA_ARGS__)
+#define inwarn(fstring, ...) syslog(LOG_WARNING | LOG_USER, __HLOGSTR(fstring), __FUNCTION__ __VA_OPT__(, ) __VA_ARGS__)
 #else
 #define inwarn(fstring, ...)
 #endif
