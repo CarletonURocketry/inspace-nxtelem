@@ -27,12 +27,12 @@ int main(int argc, char **argv) {
     unsigned int tests_failed = 0;
 
     printf("This is the self-test for the hardware present on Josh REV B.\n");
-    printf("You will need to monitor the console output of this test to make sure that");
+    printf("You will need to monitor the console output of this test to make sure that ");
     printf("LEDs other non-verifiable actuators do what they're supposed to at the right time.\n");
 
-    printf("Test beginning.");
-
     sleep(3);
+
+    printf("Test beginning...");
 
 #ifdef CONFIG_SENSORS_LIS2MDL
     run_test(err, tests_failed, selftest_mag);

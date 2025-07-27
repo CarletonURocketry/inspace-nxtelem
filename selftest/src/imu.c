@@ -4,13 +4,18 @@
 
 /* Acceleration limits in m/s^2 */
 
-#define ACCEL_MIN -9.81
-#define ACCEL_MAX 9.81
+#define ACCEL_MIN -9.91
+#define ACCEL_MAX 9.91
 
 /* Gyro limits in rad/s */
 
-#define GYRO_MIN 16.0
-#define GYRO_MAX 28.0
+#define GYRO_MIN -0.06
+#define GYRO_MAX 0.06
+
+/* Celsius temperature limits */
+
+#define TEMP_MIN 16.0
+#define TEMP_MAX 28.0
 
 static int selftest_accel(void) {
 
@@ -79,10 +84,31 @@ static int selftest_accel(void) {
     }
 
     /* We have data, check if acceleration is fine. There should be only one
-     * gravity vector. 
+     * gravity vector.
      */
 
-    err = 0; /* Success */
+    // TODO
+
+    /* Check the temperature ranges */
+
+    if (!(TEMP_MIN <= data.temperature && data.temperature <= TEMP_MAX)) {
+        serr("Temperature %.3f outside of expected range (%.2f, %.2f) in Celsius\n", data.temperature, TEMP_MIN,
+             TEMP_MAX);
+        err = EINVAL;
+        goto early_ret;
+    } else {
+        printf("Temperature read %.2f Celsius\n", data.temperature);
+    }
+
+    /* Perform the chip self-test */
+
+    err = orb_ioctl(fd, SNIOC_SELFTEST, 0);
+    if (err < 0) {
+        err = errno;
+        serr("Accelerometer chip self-test failed: %d\n", errno);
+    } else {
+        printf("Accelerometer chip self-test passed.\n");
+    }
 
 early_ret:
     orb_unsubscribe(fd);
@@ -95,13 +121,13 @@ static int selftest_gyro(void) {
     int fd;
     int err = 0;
     unsigned int frequency = 50;
-    struct sensor_accel accel_data;
+    struct sensor_gyro data;
     bool data_ready;
     bool have_data;
 
-    meta = orb_get_meta("sensor_baro");
+    meta = orb_get_meta("sensor_gyro");
     if (meta == NULL) {
-        serr("Couldn't get sensor_baro metadata.\n");
+        serr("Couldn't get sensor_gyro metadata.\n");
         return ENOENT;
     }
 
@@ -154,16 +180,33 @@ static int selftest_gyro(void) {
         goto early_ret;
     }
 
-    /* We have data, check if pressure is within ground pressure ranges. */
+    /* We have data, check if angular velocity is close to 0. */
 
-    if (!(PRESSURE_MIN <= data.pressure && data.pressure <= PRESSURE_MAX)) {
-        serr("Pressure %.3f outside of expected range (%.2f, %.2f) in mbar\n", data.pressure, PRESSURE_MIN,
-             PRESSURE_MAX);
+    if (!(GYRO_MIN <= data.x && data.x <= GYRO_MAX)) {
+        serr("Angular velocity (X) %.3f outside of expected range (%.2f, %.2f) rad/s\n", data.x, GYRO_MIN, GYRO_MAX);
         err = EINVAL;
         goto early_ret;
     } else {
-        printf("Pressure read %.2f mbar\n", data.pressure);
+        printf("Angular velocity X read %.2f rad/s\n", data.x);
     }
+
+    if (!(GYRO_MIN <= data.y && data.y <= GYRO_MAX)) {
+        serr("Angular velocity (Y) %.3f outside of expected range (%.2f, %.2f) rad/s\n", data.y, GYRO_MIN, GYRO_MAX);
+        err = EINVAL;
+        goto early_ret;
+    } else {
+        printf("Angular velocity Y read %.2f rad/s\n", data.y);
+    }
+
+    if (!(GYRO_MIN <= data.z && data.z <= GYRO_MAX)) {
+        serr("Angular velocity (Z) %.3f outside of expected range (%.2f, %.2f) rad/s\n", data.z, GYRO_MIN, GYRO_MAX);
+        err = EINVAL;
+        goto early_ret;
+    } else {
+        printf("Angular velocity Z read %.2f rad/s\n", data.z);
+    }
+
+    /* Check temperature ranges */
 
     if (!(TEMP_MIN <= data.temperature && data.temperature <= TEMP_MAX)) {
         serr("Temperature %.3f outside of expected range (%.2f, %.2f) in Celsius\n", data.temperature, TEMP_MIN,
@@ -174,7 +217,15 @@ static int selftest_gyro(void) {
         printf("Temperature read %.2f Celsius\n", data.temperature);
     }
 
-    err = 0; /* Success */
+    /* Perform the chip self-test */
+
+    err = orb_ioctl(fd, SNIOC_SELFTEST, 0);
+    if (err < 0) {
+        err = errno;
+        serr("Gyro chip self-test failed: %d\n", errno);
+    } else {
+        printf("Gyro chip self-test passed.\n");
+    }
 
 early_ret:
     orb_unsubscribe(fd);
