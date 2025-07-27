@@ -103,7 +103,7 @@ static int selftest_accel(void) {
     /* Perform the chip self-test */
 
     err = orb_ioctl(fd, SNIOC_SELFTEST, 0);
-    if (err < 0) {
+    if (err) {
         err = errno;
         serr("Accelerometer chip self-test failed: %d\n", errno);
     } else {
@@ -162,7 +162,7 @@ static int selftest_gyro(void) {
 
         if (data_ready) {
             err = orb_copy(meta, fd, &data);
-            if (err < 0) {
+            if (err) {
                 err = errno;
                 serr("Error copying uORB data: %d\n", errno);
                 continue;
@@ -220,7 +220,7 @@ static int selftest_gyro(void) {
     /* Perform the chip self-test */
 
     err = orb_ioctl(fd, SNIOC_SELFTEST, 0);
-    if (err < 0) {
+    if (err) {
         err = errno;
         serr("Gyro chip self-test failed: %d\n", errno);
     } else {
@@ -236,7 +236,7 @@ int selftest_imu(void) {
     int err;
 
     err = selftest_accel();
-    if (err < 0) {
+    if (err) {
         return err;
     }
 
