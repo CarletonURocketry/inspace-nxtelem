@@ -32,7 +32,9 @@ static uint8_t *add_or_new(collection_info_t *collection, enum block_type_e type
 static void baro_handler(void *ctx, uint8_t *data);
 static void accel_handler(void *ctx, uint8_t *data);
 static void mag_handler(void *ctx, uint8_t *data);
+#ifdef CONFIG_SENSORS_L86XXX
 static void gnss_handler(void *ctx, uint8_t *data);
+#endif
 static void gyro_handler(void *ctx, uint8_t *data);
 static void alt_handler(void *ctx, uint8_t *data);
 
@@ -108,7 +110,9 @@ void *collection_main(void *arg) {
     setup_sensor(&sensors.baro, orb_get_meta("sensor_baro"));
     setup_sensor(&sensors.mag, orb_get_meta("sensor_mag"));
     setup_sensor(&sensors.gyro, orb_get_meta("sensor_gyro"));
+#ifdef CONFIG_SENSORS_L86XXX
     setup_sensor(&sensors.gnss, orb_get_meta("sensor_gnss"));
+#endif
     setup_sensor(&sensors.alt, ORB_ID(fusion_altitude));
 
     /* Separate buffers use more memory but allow us to process in pieces while still reading only once */
@@ -116,7 +120,9 @@ void *collection_main(void *arg) {
     struct sensor_baro baro_data[BARO_READ_SIZE];
     struct sensor_mag mag_data[MAG_READ_SIZE];
     struct sensor_gyro gyro_data[GYRO_READ_SIZE];
+#ifdef CONFIG_SENSORS_L86XXX
     struct sensor_gnss gnss_data[GNSS_READ_SIZE];
+#endif
     struct fusion_altitude alt_data[ALT_READ_SIZE];
 
     ininfo("Collection thread started.\n");
@@ -141,14 +147,18 @@ void *collection_main(void *arg) {
         void *baro_end = get_sensor_data_end(&sensors.baro, baro_data, sizeof(baro_data));
         void *mag_end = get_sensor_data_end(&sensors.mag, mag_data, sizeof(mag_data));
         void *gyro_end = get_sensor_data_end(&sensors.gyro, gyro_data, sizeof(gyro_data));
+#ifdef CONFIG_SENSORS_L86XXX
         void *gnss_end = get_sensor_data_end(&sensors.gnss, gnss_data, sizeof(gnss_data));
+#endif
         void *alt_end = get_sensor_data_end(&sensors.alt, alt_data, sizeof(alt_data));
 
         void *accel_start = accel_data;
         void *baro_start = baro_data;
         void *mag_start = mag_data;
         void *gyro_start = gyro_data;
+#ifdef CONFIG_SENSORS_L86XXX
         void *gnss_start = gnss_data;
+#endif
         void *alt_start = alt_data;
 
         /* Process one piece of data of each type at a time to get a more even mix of things in the packets */
@@ -159,7 +169,9 @@ void *collection_main(void *arg) {
             processed += process_one(baro_handler, &context, &baro_start, baro_end, sizeof(struct sensor_baro));
             processed += process_one(mag_handler, &context, &mag_start, mag_end, sizeof(struct sensor_mag));
             processed += process_one(gyro_handler, &context, &gyro_start, gyro_end, sizeof(struct sensor_gyro));
+#ifdef CONFIG_SENSORS_L86XXX
             processed += process_one(gnss_handler, &context, &gnss_start, gnss_end, sizeof(struct sensor_gnss));
+#endif
             processed += process_one(alt_handler, &context, &alt_start, alt_end, sizeof(struct fusion_altitude));
         } while (processed);
 
@@ -396,6 +408,7 @@ static void gyro_handler(void *ctx, uint8_t *data) {
     add_gyro_blk(&context->transmit, gyro_data);
 }
 
+#ifdef CONFIG_SENSORS_L86XXX
 /**
  * Add an gnss block to the packet being assembled
  *
@@ -410,7 +423,9 @@ static void add_gnss_block(collection_info_t *collection, struct sensor_gnss *gn
                        point_one_microdegrees(gnss_data->longitude));
     }
 }
+#endif
 
+#ifdef CONFIG_SENSORS_L86XXX
 /**
  * Add a gnss mean sea level altitude block to the packet being assembled
  *
@@ -424,6 +439,7 @@ static void add_gnss_msl_block(collection_info_t *collection, struct sensor_gnss
         alt_blk_init((struct alt_blk_t *)block_body(block), millimeters(alt_data->altitude));
     }
 }
+#endif
 
 /**
  * Add a mean sea level altitude block to the packet being assembled
@@ -439,6 +455,7 @@ static void add_msl_block(collection_info_t *collection, struct fusion_altitude 
     }
 }
 
+#ifdef CONFIG_SENSORS_L86XXX
 /**
  * A uorb_data_callback_t function - adds gnss data to the required packets
  *
@@ -457,6 +474,7 @@ static void gnss_handler(void *ctx, uint8_t *data) {
     add_gnss_block(&context->transmit, gnss_data);
     add_gnss_msl_block(&context->transmit, gnss_data);
 }
+#endif
 
 /**
  * A uorb_data_callback_t function - adds altitude data to the required packets
