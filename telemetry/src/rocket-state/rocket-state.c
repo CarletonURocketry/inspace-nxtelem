@@ -13,12 +13,22 @@ static const char *FLIGHT_STATES[] = {
 };
 #endif
 
+#if defined(CONFIG_INSPACE_SYSLOG_OUTPUT)
+static const char *FLIGHT_SUBSTATES[] = {
+    [SUBSTATE_UNKNOWN] = "SUBSTATE_UNKNOWN",
+    [SUBSTATE_ASCENT] = "SUBSTATE_ASCENT",
+    [SUBSTATE_DESCENT] = "SUBSTATE_DESCENT",
+};
+#endif /* defined(CONFIG_INSPACE_TELEMETRY_DEBUG) */
+
 /* A struct that defines how the non-volatile storage medium will store information */
 
 struct nv_storage {
-    uint8_t flight_state; /* The flight state of the rocket, of type enum flight_state_e (a uint8_t so only one byte
-                             stored) */
-    uint8_t crc;          /* A 8 bit cyclic redundancy check to make sure data is valid before being used */
+    uint8_t flight_state;    /* The flight state of the rocket, of type enum flight_state_e (a uint8_t so only one byte
+                                stored) */
+    uint8_t flight_substate; /* The flight substate of the rocket, of type enum flight_substate_e (a uint8_t so only one
+                                byte stored)*/
+    uint8_t crc;             /* A 8 bit cyclic redundancy check to make sure data is valid before being used */
 } __attribute__((packed, aligned(1)));
 
 /* The polynomial to use in the 8 bit crc */
@@ -78,13 +88,12 @@ static int nv_read(struct nv_storage *contents) {
     return err;
 }
 
-/*
- * Set the CRC and write to NV storage
+/* Set the CRC and write to NV storage
  * @param contents The contents to write to NV storage
  * @return 0 on success, negative error code on failure
  */
 static int nv_write(struct nv_storage *contents) {
-    int fd = open(CONFIG_INSPACE_TELEMETRY_EEPROM, O_WRONLY);
+    int fd = open(CONFIG_INSPACE_TELEMETRY_EEPROM, O_WRONLY | O_CREAT);
     if (fd < 0) {
         inerr("Error opening nv storage: %d\n", fd);
         return fd;
@@ -113,38 +122,69 @@ int state_init(rocket_state_t *state) {
     if (err < 0) {
         inerr("Couldn't read from nv storage, setting idle flightstate: %d\n", err);
         atomic_store(&state->state, STATE_AIRBORNE);
+        atomic_store(&state->substate, SUBSTATE_UNKNOWN);
     } else {
         atomic_store(&state->state, contents.flight_state);
+        atomic_store(&state->substate, contents.flight_substate);
     }
     return err;
 }
 
-/*
- * Set the flight state in NV storage and state object (write-through)
- * @param state The rocket state to modify
- * @param flight_state The rocket's new flight state to set.
+/* Save the flight state in NV storage
+ * @param state The state to save in NV storage
  * @return 0 on success, or an error code if writing to NV storage failed
  */
-int state_set_flightstate(rocket_state_t *state, enum flight_state_e flight_state) {
+static int save_state(rocket_state_t *state) {
     struct nv_storage contents;
-    contents.flight_state = flight_state;
+    contents.flight_state = atomic_load(&state->state);
+    contents.flight_substate = atomic_load(&state->substate);
     int err = nv_write(&contents);
     if (err < 0) {
         inerr("Couldn't write flight state to nv storage, continuing anyways\n");
     }
-    ininfo("Flight state changed to %s\n", FLIGHT_STATES[flight_state]);
-    // Store the value last, so we won't begin using the new state unless we're sure of power-safety
-    atomic_store(&state->state, flight_state);
     return err;
 }
 
-/*
- * Get the flight state atomically.
- * @param state The rocket state to get flight state from.
- * @param flight_state A pointer in which to hold the flight state.
+/* Set the flight state in NV storage and state object (write-through)
+ * @param state The rocket state to modify
+ * @param flight_state The rocket's new flight state to set
+ * @return 0 on success, or an error code if writing to NV storage failed
+ */
+int state_set_flightstate(rocket_state_t *state, enum flight_state_e flight_state) {
+    atomic_store(&state->state, flight_state);
+    ininfo("Flight state changed to %s\n", FLIGHT_STATES[flight_state]);
+    int err = save_state(state);
+    return err;
+}
+
+/* Get the current flight state
+ * @param state The rocket state to get flight state from
+ * @param flight_state A pointer in which to hold the flight state
  * @return 0 on success, error code on failure
  */
 int state_get_flightstate(rocket_state_t *state, enum flight_state_e *flight_state) {
     *flight_state = atomic_load(&state->state);
+    return 0;
+}
+
+/* Set the current flight substate
+ * @param state The rocket state to modify
+ * @param flight_substate The new substate to set
+ * @return 0 on success, or an error code if writing to NV storage failed
+ */
+int state_set_flightsubstate(rocket_state_t *state, enum flight_substate_e flight_substate) {
+    atomic_store(&state->substate, flight_substate);
+    ininfo("Flight substate changed to %s\n", FLIGHT_SUBSTATES[flight_substate]);
+    int err = save_state(state);
+    return err;
+}
+
+/* Get the current flight substate
+ * @param state The rocket state to get the substate from
+ * @param flight_substate A pointer in which to hold the substate
+ * @return 0 on success, error code on failure
+ */
+int state_get_flightsubstate(rocket_state_t *state, enum flight_substate_e *flight_substate) {
+    *flight_substate = atomic_load(&state->substate);
     return 0;
 }
