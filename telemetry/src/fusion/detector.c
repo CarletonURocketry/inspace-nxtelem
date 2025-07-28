@@ -111,12 +111,12 @@ static int detector_is_apogee(struct detector *detector) {
  */
 void detector_init(struct detector *detector, uint64_t time) {
     median_filter_init(&detector->alts.median, detector->alts.median_backing_sorted,
-                       detector->alts.median_backing_time_ordered, ALTITUDE_MEDIAN_FILTER_SIZE);
-    average_filter_init(&detector->alts.average, detector->alts.average_backing, ALTITUDE_AVERAGE_FILTER_SIZE);
+                       detector->alts.median_backing_time_ordered, sizeof(detector->alts.median_backing_sorted));
+    average_filter_init(&detector->alts.average, detector->alts.average_backing, sizeof(detector->alts.average_backing));
 
     median_filter_init(&detector->accels.median, detector->accels.median_backing_sorted,
-                       detector->accels.median_backing_time_ordered, ACCEL_MEDIAN_FILTER_SIZE);
-    average_filter_init(&detector->accels.average, detector->accels.average_backing, ACCEL_AVERAGE_FILTER_SIZE);
+                       detector->accels.median_backing_time_ordered, sizeof(detector->accels.median_backing_sorted));
+    average_filter_init(&detector->accels.average, detector->accels.average_backing, sizeof(detector->accels.average_backing));
 
     window_criteria_init(&detector->alt_window, LANDED_ALT_WINDOW_SIZE, LANDED_ALT_WINDOW_DURATION);
 
