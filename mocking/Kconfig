@@ -69,6 +69,46 @@ config INSPACE_FAKE_ACCEL_MAX_BATCH
 	---help---
 		The maximum batch size of sensor measurements
 
+config INSPACE_FAKE_GYRO
+	bool "Fake Gyroscope Sensor"
+	default n
+	---help---
+		Create a fakesensor for gyroscope data
+
+config INSPACE_FAKE_GYRO_FILENAME
+	string "Fake Gyroscope Sensor Input File"
+	depends on INSPACE_FAKE_GYRO
+	default "/inspace/gyro.csv"
+	---help---
+		The file to read fake gyroscope data from
+
+config INSPACE_FAKE_GYRO_MAX_BATCH
+	int "The maximum batch size of this sensor"
+	depends on INSPACE_FAKE_GYRO
+	default 1
+	---help---
+		The maximum batch size of sensor measurements
+
+config INSPACE_FAKE_MAG
+	bool "Fake Magnetometer Sensor"
+	default n
+	---help---
+		Create a fakesensor for magnetometer data
+
+config INSPACE_FAKE_MAG_FILENAME
+	string "Fake Magnetometer Sensor Input File"
+	depends on INSPACE_FAKE_MAG
+	default "/inspace/mag.csv"
+	---help---
+		The file to read fake magnetometer data from
+
+config INSPACE_FAKE_MAG_MAX_BATCH
+	int "The maximum batch size of this sensor"
+	depends on INSPACE_FAKE_MAG
+	default 1
+	---help---
+		The maximum batch size of sensor measurements
+
 endmenu # Faked Sensors
 endif # SENSORS_FAKESENSOR
 endif

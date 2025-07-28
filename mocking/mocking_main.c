@@ -78,6 +78,25 @@ int register_fakesensors(void) {
     }
 #endif
 
+#if defined(CONFIG_INSPACE_FAKE_GYRO)
+    printf("Mounting a fake gyro with csv %s\n", CONFIG_INSPACE_FAKE_GYRO_FILENAME);
+    ret = fakesensor_init(SENSOR_TYPE_GYROSCOPE, CONFIG_INSPACE_FAKE_GYRO_FILENAME, 0, CONFIG_INSPACE_FAKE_GYRO_MAX_BATCH);
+    if (ret < 0)
+    {
+        fprintf(stderr, "ERROR: fakesensor_init() failed: %d\n", ret);
+        return ret;
+    }
+#endif
+
+#if defined(CONFIG_INSPACE_FAKE_MAG)
+    printf("Mounting a fake magnetometer with csv %s\n", CONFIG_INSPACE_FAKE_MAG_FILENAME);
+    ret = fakesensor_init(SENSOR_TYPE_MAGNETIC_FIELD, CONFIG_INSPACE_FAKE_MAG_FILENAME, 0, CONFIG_INSPACE_FAKE_MAG_MAX_BATCH);
+    if (ret < 0)
+    {
+        fprintf(stderr, "ERROR: fakesensor_init() failed: %d\n", ret);
+        return ret;
+    }
+#endif
     return ret;
 }
 
