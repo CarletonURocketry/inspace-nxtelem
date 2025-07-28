@@ -15,7 +15,7 @@ static void test_median_filter_single_value__returns_value(void) {
     float sorted[TEST_FILTER_SIZE];
     float time_ordered[TEST_FILTER_SIZE];
 
-    median_filter_init(&filter, sorted, time_ordered, TEST_FILTER_SIZE);
+    median_filter_init(&filter, sorted, time_ordered, sizeof(sorted));
 
     float result = median_filter_add(&filter, 5.0f);
     TEST_ASSERT_EQUAL_FLOAT_MESSAGE(5.0f, result, "Single value should be returned as median");
@@ -26,7 +26,7 @@ static void test_median_filter_odd_values__returns_middle_value(void) {
     float sorted[TEST_FILTER_SIZE];
     float time_ordered[TEST_FILTER_SIZE];
 
-    median_filter_init(&filter, sorted, time_ordered, TEST_FILTER_SIZE);
+    median_filter_init(&filter, sorted, time_ordered, sizeof(sorted));
 
     median_filter_add(&filter, 3.0f);
     median_filter_add(&filter, 1.0f);
@@ -42,7 +42,7 @@ static void test_median_filter_overflow__oldest_value_removed(void) {
     float sorted[3];
     float time_ordered[3];
 
-    median_filter_init(&filter, sorted, time_ordered, 3);
+    median_filter_init(&filter, sorted, time_ordered, sizeof(sorted));
 
     median_filter_add(&filter, 1.0f);
     median_filter_add(&filter, 2.0f);
@@ -64,7 +64,7 @@ static void test_median_filter_duplicates__handles_correctly(void) {
     float sorted[TEST_FILTER_SIZE];
     float time_ordered[TEST_FILTER_SIZE];
 
-    median_filter_init(&filter, sorted, time_ordered, TEST_FILTER_SIZE);
+    median_filter_init(&filter, sorted, time_ordered, sizeof(sorted));
 
     median_filter_add(&filter, 2.0f);
     median_filter_add(&filter, 2.0f);
@@ -81,7 +81,7 @@ static void test_average_filter_single_value__returns_value(void) {
     struct average_filter filter;
     float buffer[TEST_FILTER_SIZE];
 
-    average_filter_init(&filter, buffer, TEST_FILTER_SIZE);
+    average_filter_init(&filter, buffer, sizeof(buffer));
 
     float result = average_filter_add(&filter, 5.0f);
     TEST_ASSERT_EQUAL_FLOAT_MESSAGE(5.0f, result, "Single value should be returned as average");
@@ -91,7 +91,7 @@ static void test_average_filter_multiple_values__calculates_correctly(void) {
     struct average_filter filter;
     float buffer[TEST_FILTER_SIZE];
 
-    average_filter_init(&filter, buffer, TEST_FILTER_SIZE);
+    average_filter_init(&filter, buffer, sizeof(buffer));
 
     float result = average_filter_add(&filter, 1.0f);
     TEST_ASSERT_EQUAL_FLOAT_MESSAGE(1.0f, result, "Wrong average for filter with one value");
@@ -111,7 +111,7 @@ static void test_average_filter_overflow__moving_average(void) {
     struct average_filter filter;
     float buffer[3];
 
-    average_filter_init(&filter, buffer, 3);
+    average_filter_init(&filter, buffer, sizeof(buffer));
 
     average_filter_add(&filter, 1.0f);
     average_filter_add(&filter, 2.0f);
@@ -127,7 +127,7 @@ static void test_average_filter_negative_values__handles_correctly(void) {
     struct average_filter filter;
     float buffer[TEST_FILTER_SIZE];
 
-    average_filter_init(&filter, buffer, TEST_FILTER_SIZE);
+    average_filter_init(&filter, buffer, sizeof(buffer));
 
     average_filter_add(&filter, -2.0f);
     average_filter_add(&filter, -1.0f);
@@ -142,7 +142,7 @@ static void test_average_filter_fractional_values__precise_calculation(void) {
     struct average_filter filter;
     float buffer[3];
 
-    average_filter_init(&filter, buffer, 3);
+    average_filter_init(&filter, buffer, sizeof(buffer));
 
     /* Add precise fractional values */
     average_filter_add(&filter, 0.1f);

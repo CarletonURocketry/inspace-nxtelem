@@ -20,8 +20,8 @@ static int circbuf_push_out(struct circbuf_s *circ, void *new, void *old, size_t
 
     /* If here, the circular buffer was full. Read the oldest data */
 
-    circbuf_read(circ, old, size);
-    circbuf_write(circ, new, size);
+    circbuf_peekat(circ, 0, old, size);
+    circbuf_overwrite(circ, new, size);
     return 1;
 }
 
@@ -125,7 +125,7 @@ float average_filter_add(struct average_filter *filter, float new_value) {
         filter->sum -= old_value;
     }
     filter->sum += new_value;
-    return filter->sum / (circbuf_size(&filter->buffer) / sizeof(float));
+    return filter->sum / (circbuf_used(&filter->buffer) / sizeof(float));
 }
 
 /**
