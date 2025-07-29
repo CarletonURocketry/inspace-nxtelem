@@ -119,7 +119,16 @@ void *logging_main(void *arg) {
             // Get the next packet, or wait if there isn't one yet
             packet_node_t *next_packet = packet_buffer_get_full(buffer);
             ((pkt_hdr_t *)next_packet->packet)->packet_num = packet_seq_num++;
-            log_packet(active_file, next_packet->packet, next_packet->end - next_packet->packet);
+            if (log_packet(active_file, next_packet->packet, next_packet->end - next_packet->packet) < 0) {
+                inerr("Opening a new logging file because writing to the current one failed");
+                fclose(active_file);
+                err = open_log_file(&active_file, FLIGHT_FNAME_FMT, flight_number, flight_ser_num++, "w+");
+                if (err < 0) {
+                    inerr("Error opening log file with flight number %d, serial number: %d: %d\n", flight_number,
+                          flight_ser_num, err);
+                    goto err_cleanup;
+                }
+            }
             packet_buffer_put_empty(buffer, next_packet);
         } break;
 
@@ -202,9 +211,9 @@ static size_t log_packet(FILE *storage, uint8_t *packet, size_t packet_size) {
     size_t written = fwrite(packet, 1, packet_size, storage);
     indebug("Logged %zu bytes\n", written);
     if (written == 0) {
-        // TODO: Handle error (might happen if file got too large, start
-        // another file)
-        inerr("Failted to write data to the logging file\n");
+        int err = errno;
+        inerr("Failed to write data to the logging file\n");
+        return -err;
     }
     return written;
 }
@@ -358,8 +367,7 @@ int choose_flight_number(const char *dir, const char *format) {
  * @param serial_number The integer to use with the second print code
  * @param mode The open options for fopen
  */
-int open_log_file(FILE **opened_file, const char *format, int flight_number, int serial_number,
-                         const char *mode) {
+int open_log_file(FILE **opened_file, const char *format, int flight_number, int serial_number, const char *mode) {
     static char filename[NAME_MAX]; // This should really be PATH_MAX, with a check on how large the filename part is
     snprintf(filename, sizeof(filename), format, flight_number, serial_number);
     return try_open_file(opened_file, filename, mode);
