@@ -104,6 +104,10 @@ size_t blk_body_len(enum block_type_e type) {
         return sizeof(struct volt_blk_t);
     case DATA_MAGNETIC:
         return sizeof(struct mag_blk_t);
+    case DATA_STATUS:
+        return sizeof(struct status_blk_t);
+    case DATA_ERROR:
+        return sizeof(struct error_blk_t);
     default:
         inerr("Length requested for unsupported type %d\n", type);
         return -1;
@@ -234,7 +238,7 @@ void mag_blk_init(struct mag_blk_t *b, const int16_t x_axis, const int16_t y_axi
 }
 
 /*
- * Construct a magnetic field block
+ * Construct a voltage block
  * @param b The voltage block to initialize
  * @param id The ID of the channel that this voltage was measured on
  * @param voltage The voltage measured in millivolts
@@ -244,4 +248,25 @@ void volt_blk_init(struct volt_blk_t *b, const uint16_t id, const int16_t voltag
     b->voltage = voltage;
 }
 
-/* TODO: other block types */
+/*
+ * Construct a status block
+ * @param b The status block to initialize
+ * @param status_code The status code to use
+ */
+void status_blk_init(struct status_blk_t *b, const enum status_blk_code_e status_code) {
+    b->status_code = status_code;
+}
+
+/*
+ * Construct an error block
+ * @param b The error block to initialize
+ * @param proc_id The originating process that created this error
+ * @param error_code The error code to use
+ */
+void error_blk_init(struct error_blk_t *b, const uint8_t proc_id, const enum error_blk_code_e error_code) {
+    if (proc_id & 0xE0) {
+        inwarn("The reserved bits of the error message were used");
+    }
+    b->originating_process = proc_id;
+    b->error_code = error_code;
+}
