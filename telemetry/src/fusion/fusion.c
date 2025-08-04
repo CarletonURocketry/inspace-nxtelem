@@ -142,7 +142,7 @@ struct fusion_altitude calculate_altitude(struct sensor_baro *baro_data) {
     output.timestamp = baro_data->timestamp;
 
     /* Assume barometric reading is temperature adjusted */
-    output.altitude = -(GAS_CONSTANT * KELVIN) / (MOLAR_MASS * GRAVITY) * log(baro_data->pressure / SEA_PRESSURE);
+    output.altitude = -(GAS_CONSTANT * (KELVIN + baro_data->temperature)) / (MOLAR_MASS * GRAVITY) * log(baro_data->pressure / SEA_PRESSURE);
     return output;
 }
 
