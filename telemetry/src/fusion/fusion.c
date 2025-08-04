@@ -126,7 +126,9 @@ void *fusion_main(void *arg) {
             ininfo("Changing the flight state, altitude is %f and acceleration is %f\n", detector_get_alt(&detector),
                    detector_get_accel(&detector));
             state_set_flightstate(state, STATE_LANDED);
-            detector_set_state(&detector, STATE_LANDED, SUBSTATE_UNKNOWN);
+            // Set the detector back to the landed state right away - airborne events will only cause a state transition
+            // once the system is back in the idle state
+            detector_set_state(&detector, STATE_IDLE, SUBSTATE_UNKNOWN);
         } break;
 
         default:
