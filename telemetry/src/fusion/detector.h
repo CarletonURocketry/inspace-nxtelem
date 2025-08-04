@@ -21,13 +21,13 @@ enum detector_event {
 };
 
 struct accel_sample {
-    float acceleration; /* The acceleration in m/s^2 */
     uint64_t time;      /* The time in microseconds */
+    float acceleration; /* The acceleration in m/s^2 */
 };
 
 struct altitude_sample {
-    float altitude; /* The altitude in meters */
     uint64_t time;  /* The time in microseconds */
+    float altitude; /* The altitude in meters */
 };
 
 struct alt_filter {

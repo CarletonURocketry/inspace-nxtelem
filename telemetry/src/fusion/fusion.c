@@ -82,7 +82,7 @@ void *fusion_main(void *arg) {
         if (len > 0) {
             for (int i = 0; i < (len / sizeof(struct sensor_baro)); i++) {
                 calculated_altitude = calculate_altitude(&baro_data[i]);
-                detector_add_alt(&detector, (struct altitude_sample *)&calculate_altitude);
+                detector_add_alt(&detector, (struct altitude_sample *)&calculated_altitude);
                 orb_publish(ORB_ID(fusion_altitude), altitude_fd, &calculated_altitude);
             }
         }
