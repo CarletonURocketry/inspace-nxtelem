@@ -100,6 +100,8 @@ void *fusion_main(void *arg) {
             /* Make sure we're in the idle state when going to airborne */
             state_get_flightstate(state, &flight_state);
             if (flight_state == STATE_IDLE) {
+                ininfo("Changing the flight state, altitude is %f and acceleration is %f\n",
+                       detector_get_alt(&detector), detector_get_accel(&detector));
                 state_set_flightstate(state, STATE_AIRBORNE);
                 state_set_flightsubstate(state, SUBSTATE_ASCENT);
                 detector_set_state(&detector, STATE_AIRBORNE, SUBSTATE_ASCENT);
@@ -110,6 +112,8 @@ void *fusion_main(void *arg) {
             /* Make sure we're airborne already before setting to descent */
             state_get_flightstate(state, &flight_state);
             if (flight_state == STATE_AIRBORNE) {
+                ininfo("Changing the flight state, altitude is %f and acceleration is %f\n",
+                       detector_get_alt(&detector), detector_get_accel(&detector));
                 state_set_flightsubstate(state, SUBSTATE_DESCENT);
                 detector_set_state(&detector, STATE_AIRBORNE, SUBSTATE_DESCENT);
             } else {
@@ -119,6 +123,8 @@ void *fusion_main(void *arg) {
 
         case DETECTOR_LANDING_EVENT: {
             /* We can set to landing from anywhere */
+            ininfo("Changing the flight state, altitude is %f and acceleration is %f\n", detector_get_alt(&detector),
+                   detector_get_accel(&detector));
             state_set_flightstate(state, STATE_LANDED);
             detector_set_state(&detector, STATE_LANDED, SUBSTATE_UNKNOWN);
         } break;
