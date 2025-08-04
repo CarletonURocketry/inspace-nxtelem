@@ -27,6 +27,12 @@ config INSPACE_MOCKING_MOUNT
 	---help---
 		Where to mount the ROMFS containing the files in the test-data directory
 
+config INSPACE_MOCKING_DATA_DIR
+	string "Directory with fakesensor CSV files"
+	default "test-data/2024-06-24-data"
+	---help---
+		The directory that contains the flight data to use for the fakesensors
+
 if SENSORS_FAKESENSOR
 menu "Faked Sensors"
 config INSPACE_FAKE_BARO
