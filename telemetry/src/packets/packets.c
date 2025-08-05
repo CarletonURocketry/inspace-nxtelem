@@ -253,7 +253,7 @@ void volt_blk_init(struct volt_blk_t *b, const uint16_t id, const int16_t voltag
  * @param b The status block to initialize
  * @param status_code The status code to use
  */
-void status_blk_init(struct status_blk_t *b, const enum status_blk_code_e status_code) {
+void status_blk_init(struct status_blk_t *b, const uint8_t status_code) {
     b->status_code = status_code;
 }
 
@@ -263,7 +263,7 @@ void status_blk_init(struct status_blk_t *b, const enum status_blk_code_e status
  * @param proc_id The originating process that created this error
  * @param error_code The error code to use
  */
-void error_blk_init(struct error_blk_t *b, const uint8_t proc_id, const enum error_blk_code_e error_code) {
+void error_blk_init(struct error_blk_t *b, const uint8_t proc_id, const uint8_t error_code) {
     if (proc_id & 0xE0) {
         inwarn("The reserved bits of the error message were used");
     }

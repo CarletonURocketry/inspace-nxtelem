@@ -1,8 +1,8 @@
 #include <math.h>
 #include <nuttx/sensors/sensor.h>
+#include <poll.h>
 #include <pthread.h>
 #include <sys/ioctl.h>
-#include <poll.h>
 
 #include "../rocket-state/rocket-state.h"
 #include "../syslogging.h"
@@ -25,20 +25,19 @@
 /* Constant for the conversion from Celsius to Kelvin */
 #define KELVIN (273)
 
-/* UORB declarations */
+/* Buffers for inputs, best to match to the size of the internal sensor buffers */
+#define BARO_INPUT_BUFFER_SIZE 5
 
+/* Buffers for inputs, best to match to the size of the internal sensor buffers */
+#define ACCEL_INPUT_BUFFER_SIZE 5
+
+/* Definition for fusion uORB dopic */
 #if defined(CONFIG_DEBUG_UORB)
 static const char fusion_alt_format[] = "fusioned altitude - timestamp:%" PRIu64 ",altitude:%hf";
 ORB_DEFINE(fusion_altitude, struct fusion_altitude, fusion_alt_format);
 #else
 ORB_DEFINE(fusion_altitude, struct fusion_altitude, 0);
 #endif
-
-/* Buffers for inputs, best to match to the size of the internal sensor buffers */
-#define BARO_INPUT_BUFFER_SIZE 5
-
-/* Buffers for inputs, best to match to the size of the internal sensor buffers */
-#define ACCEL_INPUT_BUFFER_SIZE 5
 
 static struct fusion_altitude calculate_altitude(struct sensor_baro *baro_data);
 static struct accel_sample calculate_accel_magnitude(struct sensor_accel *accel_data);
@@ -71,11 +70,6 @@ void *fusion_main(void *arg) {
 
     detector_init(&detector, orb_absolute_time());
     detector_set_state(&detector, flight_state, flight_substate);
-
-    /* Set the elevation, which will either be a remembered value or a sensible default (and convert to meters) */
-    // detector_set_elevation(&detector, init_elevation / 1000);
-
-    /* Currently publishing blank data to start, might be better to try and advertise only on first fusioned data */
 
     int altitude_fd = orb_advertise_multi_queue(ORB_ID(fusion_altitude), NULL, NULL, ALT_FUSION_BUFFER);
     if (altitude_fd < 0) {

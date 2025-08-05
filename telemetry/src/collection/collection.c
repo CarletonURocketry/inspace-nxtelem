@@ -9,13 +9,14 @@
 #include <pthread.h>
 #include <sys/ioctl.h>
 
-#include <nuttx/analog/adc.h>>
+#include <nuttx/analog/adc.h>
 #include <nuttx/sensors/sensor.h>
 #include <unistd.h>
 
 #include "../fusion/fusion.h"
 #include "../syslogging.h"
 #include "collection.h"
+#include "status-update.h"
 #include "uORB/uORB.h"
 
 /* Cast an error to a void pointer */
@@ -40,6 +41,10 @@
 /* Minimum buffer size for copying multiple amounts of data at once */
 
 #define DATA_BUF_MIN 5
+
+/* The default sampling rate for low-sample sensors or topics */
+
+#define LOW_SAMPLE_RATE_DEFAULT 10
 
 /* Maximum value that can be returned by the ADC */
 
@@ -76,7 +81,9 @@ enum uorb_sensors {
 #ifdef CONFIG_SENSORS_L86XXX
     SENSOR_GNSS, /* GNSS */
 #endif
-    SENSOR_ALT, /* Altitude fusion */
+    SENSOR_ALT,    /* Altitude fusion */
+    SENSOR_ERROR,  /* Error messages */
+    SENSOR_STATUS, /* Status messages */
 };
 
 /* A buffer that can hold any of the types of data created by the sensors in uorb_inputs */
@@ -96,6 +103,8 @@ union uorb_data {
     struct sensor_gnss gnss;
 #endif
     struct fusion_altitude alt;
+    struct error_message error;
+    struct status_message status;
 };
 
 /* A function pointer to a function that will perform operations on single pieces of uORB data
@@ -127,6 +136,8 @@ static void gyro_handler(void *ctx, void *data);
 #endif
 static void alt_handler(void *ctx, void *data);
 static void voltage_handler(void *ctx, void *data);
+static void error_handler(void *ctx, void *data);
+static void status_handler(void *ctx, void *data);
 
 /* uORB polling file descriptors */
 
@@ -145,7 +156,20 @@ static struct pollfd uorb_fds[] = {
     [SENSOR_GNSS] = {.fd = -1, .events = POLLIN, .revents = 0},
 #endif
     [SENSOR_ALT] = {.fd = -1, .events = POLLIN, .revents = 0},
+    [SENSOR_ERROR] = {.fd = -1, .events = POLLIN, .revents = 0},
+    [SENSOR_STATUS] = {.fd = -1, .events = POLLIN, .revents = 0},
 };
+
+/* uORB metadata definitions */
+#if defined(CONFIG_DEBUG_UORB)
+static const char error_message_format[] = "error message - timestamp:%" PRIu64 ", proc_id %d error %d";
+static const char status_message_format[] = "status message - timestamp%" PRIu64 ", status %d";
+ORB_DEFINE(error_message, struct error_message, error_message_format);
+ORB_DEFINE(status_message, struct status_message, status_message_format);
+#else
+ORB_DEFINE(error_message, struct error_message, 0);
+ORB_DEFINE(status_message, struct status_message, 0);
+#endif
 
 /* uORB sensor metadatas */
 
@@ -166,7 +190,7 @@ ORB_DECLARE(fusion_altitude);
 
 static struct orb_metadata const *uorb_metas[] = {
 #ifdef CONFIG_SENSORS_LSM6DSO32
-    [SENSOR_ACCEL] = ORB_ID(sensor_accel),  [SENSOR_GYRO] = ORB_ID(sensor_gyro),
+    [SENSOR_ACCEL] = ORB_ID(sensor_accel),    [SENSOR_GYRO] = ORB_ID(sensor_gyro),
 #endif
 #ifdef CONFIG_SENSORS_MS56XX
     [SENSOR_BARO] = ORB_ID(sensor_baro),
@@ -177,7 +201,8 @@ static struct orb_metadata const *uorb_metas[] = {
 #ifdef CONFIG_SENSORS_L86XXX
     [SENSOR_GNSS] = ORB_ID(sensor_gnss),
 #endif
-    [SENSOR_ALT] = ORB_ID(fusion_altitude),
+    [SENSOR_ALT] = ORB_ID(fusion_altitude),   [SENSOR_ERROR] = ORB_ID(error_message),
+    [SENSOR_STATUS] = ORB_ID(status_message),
 };
 
 /* Sensor desired sampling rates in Hz*/
@@ -195,7 +220,8 @@ static const uint32_t sample_freqs[] = {
 #ifdef CONFIG_SENSORS_L86XXX
     [SENSOR_GNSS] = CONFIG_INSPACE_TELEMETRY_GPS_SF,
 #endif
-    [SENSOR_ALT] = CONFIG_INSPACE_TELEMETRY_ALT_SF,
+    [SENSOR_ALT] = CONFIG_INSPACE_TELEMETRY_ALT_SF,     [SENSOR_ERROR] = LOW_SAMPLE_RATE_DEFAULT,
+    [SENSOR_STATUS] = LOW_SAMPLE_RATE_DEFAULT,
 };
 
 /* Data handlers for different sensors */
@@ -213,7 +239,7 @@ static const uorb_data_callback_t uorb_handlers[] = {
 #ifdef CONFIG_SENSORS_L86_XXX
     [SENSOR_GPS] = gnss_handler,
 #endif
-    [SENSOR_ALT] = alt_handler,
+    [SENSOR_ALT] = alt_handler,   [SENSOR_ERROR] = error_handler, [SENSOR_STATUS] = status_handler,
 };
 
 /* Data buffer for copying uORB data */
@@ -345,8 +371,6 @@ void *collection_main(void *arg) {
 
         poll(uorb_fds, NUM_SENSORS, -1);
 
-        /* Read one thing per data read and process it */
-
         for (int i = 0; i < NUM_SENSORS; i++) {
 
             /* Skip invalid sensors and sensors without new data */
@@ -355,7 +379,7 @@ void *collection_main(void *arg) {
                 continue;
             }
 
-            /* If we are here, a valid sensor has some data ready to be read. Add it to a packet. */
+            /* A valid sensor has some data ready to be read. Add it to a packet. */
 
             uorb_fds[i].revents = 0; /* Mark the event as handled */
 
@@ -372,7 +396,6 @@ void *collection_main(void *arg) {
             }
         }
     }
-
     pthread_exit(0);
 }
 
@@ -466,7 +489,6 @@ static uint8_t *add_or_new(collection_info_t *collection, enum block_type_e type
  * Add a pressure block to the packet being assembled
  *
  * @param collection Collection information where the block should be added
- * @param node The packet currently being assembled
  * @param baro_data The baro data to add
  */
 static void add_pres_blk(collection_info_t *collection, struct sensor_baro *baro_data) {
@@ -480,7 +502,6 @@ static void add_pres_blk(collection_info_t *collection, struct sensor_baro *baro
  * Add a temperature block to the packet being assembled
  *
  * @param collection Collection information where the block should be added
- * @param node The packet currently being assembled
  * @param baro_data The baro data to add
  */
 static void add_temp_blk(collection_info_t *collection, struct sensor_baro *baro_data) {
@@ -516,7 +537,6 @@ static void baro_handler(void *ctx, void *data) {
  * Add a magnetometer block to the packet being assembled
  *
  * @param collection Collection information where the block should be added
- * @param node The packet currently being assembled
  * @param mag_data The magnetic field data to add
  */
 static void add_mag_blk(collection_info_t *collection, struct sensor_mag *mag_data) {
@@ -571,7 +591,6 @@ static void accel_handler(void *ctx, void *data) {
 /* Add an gyro block to the packet being assembled
  *
  * @param collection Collection information where the block should be added
- * @param node The packet currently being assembled
  * @param gyro_data The gyro data to add
  */
 static void add_gyro_blk(collection_info_t *collection, struct sensor_gyro *gyro_data) {
@@ -600,7 +619,6 @@ static void gyro_handler(void *ctx, void *data) {
  * Add an gnss block to the packet being assembled
  *
  * @param collection Collection information where the block should be added
- * @param node The packet currently being assembled
  * @param gnss_data The gnss data to add
  */
 static void add_gnss_block(collection_info_t *collection, struct sensor_gnss *gnss_data) {
@@ -617,7 +635,6 @@ static void add_gnss_block(collection_info_t *collection, struct sensor_gnss *gn
  * Add a gnss mean sea level altitude block to the packet being assembled
  *
  * @param collection Collection information where the block should be added
- * @param node The packet currently being assembled
  * @param alt_data The altitude data to add
  */
 static void add_gnss_msl_block(collection_info_t *collection, struct sensor_gnss *alt_data) {
@@ -632,7 +649,6 @@ static void add_gnss_msl_block(collection_info_t *collection, struct sensor_gnss
  * Add a mean sea level altitude block to the packet being assembled
  *
  * @param collection Collection information where the block should be added
- * @param node The packet currently being assembled
  * @param alt_data The altitude data to add
  */
 static void add_msl_block(collection_info_t *collection, struct fusion_altitude *alt_data) {
@@ -703,4 +719,56 @@ static void voltage_handler(void *ctx, void *data) {
     if (context->transmit.block_count[DATA_VOLTAGE] < TRANSMIT_NUM_LOW_PRIORITY_READINGS) {
         add_voltage_block(&context->transmit, data);
     }
+}
+
+/**
+ * Add an error block to the packet being assembled
+ *
+ * @param collection Collection information where the block should be added
+ * @param error The error data to add
+ */
+static void add_error_block(collection_info_t *collection, struct error_message *error) {
+    uint8_t *block = add_or_new(collection, DATA_ERROR, us_to_ms(error->timestamp));
+    if (block) {
+        error_blk_init((struct error_blk_t *)block, error->proc_id, error->error_code);
+    }
+}
+
+/**
+ * A uorb_data_callback_t function - adds error data to the required packets
+ *
+ * @param ctx Context information, type processing_context_t
+ * @param data Error data to add, type struct error_message
+ */
+static void error_handler(void *ctx, void *data) {
+    struct error_message *error = (struct error_message *)data;
+    processing_context_t *context = (processing_context_t *)ctx;
+    add_error_block(&context->logging, error);
+    add_error_block(&context->transmit, error);
+}
+
+/**
+ * Add a status block to the packet being assembled
+ *
+ * @param collection Collection information where the block should be added
+ * @param status The status data to add
+ */
+static void add_status_block(collection_info_t *collection, struct status_message *status) {
+    uint8_t *block = add_or_new(collection, DATA_STATUS, us_to_ms(status->timestamp));
+    if (block) {
+        status_blk_init((struct status_blk_t *)block, status->status_code);
+    }
+}
+
+/**
+ * A uorb_data_callback_t function - adds error data to the required packets
+ *
+ * @param ctx Context information, type processing_context_t
+ * @param data Status data to add, type struct status_message
+ */
+static void status_handler(void *ctx, void *data) {
+    struct status_message *status = (struct status_message *)data;
+    processing_context_t *context = (processing_context_t *)ctx;
+    add_status_block(&context->logging, status);
+    add_status_block(&context->transmit, status);
 }
