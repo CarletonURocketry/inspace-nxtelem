@@ -11,7 +11,6 @@
 #include <time.h>
 #include <unistd.h>
 
-#include "../fusion/fusion.h"
 #include "../packets/packets.h"
 #include "../syslogging.h"
 #include "logging.h"
@@ -41,6 +40,7 @@ static int clear_file(FILE *to_clear);
 static int try_open_file(FILE **file_to_open, char *filename, const char *open_option);
 static int find_max_boot_number(const char *dir, const char *format);
 static double timespec_diff(struct timespec *new_time, struct timespec *old_time);
+static int close_synced(FILE *to_close);
 
 int should_swap(struct timespec *last_swap, struct timespec *now);
 int swap_files(FILE **active_file, FILE **standby_file);
@@ -130,6 +130,13 @@ void *logging_main(void *arg) {
                 }
             }
             packet_buffer_put_empty(buffer, next_packet);
+
+            // Have to flush and sync on the power safe file system to commit writes. Do this sparingly to save time
+            if ((packet_seq_num & 0x03) == 0) {
+                fflush(active_file);
+                fsync(fileno(active_file));
+            }
+
         } break;
 
         case STATE_LANDED: {
@@ -167,7 +174,7 @@ void *logging_main(void *arg) {
             }
 
             /* Once done copying, close extraction file */
-            if (fclose(extract_file) != 0) {
+            if (close_synced(extract_file) != 0) {
                 err = errno;
                 inerr("Couldn't close extraction log file: %d\n", err);
             }
@@ -186,12 +193,12 @@ void *logging_main(void *arg) {
 
 err_cleanup:
     /* Close files that may be open */
-    if (active_file && fclose(active_file) != 0) {
+    if (active_file && close_synced(active_file) != 0) {
         err = errno;
         inerr("Failed to close active file: %d\n", err);
     }
 
-    if (standby_file && fclose(standby_file) != 0) {
+    if (standby_file && close_synced(standby_file) != 0) {
         err = errno;
         inerr("Failed to close standby file: %d\n", err);
     }
@@ -232,6 +239,9 @@ static int clear_file(FILE *to_clear) {
         return -err;
     }
 
+    // Clear the file stream buffer before the truncation (may not be necessary)
+    fflush(to_clear);
+
     int fd = fileno(to_clear);
     if (fd < 0) {
         err = errno;
@@ -243,6 +253,7 @@ static int clear_file(FILE *to_clear) {
         inerr("Could not truncate file\n");
         return -err;
     }
+    fsync(fd);
     return -err;
 }
 
@@ -416,4 +427,16 @@ int copy_out(FILE *active_file, FILE *extract_file) {
     }
     err = clear_file(active_file);
     return -err;
+}
+
+/**
+ * Close a file, but sync it and flush it first
+ *
+ * @param to_close The file to close
+ * @return 0 on success, or -1 on failure (errno is set)
+ */
+static int close_synced(FILE *to_close) {
+    fflush(to_close);
+    fsync(fileno(to_close));
+    return fclose(to_close);
 }

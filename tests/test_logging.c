@@ -52,10 +52,13 @@ static void test_filesystem(const char *test_dir) {
     TEST_ASSERT_EQUAL_MESSAGE(sizeof(data), fwrite(data, 1, sizeof(data), file_test),
                               "Could not write test data to a file");
 
+    fflush(file_test);
+    fsync(fileno(file_test));
+
     // Try close
     TEST_ASSERT_EQUAL_MESSAGE(0, fclose(file_test), "Could not to close a file");
 
-    file_test = fopen(filename, "w+");
+    file_test = fopen(filename, "r+");
     TEST_ASSERT_NOT_EQUAL_MESSAGE(NULL, file_test, "Could not reopen a file");
 
     // Try read
@@ -72,6 +75,12 @@ static void test_filesystem(const char *test_dir) {
     int fd = fileno(file_test);
     TEST_ASSERT_NOT_EQUAL_MESSAGE(-1, fd, "fileno could not get fd");
     TEST_ASSERT_EQUAL_MESSAGE(0, ftruncate(fd, 0), "Could not truncate file to 0 length");
+
+    fflush(file_test);
+    fsync(fileno(file_test));
+
+    // Read truncated
+    TEST_ASSERT_EQUAL_MESSAGE(0, fseek(file_test, 0, SEEK_SET), "Could not seek file to beginning");
     len = fread(buffer, 1, sizeof(buffer), file_test);
     TEST_ASSERT_EQUAL_MESSAGE(0, len, "Truncate did not delete contents of file");
 
