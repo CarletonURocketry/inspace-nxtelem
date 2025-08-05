@@ -149,14 +149,10 @@ uint8_t *pkt_create_blk(uint8_t *packet, uint8_t *block, enum block_type_e type,
         return NULL;
     }
     if ((packet_size + block_size) > PACKET_MAX_SIZE) {
-        inerr("Packet is too large to contain another block, packet size is %zu, block size is %zu\n", packet_size,
-              block_size);
         return NULL;
     }
     if (has_offset(type)) {
         if (calc_offset(mission_time, header->timestamp, block_timestamp(block_body(block)))) {
-            inerr("Could not fit time into packet, time was %u and packet header had %u\n", mission_time,
-                  30000 * header->timestamp);
             return NULL;
         }
     }

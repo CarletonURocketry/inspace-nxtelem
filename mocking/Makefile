@@ -21,7 +21,7 @@ checkgenromfs:
 	}
 
 data.img: checkgenromfs
-	@genromfs -f $@ -d test-data -V "mocking-romfs" || { echo "genromfs failed" ; exit 1 ; }
+	@genromfs -f $@ -d $(CONFIG_INSPACE_MOCKING_DATA_DIR) -V "mocking-romfs" || { echo "genromfs failed" ; exit 1 ; }
 
 data_romfs.h: data.img
 	@xxd -i $< >$@ || { echo "xxd of $< failed" ; exit 1 ; }

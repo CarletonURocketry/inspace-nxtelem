@@ -82,7 +82,7 @@ void *fusion_main(void *arg) {
         if (len > 0) {
             for (int i = 0; i < (len / sizeof(struct sensor_baro)); i++) {
                 calculated_altitude = calculate_altitude(&baro_data[i]);
-                detector_add_alt(&detector, (struct altitude_sample *)&calculate_altitude);
+                detector_add_alt(&detector, (struct altitude_sample *)&calculated_altitude);
                 orb_publish(ORB_ID(fusion_altitude), altitude_fd, &calculated_altitude);
             }
         }
@@ -100,6 +100,8 @@ void *fusion_main(void *arg) {
             /* Make sure we're in the idle state when going to airborne */
             state_get_flightstate(state, &flight_state);
             if (flight_state == STATE_IDLE) {
+                ininfo("Changing the flight state, altitude is %f and acceleration is %f\n",
+                       detector_get_alt(&detector), detector_get_accel(&detector));
                 state_set_flightstate(state, STATE_AIRBORNE);
                 state_set_flightsubstate(state, SUBSTATE_ASCENT);
                 detector_set_state(&detector, STATE_AIRBORNE, SUBSTATE_ASCENT);
@@ -110,6 +112,8 @@ void *fusion_main(void *arg) {
             /* Make sure we're airborne already before setting to descent */
             state_get_flightstate(state, &flight_state);
             if (flight_state == STATE_AIRBORNE) {
+                ininfo("Changing the flight state, altitude is %f and acceleration is %f\n",
+                       detector_get_alt(&detector), detector_get_accel(&detector));
                 state_set_flightsubstate(state, SUBSTATE_DESCENT);
                 detector_set_state(&detector, STATE_AIRBORNE, SUBSTATE_DESCENT);
             } else {
@@ -119,8 +123,12 @@ void *fusion_main(void *arg) {
 
         case DETECTOR_LANDING_EVENT: {
             /* We can set to landing from anywhere */
+            ininfo("Changing the flight state, altitude is %f and acceleration is %f\n", detector_get_alt(&detector),
+                   detector_get_accel(&detector));
             state_set_flightstate(state, STATE_LANDED);
-            detector_set_state(&detector, STATE_LANDED, SUBSTATE_UNKNOWN);
+            // Set the detector back to the landed state right away - airborne events will only cause a state transition
+            // once the system is back in the idle state
+            detector_set_state(&detector, STATE_IDLE, SUBSTATE_UNKNOWN);
         } break;
 
         default:
@@ -142,7 +150,7 @@ struct fusion_altitude calculate_altitude(struct sensor_baro *baro_data) {
     output.timestamp = baro_data->timestamp;
 
     /* Assume barometric reading is temperature adjusted */
-    output.altitude = -(GAS_CONSTANT * KELVIN) / (MOLAR_MASS * GRAVITY) * log(baro_data->pressure / SEA_PRESSURE);
+    output.altitude = -(GAS_CONSTANT * (KELVIN + baro_data->temperature)) / (MOLAR_MASS * GRAVITY) * log(baro_data->pressure / SEA_PRESSURE);
     return output;
 }
 
