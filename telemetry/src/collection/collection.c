@@ -396,6 +396,7 @@ void *collection_main(void *arg) {
             }
         }
     }
+    publish_error(PROC_ID_COLLECTION, ERROR_PROCESS_DEAD);
     pthread_exit(0);
 }
 

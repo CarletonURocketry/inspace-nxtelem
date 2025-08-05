@@ -11,6 +11,7 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "../collection/status-update.h"
 #include "../packets/packets.h"
 #include "../syslogging.h"
 #include "logging.h"
@@ -202,6 +203,7 @@ err_cleanup:
         inerr("Failed to close standby file: %d\n", err);
     }
 
+    publish_error(PROC_ID_LOGGING, ERROR_PROCESS_DEAD);
     pthread_exit(err_to_ptr(err));
 }
 

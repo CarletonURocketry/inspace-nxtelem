@@ -4,6 +4,7 @@
 #include <pthread.h>
 #include <sys/ioctl.h>
 
+#include "../collection/status-update.h"
 #include "../rocket-state/rocket-state.h"
 #include "../syslogging.h"
 #include "detector.h"
@@ -42,6 +43,7 @@ ORB_DEFINE(fusion_altitude, struct fusion_altitude, 0);
 static struct fusion_altitude calculate_altitude(struct sensor_baro *baro_data);
 static struct accel_sample calculate_accel_magnitude(struct sensor_accel *accel_data);
 static ssize_t get_sensor_data(struct pollfd *sensor, void *data, size_t size);
+static void publish_state_update(enum flight_state_e state, enum flight_substate_e substate);
 
 void *fusion_main(void *arg) {
     rocket_state_t *state = ((struct fusion_args *)arg)->state;
@@ -78,6 +80,7 @@ void *fusion_main(void *arg) {
 
     /* Output sensors */
 
+    unsigned int iter = 0;
     for (;;) {
 
         /* Wait for new data */
@@ -103,6 +106,13 @@ void *fusion_main(void *arg) {
             }
         }
 
+        // Should happen every 256 iterations here, probably around every 1-2 seconds
+        if ((++iter & 0xFF) == 0) {
+            state_get_flightstate(state, &flight_state);
+            state_get_flightsubstate(state, &flight_substate);
+            publish_state_update(flight_state, flight_substate);
+        }
+
         /* Run detection. Potentially run periodically instead of every update */
 
         switch (detector_detect(&detector)) {
@@ -115,6 +125,7 @@ void *fusion_main(void *arg) {
                 state_set_flightstate(state, STATE_AIRBORNE);
                 state_set_flightsubstate(state, SUBSTATE_ASCENT);
                 detector_set_state(&detector, STATE_AIRBORNE, SUBSTATE_ASCENT);
+                publish_status(STATUS_TELEMETRY_CHANGED_ASCENT);
             }
         } break;
 
@@ -126,8 +137,10 @@ void *fusion_main(void *arg) {
                        detector_get_alt(&detector), detector_get_accel(&detector));
                 state_set_flightsubstate(state, SUBSTATE_DESCENT);
                 detector_set_state(&detector, STATE_AIRBORNE, SUBSTATE_DESCENT);
+                publish_status(STATUS_TELEMETRY_CHANGED_APOGEE);
             } else {
                 detector_set_state(&detector, STATE_AIRBORNE, SUBSTATE_ASCENT);
+                publish_status(STATUS_TELEMETRY_CHANGED_ASCENT);
             }
         } break;
 
@@ -139,6 +152,7 @@ void *fusion_main(void *arg) {
             // Set the detector back to the landed state right away - airborne events will only cause a state transition
             // once the system is back in the idle state
             detector_set_state(&detector, STATE_IDLE, SUBSTATE_UNKNOWN);
+            publish_status(STATUS_TELEMETRY_CHANGED_LANDED);
         } break;
 
         default:
@@ -148,6 +162,9 @@ void *fusion_main(void *arg) {
             break;
         }
     }
+
+    publish_error(PROC_ID_TRANSMIT, ERROR_PROCESS_DEAD);
+    pthread_exit(0);
 }
 
 /**
@@ -206,4 +223,33 @@ static ssize_t get_sensor_data(struct pollfd *sensor, void *data, size_t size) {
         return len;
     }
     return 0;
+}
+
+/* Publishes the current state to the uORB status message topic
+ *
+ * @param state The current flight state
+ * @param substate The current flight substate
+ */
+static void publish_state_update(enum flight_state_e state, enum flight_substate_e substate) {
+    switch (state) {
+    case STATE_IDLE:
+        publish_status(STATUS_TELEMETRY_UPDATE_IDLE);
+        break;
+    case STATE_LANDED:
+        publish_status(STATUS_TELEMETRY_UPDATE_LANDED);
+        break;
+    case STATE_AIRBORNE:
+        switch (substate) {
+        case SUBSTATE_ASCENT:
+            publish_status(STATUS_TELEMETRY_UPDATE_ASCENT);
+            break;
+        case SUBSTATE_DESCENT:
+            publish_status(STATUS_TELEMETRY_UPDATE_DESCENT);
+            break;
+        case SUBSTATE_UNKNOWN:
+            publish_status(STATUS_TELEMETRY_UPDATE_AIRBORNE);
+            break;
+        }
+        break;
+    }
 }
