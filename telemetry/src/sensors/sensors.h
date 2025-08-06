@@ -16,6 +16,12 @@ struct uorb_inputs {
   struct pollfd alt;
 };
 
+ORB_DECLARE(sensor_accel);
+ORB_DECLARE(sensor_baro);
+ORB_DECLARE(sensor_mag);
+ORB_DECLARE(sensor_gyro);
+ORB_DECLARE(sensor_gnss);
+
 /* A buffer that can hold any of the types of data created by the sensors in uorb_inputs */
 union uorb_data {
   struct sensor_accel accel;

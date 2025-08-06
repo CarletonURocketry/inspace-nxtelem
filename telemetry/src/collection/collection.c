@@ -8,6 +8,7 @@
 #include "../rocket-state/rocket-state.h"
 #include "../sensors/sensors.h"
 #include "../syslogging.h"
+#include "uORB/uORB.h"
 #include "collection.h"
 
 /* Cast an error to a void pointer */
@@ -68,8 +69,24 @@ static void alt_handler(void *ctx, uint8_t *data);
 
 #define millidegrees(celsius) (celsius * 1000)
 
-/* How many measurements to read from sensors at a time (match to size of internal buffers) */
+/* How many readings of each type of lower-priority data to add to each packet */
 
+#define TRANSMIT_NUM_LOW_PRIORITY_READINGS 2
+
+/* Describes information needed to use a sensor in the collection thread */
+struct sensor_desc {
+    struct pollfd *fd;                /* Pointer to the pollfd in struct uorb_inputs of this sensor */
+    const struct orb_metadata *meta;  /* The metadata of this sensors uORB topic */
+    uorb_data_callback_t handler;     /* Handler for this sensors data */
+    void *data_buffer;                /* The buffer to read data from this sensor into */
+    size_t buffer_size;               /* The size of data_buffer in bytes */
+    size_t elem_size;                 /* The size of each element the handler takes in bytes */
+};
+
+/* A structure that can be polled to wait for new sensor data */
+static struct uorb_inputs sensors;
+
+/* How many measurements to read from sensors at a time (match to size of internal buffers) */
 #define ACCEL_READ_SIZE 5
 #define BARO_READ_SIZE 5
 #define MAG_READ_SIZE 5
@@ -77,9 +94,51 @@ static void alt_handler(void *ctx, uint8_t *data);
 #define GYRO_READ_SIZE 5
 #define ALT_READ_SIZE 5
 
-/* How many readings of each type of lower-priority data to add to each packet */
+/* Space to read sensor data into */
+static struct sensor_accel accel_buffer[ACCEL_READ_SIZE];
+static struct sensor_baro baro_buffer[BARO_READ_SIZE];
+static struct sensor_mag mag_buffer[MAG_READ_SIZE];
+static struct sensor_gyro gyro_buffer[GYRO_READ_SIZE];
+static struct sensor_gnss gnss_buffer[GNSS_READ_SIZE];
+static struct fusion_altitude alt_buffer[ALT_READ_SIZE];
 
-#define TRANSMIT_NUM_LOW_PRIORITY_READINGS 2
+/* Information about sensors to help with setting them up or reading from them */
+static struct sensor_desc sensor_descs[NUM_SENSORS] = {{.fd = &sensors.accel,
+                                                        .handler = accel_handler,
+                                                        .data_buffer = accel_buffer,
+                                                        .buffer_size = sizeof(accel_buffer),
+                                                        .elem_size = sizeof(struct sensor_accel),
+                                                        .meta = ORB_ID(sensor_accel)},
+                                                       {.fd = &sensors.baro,
+                                                        .handler = baro_handler,
+                                                        .data_buffer = baro_buffer,
+                                                        .buffer_size = sizeof(baro_buffer),
+                                                        .elem_size = sizeof(struct sensor_baro),
+                                                        .meta = ORB_ID(sensor_baro)},
+                                                       {.fd = &sensors.mag,
+                                                        .handler = mag_handler,
+                                                        .data_buffer = mag_buffer,
+                                                        .buffer_size = sizeof(mag_buffer),
+                                                        .elem_size = sizeof(struct sensor_mag),
+                                                        .meta = ORB_ID(sensor_mag)},
+                                                       {.fd = &sensors.gyro,
+                                                        .handler = gyro_handler,
+                                                        .data_buffer = gyro_buffer,
+                                                        .buffer_size = sizeof(gyro_buffer),
+                                                        .elem_size = sizeof(struct sensor_gyro),
+                                                        .meta = ORB_ID(sensor_gyro)},
+                                                       {.fd = &sensors.gnss,
+                                                        .handler = gnss_handler,
+                                                        .data_buffer = gnss_buffer,
+                                                        .buffer_size = sizeof(gnss_buffer),
+                                                        .elem_size = sizeof(struct sensor_gnss),
+                                                        .meta = ORB_ID(sensor_gnss)},
+                                                       {.fd = &sensors.alt,
+                                                        .handler = alt_handler,
+                                                        .data_buffer = alt_buffer,
+                                                        .buffer_size = sizeof(alt_buffer),
+                                                        .elem_size = sizeof(struct fusion_altitude),
+                                                        .meta = ORB_ID(fusion_altitude)}};
 
 /*
  * Collection thread which runs to collect data.
@@ -90,34 +149,24 @@ void *collection_main(void *arg) {
     struct collection_args *unpacked_args = (struct collection_args *)(arg);
     rocket_state_t *state = unpacked_args->state;
 
-    processing_context_t context;
-    err = setup_collection(&context.logging, unpacked_args->logging_buffer);
+    static processing_context_t callback_context;
+    err = setup_collection(&callback_context.logging, unpacked_args->logging_buffer);
     if (err < 0) {
         inerr("Could not get an initial empty packet for collection\n");
         pthread_exit(err_to_ptr(err));
     }
-    err = setup_collection(&context.transmit, unpacked_args->transmit_buffer);
+    err = setup_collection(&callback_context.transmit, unpacked_args->transmit_buffer);
     if (err < 0) {
         inerr("Could not get an initial empty packet for collection\n");
         pthread_exit(err_to_ptr(err));
     }
 
-    struct uorb_inputs sensors;
     clear_uorb_inputs(&sensors);
-    setup_sensor(&sensors.accel, orb_get_meta("sensor_accel"));
-    setup_sensor(&sensors.baro, orb_get_meta("sensor_baro"));
-    setup_sensor(&sensors.mag, orb_get_meta("sensor_mag"));
-    setup_sensor(&sensors.gyro, orb_get_meta("sensor_gyro"));
-    setup_sensor(&sensors.gnss, orb_get_meta("sensor_gnss"));
-    setup_sensor(&sensors.alt, ORB_ID(fusion_altitude));
+    for (int sensor = 0; sensor < NUM_SENSORS; sensor++) {
+        setup_sensor(sensor_descs[sensor].fd, sensor_descs[sensor].meta);
+    }
 
     /* Separate buffers use more memory but allow us to process in pieces while still reading only once */
-    struct sensor_accel accel_data[ACCEL_READ_SIZE];
-    struct sensor_baro baro_data[BARO_READ_SIZE];
-    struct sensor_mag mag_data[MAG_READ_SIZE];
-    struct sensor_gyro gyro_data[GYRO_READ_SIZE];
-    struct sensor_gnss gnss_data[GNSS_READ_SIZE];
-    struct fusion_altitude alt_data[ALT_READ_SIZE];
 
     ininfo("Collection thread started.\n");
 
@@ -136,31 +185,25 @@ void *collection_main(void *arg) {
 
         poll_sensors(&sensors);
 
-        /* Read data all at once to avoid as much locking as possible */
-        void *accel_end = get_sensor_data_end(&sensors.accel, accel_data, sizeof(accel_data));
-        void *baro_end = get_sensor_data_end(&sensors.baro, baro_data, sizeof(baro_data));
-        void *mag_end = get_sensor_data_end(&sensors.mag, mag_data, sizeof(mag_data));
-        void *gyro_end = get_sensor_data_end(&sensors.gyro, gyro_data, sizeof(gyro_data));
-        void *gnss_end = get_sensor_data_end(&sensors.gnss, gnss_data, sizeof(gnss_data));
-        void *alt_end = get_sensor_data_end(&sensors.alt, alt_data, sizeof(alt_data));
+        // Note the current read position and the final read position
+        static void *read_pos[NUM_SENSORS];
+        static void *data_end[NUM_SENSORS];
 
-        void *accel_start = accel_data;
-        void *baro_start = baro_data;
-        void *mag_start = mag_data;
-        void *gyro_start = gyro_data;
-        void *gnss_start = gnss_data;
-        void *alt_start = alt_data;
+        /* Read data all at once to avoid as much locking as possible */
+        for (int sensor = 0; sensor < NUM_SENSORS; sensor++) {
+            data_end[sensor] = get_sensor_data_end(sensor_descs[sensor].fd, sensor_descs[sensor].data_buffer,
+                                                   sensor_descs[sensor].buffer_size);
+            read_pos[sensor] = sensor_descs[sensor].data_buffer;
+        }
 
         /* Process one piece of data of each type at a time to get a more even mix of things in the packets */
         int processed;
         do {
             processed = 0;
-            processed += process_one(accel_handler, &context, &accel_start, accel_end, sizeof(struct sensor_accel));
-            processed += process_one(baro_handler, &context, &baro_start, baro_end, sizeof(struct sensor_baro));
-            processed += process_one(mag_handler, &context, &mag_start, mag_end, sizeof(struct sensor_mag));
-            processed += process_one(gyro_handler, &context, &gyro_start, gyro_end, sizeof(struct sensor_gyro));
-            processed += process_one(gnss_handler, &context, &gnss_start, gnss_end, sizeof(struct sensor_gnss));
-            processed += process_one(alt_handler, &context, &alt_start, alt_end, sizeof(struct fusion_altitude));
+            for (int sensor = 0; sensor < NUM_SENSORS; sensor++) {
+                process_one(sensor_descs[sensor].handler, &callback_context, &read_pos[sensor], data_end[sensor],
+                            sensor_descs[sensor].elem_size);
+            }
         } while (processed);
 
         /* Decide whether to move to lift-off state. TODO: real logic */
