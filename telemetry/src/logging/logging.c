@@ -133,7 +133,6 @@ void *logging_main(void *arg) {
 
             // Have to flush and sync on the power safe file system to commit writes. Do this sparingly to save time
             if ((packet_seq_num & 0x03) == 0) {
-                fflush(active_file);
                 fsync(fileno(active_file));
             }
 
