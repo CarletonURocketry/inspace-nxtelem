@@ -17,11 +17,11 @@
 
 /* The format for flight log file names */
 
-#define FLIGHT_FNAME_FMT CONFIG_INSPACE_TELEMETRY_FLIGHT_FS "flog_%d_%d.bin"
+#define FLIGHT_FNAME_FMT CONFIG_INSPACE_TELEMETRY_FLIGHT_FS "/flog_%d_%d.bin"
 
 /* The format for extraction log file names */
 
-#define EXTR_FNAME_FMT CONFIG_INSPACE_TELEMETRY_LANDED_FS "elog_%d_%d.bin"
+#define EXTR_FNAME_FMT CONFIG_INSPACE_TELEMETRY_LANDED_FS "/elog_%d_%d.bin"
 
 /* Cast an error to a void pointer */
 
