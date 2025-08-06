@@ -11,6 +11,7 @@
 #include "packets/buffering.h"
 #include "syslogging.h"
 #include "transmission/transmit.h"
+#include "pwm/pwm_olg.h"
 
 /* Buffers for sharing sensor data between threads */
 
@@ -85,12 +86,20 @@ int main(int argc, char **argv) {
         exit(EXIT_FAILURE);
     }
 
+    /* No args needed for startup sound thread */
+    err = pthread_create(&startup_sound_thread, NULL, startup_sound_main, NULL);
+    if (err) {
+        inerr("Problem starting startup thread: %d\n", err);
+        exit(EXIT_FAILURE);
+    }
+
     /* Join on all threads: TODO handle errors */
 
     err = pthread_join(collect_thread, NULL);
     err = pthread_join(transmit_thread, NULL);
     err = pthread_join(log_thread, NULL);
     err = pthread_join(fusion_thread, NULL);
+    err = pthread_join(startup_sound_thread, NULL);
 
     return err;
 }
