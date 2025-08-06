@@ -12,7 +12,9 @@ struct uorb_inputs {
   struct pollfd baro;
   struct pollfd mag;
   struct pollfd gyro;
+#ifdef CONFIG_SENSORS_L86XXX
   struct pollfd gnss;
+#endif
   struct pollfd alt;
 };
 
@@ -22,7 +24,9 @@ union uorb_data {
   struct sensor_baro baro;
   struct sensor_mag mag;
   struct sensor_gyro gyro;
+#ifdef CONFIG_SENSORS_L86XXX
   struct sensor_gnss gnss;
+#endif
   struct fusion_altitude alt;
 };
 
