@@ -19,8 +19,8 @@ int main(int argc, char **argv) {
 
     /* Buffers for sharing sensor data between threads */
 
-    packet_buffer_t transmit_buffer;
-    packet_buffer_t logging_buffer;
+    static packet_buffer_t transmit_buffer;
+    static packet_buffer_t logging_buffer;
 
     /* Thread handles. */
 

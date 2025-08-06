@@ -51,14 +51,14 @@ void *fusion_main(void *arg) {
     state_get_flightsubstate(state, &flight_substate);
 
     /* Input sensors, may want to directly read instead */
-    struct uorb_inputs sensors;
+    static struct uorb_inputs sensors;
+    static struct sensor_baro baro_data[BARO_INPUT_BUFFER_SIZE];
+    static struct sensor_accel accel_data[ACCEL_INPUT_BUFFER_SIZE];
     clear_uorb_inputs(&sensors);
     setup_sensor(&sensors.baro, orb_get_meta("sensor_baro"));
     setup_sensor(&sensors.accel, orb_get_meta("sensor_accel"));
-    struct sensor_baro baro_data[BARO_INPUT_BUFFER_SIZE];
-    struct sensor_accel accel_data[ACCEL_INPUT_BUFFER_SIZE];
 
-    struct detector detector;
+    static struct detector detector;
     detector_init(&detector, orb_absolute_time());
     detector_set_state(&detector, flight_state, flight_substate);
 
@@ -66,8 +66,6 @@ void *fusion_main(void *arg) {
     // detector_set_elevation(&detector, init_elevation / 1000);
 
     /* Currently publishing blank data to start, might be better to try and advertise only on first fusioned data */
-    struct fusion_altitude calculated_altitude;
-    struct accel_sample calculated_accel_mag;
     int altitude_fd = orb_advertise_multi_queue(ORB_ID(fusion_altitude), NULL, NULL, ALT_FUSION_BUFFER);
     if (altitude_fd < 0) {
         inerr("Fusion could not advertise altitude topic: %d\n", altitude_fd);
@@ -81,7 +79,7 @@ void *fusion_main(void *arg) {
         int len = get_sensor_data(&sensors.baro, baro_data, sizeof(baro_data));
         if (len > 0) {
             for (int i = 0; i < (len / sizeof(struct sensor_baro)); i++) {
-                calculated_altitude = calculate_altitude(&baro_data[i]);
+                struct fusion_altitude calculated_altitude = calculate_altitude(&baro_data[i]);
                 detector_add_alt(&detector, (struct altitude_sample *)&calculated_altitude);
                 orb_publish(ORB_ID(fusion_altitude), altitude_fd, &calculated_altitude);
             }
@@ -89,7 +87,7 @@ void *fusion_main(void *arg) {
         len = get_sensor_data(&sensors.accel, accel_data, sizeof(accel_data));
         if (len > 0) {
             for (int i = 0; i < (len / sizeof(struct sensor_accel)); i++) {
-                calculated_accel_mag = calculate_accel_magnitude(&accel_data[i]);
+                struct accel_sample calculated_accel_mag = calculate_accel_magnitude(&accel_data[i]);
                 detector_add_accel(&detector, (struct accel_sample *)&calculated_accel_mag);
             }
         }
