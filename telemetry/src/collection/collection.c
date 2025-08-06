@@ -9,6 +9,7 @@
 #include "../sensors/sensors.h"
 #include "../syslogging.h"
 #include "collection.h"
+#include "uORB/uORB.h"
 
 /* Cast an error to a void pointer */
 
@@ -37,6 +38,83 @@ static void gnss_handler(void *ctx, uint8_t *data);
 #endif
 static void gyro_handler(void *ctx, uint8_t *data);
 static void alt_handler(void *ctx, uint8_t *data);
+
+/* uORB polling file descriptors */
+
+static struct pollfd uorb_fds[] = {
+#ifdef CONFIG_SENSORS_LSM6DSO32
+    [SENSOR_ACCEL] = {.fd = -1, .events = POLLIN, .revents = 0},
+    [SENSOR_GYRO] = {.fd = -1, .events = POLLIN, .revents = 0},
+#endif
+#ifdef CONFIG_SENSORS_MS56XX
+    [SENSOR_BARO] = {.fd = -1, .events = POLLIN, .revents = 0},
+#endif
+#ifdef CONFIG_SENSORS_LIS2MDL
+    [SENSOR_MAG] = {.fd = -1, .events = POLLIN, .revents = 0},
+#endif
+#ifdef CONFIG_SENSORS_L86XXX
+    [SENSOR_GNSS] = {.fd = -1, .events = POLLIN, .revents = 0},
+#endif
+    [SENSOR_ALT] = {.fd = -1, .events = POLLIN, .revents = 0},
+};
+
+/* uORB sensor metadatas */
+
+static struct orb_metadata const *uorb_metas[] = {
+#ifdef CONFIG_SENSORS_LSM6DSO32
+    [SENSOR_ACCEL] = NULL, [SENSOR_GYRO] = NULL,
+#endif
+#ifdef CONFIG_SENSORS_MS56XX
+    [SENSOR_BARO] = NULL,
+#endif
+#ifdef CONFIG_SENSORS_LIS2MDL
+    [SENSOR_MAG] = NULL,
+#endif
+#ifdef CONFIG_SENSORS_L86XXX
+    [SENSOR_GNSS] = NULL,
+#endif
+    [SENSOR_ALT] = NULL,
+};
+
+/* Sensor desired sampling rates in Hz*/
+
+static const uint32_t sample_freqs[] = {
+#ifdef CONFIG_SENSORS_LSM6DSO32
+    [SENSOR_ACCEL] = CONFIG_INSPACE_TELEMETRY_ACCEL_SF, [SENSOR_GYRO] = CONFIG_INSPACE_TELEMETRY_GYRO_SF,
+#endif
+#ifdef CONFIG_SENSORS_MS56XX
+    [SENSOR_BARO] = CONFIG_INSPACE_TELEMETRY_BARO_SF,
+#endif
+#ifdef CONFIG_SENSORS_LIS2MDL
+    [SENSOR_MAG] = CONFIG_INSPACE_TELEMETRY_MAG_SF,
+#endif
+#ifdef CONFIG_SENSORS_L86XXX
+    [SENSOR_GNSS] = CONFIG_INSPACE_TELEMETRY_GPS_SF,
+#endif
+    [SENSOR_ALT] = CONFIG_INSPACE_TELEMETRY_ALT_SF,
+};
+
+/* Data handlers for different sensors */
+
+static const uorb_data_callback_t handlers[] = {
+#ifdef CONFIG_SENSORS_MS56XX
+    [SENSOR_BARO] = baro_handler,
+#endif
+#ifdef CONFIG_SENSORS_LSM6DSO32
+    [SENSOR_GYRO] = gyro_handler, [SENSOR_ACCEL] = accel_handler,
+#endif
+#ifdef CONFIG_SENSORS_LIS2MDL
+    [SENSOR_MAG] = mag_handler,
+#endif
+#ifdef CONFIG_SENSORS_L86_XXX
+    [SENSOR_GPS] = gnss_handler,
+#endif
+    [SENSOR_ALT] = alt_handler,
+};
+
+/* The numbers of sensors that are available to be polled */
+
+#define NUM_SENSORS (sizeof(uorb_fds) / sizeof(uorb_fds[0]))
 
 /* Convert microseconds to milliseconds */
 
@@ -72,58 +150,177 @@ static void alt_handler(void *ctx, uint8_t *data);
 
 /* How many measurements to read from sensors at a time (match to size of internal buffers) */
 
-#define ACCEL_READ_SIZE 5
-#define BARO_READ_SIZE 5
-#define MAG_READ_SIZE 5
-#define GNSS_READ_SIZE 5
-#define GYRO_READ_SIZE 5
-#define ALT_READ_SIZE 5
+#define DATA_BUFFER_SIZE 1
 
 /* How many readings of each type of lower-priority data to add to each packet */
 
 #define TRANSMIT_NUM_LOW_PRIORITY_READINGS 2
 
 /*
- * Collection thread which runs to collect data.
+ * Collection thread.
+ *
+ * Runs to collect data from sensors and battery ADC, packaging all measurements into packets.
  */
 void *collection_main(void *arg) {
     int err;
     enum flight_state_e flight_state;
     struct collection_args *unpacked_args = (struct collection_args *)(arg);
     rocket_state_t *state = unpacked_args->state;
-
     processing_context_t context;
+
+    ininfo("Setting up collection context.\n");
+
     err = setup_collection(&context.logging, unpacked_args->logging_buffer);
-    if (err < 0) {
-        inerr("Could not get an initial empty packet for collection\n");
-        pthread_exit(err_to_ptr(err));
-    }
-    err = setup_collection(&context.transmit, unpacked_args->transmit_buffer);
+
     if (err < 0) {
         inerr("Could not get an initial empty packet for collection\n");
         pthread_exit(err_to_ptr(err));
     }
 
-    struct uorb_inputs sensors;
-    clear_uorb_inputs(&sensors);
-    setup_sensor(&sensors.accel, orb_get_meta("sensor_accel"));
-    setup_sensor(&sensors.baro, orb_get_meta("sensor_baro"));
-    setup_sensor(&sensors.mag, orb_get_meta("sensor_mag"));
-    setup_sensor(&sensors.gyro, orb_get_meta("sensor_gyro"));
-#ifdef CONFIG_SENSORS_L86XXX
-    setup_sensor(&sensors.gnss, orb_get_meta("sensor_gnss"));
+    err = setup_collection(&context.transmit, unpacked_args->transmit_buffer);
+
+    if (err < 0) {
+        inerr("Could not get an initial empty packet for collection\n");
+        pthread_exit(err_to_ptr(err));
+    }
+
+    /* Get metadata of all sensors */
+
+    ininfo("Getting sensor metadatas.\n");
+
+#ifdef CONFIG_SENSORS_MS56XX
+    uorb_metas[SENSOR_BARO] = orb_get_meta("sensor_baro");
+    if (uorb_metas[SENSOR_BARO] == NULL) {
+        inerr("Couldn't get metadata for sensor_baro: %d\n", errno);
+    }
 #endif
-    setup_sensor(&sensors.alt, ORB_ID(fusion_altitude));
+#ifdef CONFIG_SENSORS_LSM6DSO32
+    uorb_metas[SENSOR_ACCEL] = orb_get_meta("sensor_accel");
+    if (uorb_metas[SENSOR_ACCEL] == NULL) {
+        inerr("Couldn't get metadata for sensor_accel: %d\n", errno);
+    }
+    uorb_metas[SENSOR_GYRO] = orb_get_meta("sensor_gyro");
+    if (uorb_metas[SENSOR_GYRO] == NULL) {
+        inerr("Couldn't get metadata for sensor_gyro: %d\n", errno);
+    }
+#endif
+#ifdef CONFIG_SENSORS_LIS2MDL
+    uorb_metas[SENSOR_MAG] = orb_get_meta("sensor_mag");
+    if (uorb_metas[SENSOR_MAG] == NULL) {
+        inerr("Couldn't get metadata for sensor_mag: %d\n", errno);
+    }
+#endif
+#ifdef CONFIG_SENSORS_L86_XXX
+    uorb_metas[SENSOR_GPS] = orb_get_meta("sensor_gnss");
+    if (uorb_metas[SENSOR_GPS] == NULL) {
+        inerr("Couldn't get metadata for sensor_gnss: %d\n", errno);
+    }
+#endif
+    uorb_metas[SENSOR_ALT] = orb_get_meta("fusion_altitude");
+    if (uorb_metas[SENSOR_ALT] == NULL) {
+        inerr("Couldn't get metadata for fusion_altitude: %d\n", errno);
+    }
+
+    /* Subscribe to all sensors */
+
+    ininfo("Subscribing to all sensors.\n");
+
+    for (int i = 0; i < NUM_SENSORS; i++) {
+
+        /* Skip metadata that couldn't be found */
+
+        if (uorb_metas[i] == NULL) {
+            inwarn("Missing metadata for sensor %d\n", i);
+            continue;
+        }
+
+        ininfo("Subscribing to '%s'\n", uorb_metas[i]->o_name);
+        uorb_fds[i].fd = orb_subscribe(uorb_metas[i]);
+        if (uorb_fds[i].fd < 0) {
+            inerr("Failed to subscribe to '%s': %d\n", uorb_metas[i]->o_name, errno);
+        }
+    }
+
+    ininfo("Sensors subscribed.\n");
+
+    /* Set sensor specific requirements */
+
+    ininfo("Configuring sensors with their specific requirements.\n");
+
+#ifdef CONFIG_SENSORS_LSM6DSO32
+    ininfo("Configuring accelerometer FSR to +/-32g.\n");
+    err = orb_ioctl(uorb_fds[SENSOR_ACCEL].fd, SNIOC_SETFULLSCALE, 32);
+    if (err < 0) {
+        inerr("Couldn't set FSR of sensor_accel: %d\n", errno);
+    }
+
+    ininfo("Configuring gyro FSR to +/-2000dps.\n");
+    err = orb_ioctl(uorb_fds[SENSOR_GYRO].fd, SNIOC_SETFULLSCALE, 2000);
+    if (err < 0) {
+        inerr("Couldn't set FSR of sensor_gyro: %d\n", errno);
+    }
+#endif
+#ifdef CONFIG_SENSORS_LIS2MDL
+    /* TODO: maybe low pass filter? */
+#endif
+
+    ininfo("Sensors configured with specific settings.\n");
+
+    /* Set sample frequencies for all sensors */
+
+    ininfo("Setting sensor sample frequencies.\n");
+
+    for (int i = 0; i < NUM_SENSORS; i++) {
+
+        /* Skip invalid sensors */
+
+        if (uorb_fds[i].fd < 0) {
+            continue;
+        }
+
+        ininfo("Setting frequency of '%s' to %luHz\n", uorb_metas[i]->o_name, sample_freqs[i]);
+        err = orb_set_frequency(uorb_fds[i].fd, sample_freqs[i]);
+        if (err < 0) {
+            inerr("Failed to set frequency of '%s' to %luHz: %d\n", uorb_metas[i]->o_name, sample_freqs[i], errno);
+        }
+    }
+
+    ininfo("Sensor frequencies set.\n");
 
     /* Separate buffers use more memory but allow us to process in pieces while still reading only once */
-    struct sensor_accel accel_data[ACCEL_READ_SIZE];
-    struct sensor_baro baro_data[BARO_READ_SIZE];
-    struct sensor_mag mag_data[MAG_READ_SIZE];
-    struct sensor_gyro gyro_data[GYRO_READ_SIZE];
-#ifdef CONFIG_SENSORS_L86XXX
-    struct sensor_gnss gnss_data[GNSS_READ_SIZE];
+
+#ifdef CONFIG_SENSORS_LSM6DSO32
+    struct sensor_accel accel_data[DATA_BUFFER_SIZE];
+    struct sensor_gyro gyro_data[DATA_BUFFER_SIZE];
 #endif
-    struct fusion_altitude alt_data[ALT_READ_SIZE];
+#ifdef CONFIG_SENSORS_MS56XX
+    struct sensor_baro baro_data[DATA_BUFFER_SIZE];
+#endif
+#ifdef CONFIG_SENSORS_LIS2MDL
+    struct sensor_mag mag_data[DATA_BUFFER_SIZE];
+#endif
+#ifdef CONFIG_SENSORS_L86XXX
+    struct sensor_gnss gnss_data[DATA_BUFFER_SIZE];
+#endif
+    struct fusion_altitude alt_data[DATA_BUFFER_SIZE];
+
+    /* Put the buffers in array so that agnostic code can read into the write buffer. */
+
+    void *uorb_data_buffers[] = {
+#ifdef CONFIG_SENSORS_LSM6DSO32
+        [SENSOR_ACCEL] = &accel_data, [SENSOR_GYRO] = &gyro_data,
+#endif
+#ifdef CONFIG_SENSORS_MS56XX
+        [SENSOR_BARO] = &baro_data,
+#endif
+#ifdef CONFIG_SENSORS_LIS2MDL
+        [SENSOR_MAG] = &mag_data,
+#endif
+#ifdef CONFIG_SENSORS_L86XXX
+        [SENSOR_GNSS] = &gnss_data,
+#endif
+        [SENSOR_ALT] = &alt_data,
+    };
 
     ininfo("Collection thread started.\n");
 
@@ -140,40 +337,22 @@ void *collection_main(void *arg) {
 
         /* Wait for new data */
 
-        poll_sensors(&sensors);
+        poll(uorb_fds, NUM_SENSORS, -1);
 
-        /* Read data all at once to avoid as much locking as possible */
-        void *accel_end = get_sensor_data_end(&sensors.accel, accel_data, sizeof(accel_data));
-        void *baro_end = get_sensor_data_end(&sensors.baro, baro_data, sizeof(baro_data));
-        void *mag_end = get_sensor_data_end(&sensors.mag, mag_data, sizeof(mag_data));
-        void *gyro_end = get_sensor_data_end(&sensors.gyro, gyro_data, sizeof(gyro_data));
-#ifdef CONFIG_SENSORS_L86XXX
-        void *gnss_end = get_sensor_data_end(&sensors.gnss, gnss_data, sizeof(gnss_data));
-#endif
-        void *alt_end = get_sensor_data_end(&sensors.alt, alt_data, sizeof(alt_data));
+        /* Read one thing per data read and process it */
 
-        void *accel_start = accel_data;
-        void *baro_start = baro_data;
-        void *mag_start = mag_data;
-        void *gyro_start = gyro_data;
-#ifdef CONFIG_SENSORS_L86XXX
-        void *gnss_start = gnss_data;
-#endif
-        void *alt_start = alt_data;
+        for (int i = 0; i < NUM_SENSORS; i++) {
 
-        /* Process one piece of data of each type at a time to get a more even mix of things in the packets */
-        int processed;
-        do {
-            processed = 0;
-            processed += process_one(accel_handler, &context, &accel_start, accel_end, sizeof(struct sensor_accel));
-            processed += process_one(baro_handler, &context, &baro_start, baro_end, sizeof(struct sensor_baro));
-            processed += process_one(mag_handler, &context, &mag_start, mag_end, sizeof(struct sensor_mag));
-            processed += process_one(gyro_handler, &context, &gyro_start, gyro_end, sizeof(struct sensor_gyro));
-#ifdef CONFIG_SENSORS_L86XXX
-            processed += process_one(gnss_handler, &context, &gnss_start, gnss_end, sizeof(struct sensor_gnss));
-#endif
-            processed += process_one(alt_handler, &context, &alt_start, alt_end, sizeof(struct fusion_altitude));
-        } while (processed);
+            /* Skip invalid sensors */
+
+            if (uorb_fds[i].fd < 0) {
+                continue;
+            }
+
+            void *sensor_end = get_sensor_data_end(&uorb_fds[i], uorb_data_buffers[i], uorb_metas[i]->o_size);
+            void *sensor_start = uorb_data_buffers[i];
+            process_one(handlers[i], &context, &sensor_start, sensor_end, uorb_metas[i]->o_size);
+        }
 
         /* Decide whether to move to lift-off state. TODO: real logic */
 

@@ -8,6 +8,7 @@
 #include "../syslogging.h"
 #include "detector.h"
 #include "fusion.h"
+#include "uORB/uORB.h"
 
 /* The pressure at sea level in millibar*/
 #define SEA_PRESSURE 1013.25
@@ -46,19 +47,27 @@ void *fusion_main(void *arg) {
     rocket_state_t *state = ((struct fusion_args *)arg)->state;
     enum flight_state_e flight_state;
     enum flight_substate_e flight_substate;
+    struct sensor_baro baro_data[BARO_INPUT_BUFFER_SIZE];
+    struct sensor_accel accel_data[ACCEL_INPUT_BUFFER_SIZE];
+    struct detector detector;
+    struct fusion_altitude calculated_altitude;
+    struct accel_sample calculated_accel_mag;
+    struct pollfd fds[] = {};
+    const struct orb_metadata *barometa;
+    const struct orb_metadata *accelmeta;
 
     state_get_flightstate(state, &flight_state);
     state_get_flightsubstate(state, &flight_substate);
 
     /* Input sensors, may want to directly read instead */
-    struct uorb_inputs sensors;
-    clear_uorb_inputs(&sensors);
-    setup_sensor(&sensors.baro, orb_get_meta("sensor_baro"));
-    setup_sensor(&sensors.accel, orb_get_meta("sensor_accel"));
-    struct sensor_baro baro_data[BARO_INPUT_BUFFER_SIZE];
-    struct sensor_accel accel_data[ACCEL_INPUT_BUFFER_SIZE];
 
-    struct detector detector;
+    // TODO make this way cleaner and handle errors
+    barometa = orb_get_meta("sensor_baro");
+    accelmeta = orb_get_meta("sensor_accel");
+
+    fds[0].fd = orb_subscribe(barometa);
+    fds[1].fd = orb_subscribe(accelmeta);
+
     detector_init(&detector, orb_absolute_time());
     detector_set_state(&detector, flight_state, flight_substate);
 
@@ -66,8 +75,7 @@ void *fusion_main(void *arg) {
     // detector_set_elevation(&detector, init_elevation / 1000);
 
     /* Currently publishing blank data to start, might be better to try and advertise only on first fusioned data */
-    struct fusion_altitude calculated_altitude;
-    struct accel_sample calculated_accel_mag;
+
     int altitude_fd = orb_advertise_multi_queue(ORB_ID(fusion_altitude), NULL, NULL, ALT_FUSION_BUFFER);
     if (altitude_fd < 0) {
         inerr("Fusion could not advertise altitude topic: %d\n", altitude_fd);
@@ -76,9 +84,13 @@ void *fusion_main(void *arg) {
     /* Output sensors */
 
     for (;;) {
+
         /* Wait for new data */
-        poll_sensors(&sensors);
-        int len = get_sensor_data(&sensors.baro, baro_data, sizeof(baro_data));
+
+        poll(fds, 2, -1);
+
+        int len = get_sensor_data(&fds[0], baro_data, sizeof(baro_data));
+
         if (len > 0) {
             for (int i = 0; i < (len / sizeof(struct sensor_baro)); i++) {
                 calculated_altitude = calculate_altitude(&baro_data[i]);
@@ -86,7 +98,9 @@ void *fusion_main(void *arg) {
                 orb_publish(ORB_ID(fusion_altitude), altitude_fd, &calculated_altitude);
             }
         }
-        len = get_sensor_data(&sensors.accel, accel_data, sizeof(accel_data));
+
+        len = get_sensor_data(&fds[1], accel_data, sizeof(accel_data));
+
         if (len > 0) {
             for (int i = 0; i < (len / sizeof(struct sensor_accel)); i++) {
                 calculated_accel_mag = calculate_accel_magnitude(&accel_data[i]);
@@ -95,6 +109,7 @@ void *fusion_main(void *arg) {
         }
 
         /* Run detection. Potentially run periodically instead of every update */
+
         switch (detector_detect(&detector)) {
         case DETECTOR_AIRBORNE_EVENT: {
             /* Make sure we're in the idle state when going to airborne */
@@ -150,7 +165,8 @@ struct fusion_altitude calculate_altitude(struct sensor_baro *baro_data) {
     output.timestamp = baro_data->timestamp;
 
     /* Assume barometric reading is temperature adjusted */
-    output.altitude = -(GAS_CONSTANT * (KELVIN + baro_data->temperature)) / (MOLAR_MASS * GRAVITY) * log(baro_data->pressure / SEA_PRESSURE);
+    output.altitude = -(GAS_CONSTANT * (KELVIN + baro_data->temperature)) / (MOLAR_MASS * GRAVITY) *
+                      log(baro_data->pressure / SEA_PRESSURE);
     return output;
 }
 

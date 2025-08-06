@@ -1,37 +1,48 @@
 #ifndef _INSPACE_SENSORS_H_
 #define _INSPACE_SENSORS_H_
 
-#include <uORB/uORB.h>
 #include <poll.h>
+#include <uORB/uORB.h>
 
 #include "../fusion/fusion.h"
 
-/* Used for polling on multiple sensors at once. Don't set up the ones you don't want to use */
-struct uorb_inputs {
-  struct pollfd accel;
-  struct pollfd baro;
-  struct pollfd mag;
-  struct pollfd gyro;
-#ifdef CONFIG_SENSORS_L86XXX
-  struct pollfd gnss;
+/* Enumeration of the sensors in the uORB network. Includes fusion 'sensors' */
+
+enum uorb_sensors {
+#ifdef CONFIG_SENSORS_LSM6DSO32
+    SENSOR_ACCEL, /* Accelerometer */
+    SENSOR_GYRO,  /* Gyroscope */
 #endif
-  struct pollfd alt;
+#ifdef CONFIG_SENSORS_MS56XX
+    SENSOR_BARO, /* Barometer */
+#endif
+#ifdef CONFIG_SENSORS_LIS2MDL
+    SENSOR_MAG, /* Magnetometer */
+#endif
+#ifdef CONFIG_SENSORS_L86XXX
+    SENSOR_GNSS, /* GNSS */
+#endif
+    SENSOR_ALT, /* Altitude fusion */
 };
 
 /* A buffer that can hold any of the types of data created by the sensors in uorb_inputs */
-union uorb_data {
-  struct sensor_accel accel;
-  struct sensor_baro baro;
-  struct sensor_mag mag;
-  struct sensor_gyro gyro;
-#ifdef CONFIG_SENSORS_L86XXX
-  struct sensor_gnss gnss;
-#endif
-  struct fusion_altitude alt;
-};
 
-/* The numbers of sensors defined in uorb_inputs */
-#define NUM_SENSORS sizeof(struct uorb_inputs) / sizeof(struct pollfd)
+union uorb_data {
+#ifdef CONFIG_SENSORS_LSM6DSO32
+    struct sensor_accel accel;
+    struct sensor_gyro gyro;
+#endif
+#ifdef CONFIG_SENSORS_MS56XX
+    struct sensor_baro baro;
+#endif
+#ifdef CONFIG_SENSORS_LIS2MDL
+    struct sensor_mag mag;
+#endif
+#ifdef CONFIG_SENSORS_L86XXX
+    struct sensor_gnss gnss;
+#endif
+    struct fusion_altitude alt;
+};
 
 /**
  * A function pointer to a function that will perform operations on single pieces of uORB data
@@ -39,14 +50,13 @@ union uorb_data {
  * @param context Context given to the callback by the program using this interface
  * @param element The element to perform processing on, where the length is implied by knowing the type of element
  */
-typedef void (*uorb_data_callback_t)(void* context, uint8_t* element);
+typedef void (*uorb_data_callback_t)(void *context, uint8_t *element);
 
-int setup_sensor(struct pollfd *sensor, orb_id_t meta);
 ssize_t get_sensor_data(struct pollfd *sensor, void *data, size_t size);
-void *get_sensor_data_end(struct pollfd *sensor, void* data, size_t size);
-void clear_uorb_inputs(struct uorb_inputs *sensors);
-void poll_sensors(struct uorb_inputs *sensors);
-void foreach_measurement(uorb_data_callback_t handler, void* handler_context, void *data, size_t size, size_t elem_size);
-int process_one(uorb_data_callback_t handler, void* handler_context, void **data_start, void *data_end, size_t elem_size);
+void *get_sensor_data_end(struct pollfd *sensor, void *data, size_t size);
+void foreach_measurement(uorb_data_callback_t handler, void *handler_context, void *data, size_t size,
+                         size_t elem_size);
+int process_one(uorb_data_callback_t handler, void *handler_context, void **data_start, void *data_end,
+                size_t elem_size);
 
 #endif // _INSPACE_SENSORS_H_
