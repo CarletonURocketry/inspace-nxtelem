@@ -17,11 +17,13 @@
 
 /* The format for flight log file names */
 
-#define FLIGHT_FNAME_FMT CONFIG_INSPACE_TELEMETRY_FLIGHT_FS "flog_%d_%d.bin"
+#define FLIGHT_FNAME_FMT "flog_%d_%d.bin"
+#define FLIGHT_FPATH_FMT CONFIG_INSPACE_TELEMETRY_FLIGHT_FS FLIGHT_FNAME_FMT
 
 /* The format for extraction log file names */
 
-#define EXTR_FNAME_FMT CONFIG_INSPACE_TELEMETRY_LANDED_FS "elog_%d_%d.bin"
+#define EXTR_FNAME_FMT "elog_%d_%d.bin"
+#define EXTR_FPATH_FMT CONFIG_INSPACE_TELEMETRY_LANDED_FS EXTR_FNAME_FMT
 
 /* Cast an error to a void pointer */
 
@@ -35,7 +37,7 @@
 
 #define PING_PONG_DURATION 30.0f
 
-static size_t log_packet(FILE *storage, uint8_t *packet, size_t packet_size);
+static int log_packet(FILE *storage, uint8_t *packet, size_t packet_size);
 static int clear_file(FILE *to_clear);
 static int try_open_file(FILE **file_to_open, char *filename, const char *open_option);
 static int find_max_boot_number(const char *dir, const char *format);
@@ -72,14 +74,14 @@ void *logging_main(void *arg) {
     int extract_number = choose_flight_number(CONFIG_INSPACE_TELEMETRY_LANDED_FS, EXTR_FNAME_FMT);
     int extract_ser_num = 0;
 
-    err = open_log_file(&active_file, FLIGHT_FNAME_FMT, flight_number, flight_ser_num++, "w+");
+    err = open_log_file(&active_file, FLIGHT_FPATH_FMT, flight_number, flight_ser_num++, "w+");
     if (err < 0) {
         inerr("Error opening log file with flight number %d, serial number: %d: %d\n", flight_number, flight_ser_num,
               err);
         goto err_cleanup;
     }
 
-    err = open_log_file(&standby_file, FLIGHT_FNAME_FMT, flight_number, flight_ser_num++, "w+");
+    err = open_log_file(&standby_file, FLIGHT_FPATH_FMT, flight_number, flight_ser_num++, "w+");
     if (err < 0) {
         inerr("Error opening log file with flight number %d, serial number: %d: %d\n", flight_number, flight_ser_num,
               err);
@@ -122,7 +124,7 @@ void *logging_main(void *arg) {
             if (log_packet(active_file, next_packet->packet, next_packet->end - next_packet->packet) < 0) {
                 inerr("Opening a new logging file because writing to the current one failed");
                 fclose(active_file);
-                err = open_log_file(&active_file, FLIGHT_FNAME_FMT, flight_number, flight_ser_num++, "w+");
+                err = open_log_file(&active_file, FLIGHT_FPATH_FMT, flight_number, flight_ser_num++, "w+");
                 if (err < 0) {
                     inerr("Error opening log file with flight number %d, serial number: %d: %d\n", flight_number,
                           flight_ser_num, err);
@@ -133,7 +135,6 @@ void *logging_main(void *arg) {
 
             // Have to flush and sync on the power safe file system to commit writes. Do this sparingly to save time
             if ((packet_seq_num & 0x03) == 0) {
-                fflush(active_file);
                 fsync(fileno(active_file));
             }
 
@@ -142,7 +143,7 @@ void *logging_main(void *arg) {
         case STATE_LANDED: {
             FILE *extract_file = NULL;
             // Don't overwrite if there's anything in there already
-            err = open_log_file(&extract_file, EXTR_FNAME_FMT, extract_number, extract_ser_num++, "a");
+            err = open_log_file(&extract_file, EXTR_FPATH_FMT, extract_number, extract_ser_num++, "a");
             if (err < 0) {
                 inerr("Error opening log file with flight number %d, serial number: %d: %d\n", extract_number,
                       extract_ser_num, err);
@@ -155,7 +156,7 @@ void *logging_main(void *arg) {
             if (copy_out(standby_file, extract_file) < 0) {
                 // Ignoring any error here, since we'll be opening a new file anyways
                 fclose(standby_file);
-                err = open_log_file(&standby_file, FLIGHT_FNAME_FMT, flight_number, flight_ser_num++, "w+");
+                err = open_log_file(&standby_file, FLIGHT_FPATH_FMT, flight_number, flight_ser_num++, "w+");
                 if (err < 0) {
                     inerr("Error opening new standby log file with flight number %d, serial number: %d: %d\n",
                           flight_number, flight_ser_num, err);
@@ -165,7 +166,7 @@ void *logging_main(void *arg) {
 
             if (copy_out(active_file, extract_file) < 0) {
                 fclose(active_file);
-                err = open_log_file(&active_file, FLIGHT_FNAME_FMT, flight_number, flight_ser_num++, "w+");
+                err = open_log_file(&active_file, FLIGHT_FPATH_FMT, flight_number, flight_ser_num++, "w+");
                 if (err < 0) {
                     inerr("Error opening new active log file with flight number %d, serial number: %d: %d\n",
                           flight_number, flight_ser_num, err);
@@ -214,13 +215,15 @@ err_cleanup:
  * @param packet_size The size of the packet being logged
  * @return The number of bytes written or a negative error code
  */
-static size_t log_packet(FILE *storage, uint8_t *packet, size_t packet_size) {
+static int log_packet(FILE *storage, uint8_t *packet, size_t packet_size) {
     size_t written = fwrite(packet, 1, packet_size, storage);
     indebug("Logged %zu bytes\n", written);
-    if (written == 0) {
-        int err = errno;
-        inerr("Failed to write data to the logging file\n");
-        return -err;
+    if (written != packet_size) {
+        if (ferror(storage)) {
+            int err = errno;
+            inerr("Failed to write data to the logging file: %d\n", err);
+            return -err;
+        }
     }
     return written;
 }
@@ -238,9 +241,6 @@ static int clear_file(FILE *to_clear) {
         inerr("Couldn't seek active file back to start: %d\n", err);
         return -err;
     }
-
-    // Clear the file stream buffer before the truncation (may not be necessary)
-    fflush(to_clear);
 
     int fd = fileno(to_clear);
     if (fd < 0) {
@@ -402,30 +402,30 @@ int copy_out(FILE *active_file, FILE *extract_file) {
 
     /* Copy from one to the other using a buffer */
     uint8_t buf[BUFSIZ];
-    size_t nbytes = 0;
+    size_t bytes_read, bytes_written;
+    int copy_successful = 1;
 
-    while (!feof(active_file)) {
-        nbytes = fread(buf, 1, sizeof(buf), active_file);
-        if (nbytes == 0) {
+    while ((bytes_read = fread(buf, 1, sizeof(buf), active_file)) > 0) {
+        bytes_written = fwrite(buf, 1, bytes_read, extract_file);
+        if (bytes_written != bytes_read) {
             err = errno;
-            inerr("Failed to read from the active file\n");
-            return -err;
-        }
-        nbytes = fwrite(buf, 1, nbytes, extract_file);
-        if (nbytes == 0) {
-            err = errno;
-            inerr("Failed to write to the extraction file\n");
-            // Don't break here, in case writing only fails once
+            inerr("Failed to write to the extraction file: %d\n", err);
+            copy_successful = 0;
+            break;
         }
     }
 
-    /* Don't truncate the file if the write out fails.
-     * An alternative here is to open a new file, and save this one just in case
-     */
-    if (err != 0) {
-        return -err;
+    // If the last fread just failed, errno will still be set and isn't touched by ferror
+    if (ferror(active_file)) {
+        err = errno;
+        inerr("Failed to read from the source file when copying to extraction: %d\n", err);
+        copy_successful = 0;
     }
-    err = clear_file(active_file);
+
+    /* Don't truncate the file if the write out fails */
+    if (copy_successful) {
+        err = clear_file(active_file);
+    }
     return -err;
 }
 
