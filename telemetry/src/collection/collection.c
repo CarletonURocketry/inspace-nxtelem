@@ -15,6 +15,46 @@
 
 #define err_to_ptr(err) ((void *)((err)))
 
+/* Convert microseconds to milliseconds */
+
+#define us_to_ms(us) (us / 1000)
+
+/* Convert millibar to pascals */
+
+#define pascals(millibar) (millibar * 100)
+
+/* Convert meters to millimeters */
+
+#define millimeters(meters) (meters * 1000)
+
+/* Convert a degree to a tenth of a microdegree */
+
+#define point_one_microdegrees(degrees) (1E7f * degrees)
+
+/* Convert a radian to a tenth of a degree */
+
+#define tenth_degree(radian) (radian * 18 / M_PI)
+
+/* Convert gauss to milligauss */
+
+#define tenth_microtesla(microtesla) (microtesla * 1000)
+
+/* Convert meters per second squared to centimeters per second squared */
+
+#define cm_per_sec_squared(meters_per_sec_squared) (meters_per_sec_squared * 100)
+
+/* Convert a degrees celsius to millidegrees */
+
+#define millidegrees(celsius) (celsius * 1000)
+
+/* How many measurements to read from sensors at a time (match to size of internal buffers) */
+
+#define DATA_BUFFER_SIZE 1
+
+/* How many readings of each type of lower-priority data to add to each packet */
+
+#define TRANSMIT_NUM_LOW_PRIORITY_READINGS 2
+
 typedef struct {
     packet_buffer_t *buffer;
     packet_node_t *current;
@@ -112,49 +152,44 @@ static const uorb_data_callback_t handlers[] = {
     [SENSOR_ALT] = alt_handler,
 };
 
+/* Separate buffers use more memory but allow us to process in pieces while still reading only once */
+
+#ifdef CONFIG_SENSORS_LSM6DSO32
+static struct sensor_accel accel_data_buf[DATA_BUFFER_SIZE];
+static struct sensor_gyro gyro_data_buf[DATA_BUFFER_SIZE];
+#endif
+#ifdef CONFIG_SENSORS_MS56XX
+static struct sensor_baro baro_data_buf[DATA_BUFFER_SIZE];
+#endif
+#ifdef CONFIG_SENSORS_LIS2MDL
+static struct sensor_mag mag_data_buf[DATA_BUFFER_SIZE];
+#endif
+#ifdef CONFIG_SENSORS_L86XXX
+struct sensor_gnss gnss_data_buf[DATA_BUFFER_SIZE];
+#endif
+static struct fusion_altitude alt_data_buf[DATA_BUFFER_SIZE];
+
+/* Put the buffers in array so that agnostic code can read into the write buffer. */
+
+static void *uorb_data_buffers[] = {
+#ifdef CONFIG_SENSORS_LSM6DSO32
+    [SENSOR_ACCEL] = &accel_data_buf, [SENSOR_GYRO] = &gyro_data_buf,
+#endif
+#ifdef CONFIG_SENSORS_MS56XX
+    [SENSOR_BARO] = &baro_data_buf,
+#endif
+#ifdef CONFIG_SENSORS_LIS2MDL
+    [SENSOR_MAG] = &mag_data_buf,
+#endif
+#ifdef CONFIG_SENSORS_L86XXX
+    [SENSOR_GNSS] = &gnss_data_buf,
+#endif
+    [SENSOR_ALT] = &alt_data_buf,
+};
+
 /* The numbers of sensors that are available to be polled */
 
 #define NUM_SENSORS (sizeof(uorb_fds) / sizeof(uorb_fds[0]))
-
-/* Convert microseconds to milliseconds */
-
-#define us_to_ms(us) (us / 1000)
-
-/* Convert millibar to pascals */
-
-#define pascals(millibar) (millibar * 100)
-
-/* Convert meters to millimeters */
-
-#define millimeters(meters) (meters * 1000)
-
-/* Convert a degree to a tenth of a microdegree */
-
-#define point_one_microdegrees(degrees) (1E7f * degrees)
-
-/* Convert a radian to a tenth of a degree */
-
-#define tenth_degree(radian) (radian * 18 / M_PI)
-
-/* Convert gauss to milligauss */
-
-#define tenth_microtesla(microtesla) (microtesla * 1000)
-
-/* Convert meters per second squared to centimeters per second squared */
-
-#define cm_per_sec_squared(meters_per_sec_squared) (meters_per_sec_squared * 100)
-
-/* Convert a degrees celsius to millidegrees */
-
-#define millidegrees(celsius) (celsius * 1000)
-
-/* How many measurements to read from sensors at a time (match to size of internal buffers) */
-
-#define DATA_BUFFER_SIZE 1
-
-/* How many readings of each type of lower-priority data to add to each packet */
-
-#define TRANSMIT_NUM_LOW_PRIORITY_READINGS 2
 
 /*
  * Collection thread.
@@ -167,6 +202,8 @@ void *collection_main(void *arg) {
     struct collection_args *unpacked_args = (struct collection_args *)(arg);
     rocket_state_t *state = unpacked_args->state;
     processing_context_t context;
+
+    ininfo("Collection thread started.\n");
 
     ininfo("Setting up collection context.\n");
 
@@ -287,43 +324,6 @@ void *collection_main(void *arg) {
 
     ininfo("Sensor frequencies set.\n");
 
-    /* Separate buffers use more memory but allow us to process in pieces while still reading only once */
-
-#ifdef CONFIG_SENSORS_LSM6DSO32
-    struct sensor_accel accel_data[DATA_BUFFER_SIZE];
-    struct sensor_gyro gyro_data[DATA_BUFFER_SIZE];
-#endif
-#ifdef CONFIG_SENSORS_MS56XX
-    struct sensor_baro baro_data[DATA_BUFFER_SIZE];
-#endif
-#ifdef CONFIG_SENSORS_LIS2MDL
-    struct sensor_mag mag_data[DATA_BUFFER_SIZE];
-#endif
-#ifdef CONFIG_SENSORS_L86XXX
-    struct sensor_gnss gnss_data[DATA_BUFFER_SIZE];
-#endif
-    struct fusion_altitude alt_data[DATA_BUFFER_SIZE];
-
-    /* Put the buffers in array so that agnostic code can read into the write buffer. */
-
-    void *uorb_data_buffers[] = {
-#ifdef CONFIG_SENSORS_LSM6DSO32
-        [SENSOR_ACCEL] = &accel_data, [SENSOR_GYRO] = &gyro_data,
-#endif
-#ifdef CONFIG_SENSORS_MS56XX
-        [SENSOR_BARO] = &baro_data,
-#endif
-#ifdef CONFIG_SENSORS_LIS2MDL
-        [SENSOR_MAG] = &mag_data,
-#endif
-#ifdef CONFIG_SENSORS_L86XXX
-        [SENSOR_GNSS] = &gnss_data,
-#endif
-        [SENSOR_ALT] = &alt_data,
-    };
-
-    ininfo("Collection thread started.\n");
-
     /* Measure data forever */
 
     for (;;) {
@@ -433,7 +433,7 @@ static uint8_t *add_or_new(collection_info_t *collection, enum block_type_e type
     uint8_t *next_block = add_block(collection, type, mission_time);
     // Can't add to this packet, it's full or we can just assume its done being asssembled
     if (next_block == NULL) {
-        indebug("Completed a packet length %ld\n", collection->current->end - collection->current->packet);
+        indebug("Completed a packet length %d\n", collection->current->end - collection->current->packet);
         packet_buffer_put_full(collection->buffer, collection->current);
         collection->current = packet_buffer_get_empty(collection->buffer);
         reset_block_count(collection);
