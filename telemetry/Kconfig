@@ -124,7 +124,13 @@ config INSPACE_TELEMETRY_EEPROM
     string "Eeprom device"
     default "/dev/eeprom"
     ---help---
-        The path identifier of the eeprom device for storing settings.
+        The path identifier of the EEPROM device for storing settings.
+
+config INSPACE_TELEMETRY_ADC
+    string "Battery ADC device"
+    default "/dev/adc0"
+    ---help---
+        The path identifier of the ADC device that measures battery voltage.
 
 comment "Sampling options"
 

@@ -3,15 +3,17 @@
  * output properly.
  */
 
+#include <fcntl.h>
 #include <math.h>
 #include <poll.h>
 #include <pthread.h>
 #include <sys/ioctl.h>
 
+#include <nuttx/analog/adc.h>>
 #include <nuttx/sensors/sensor.h>
+#include <unistd.h>
 
 #include "../fusion/fusion.h"
-#include "../rocket-state/rocket-state.h"
 #include "../syslogging.h"
 #include "collection.h"
 #include "uORB/uORB.h"
@@ -38,6 +40,14 @@
 /* Minimum buffer size for copying multiple amounts of data at once */
 
 #define DATA_BUF_MIN 5
+
+/* Maximum value that can be returned by the ADC */
+
+#define ADC_MAX_VAL ((1 << 16) - 1)
+
+/* Maximum value that can be measured by the ADC. Chosen as 4V2 since that is the maximum battery voltage */
+
+#define MAX_VOLTAGE_MV (4200)
 
 typedef struct {
     packet_buffer_t *buffer;
@@ -116,6 +126,7 @@ static void accel_handler(void *ctx, void *data);
 static void gyro_handler(void *ctx, void *data);
 #endif
 static void alt_handler(void *ctx, void *data);
+static void voltage_handler(void *ctx, void *data);
 
 /* uORB polling file descriptors */
 
@@ -220,9 +231,10 @@ static uint8_t data_buf[sizeof(union uorb_data) * DATA_BUF_MIN];
  */
 void *collection_main(void *arg) {
     int err;
-    enum flight_state_e flight_state;
+    ssize_t bread;
+    int adcfd;
+    struct adc_msg_s adcdata;
     struct collection_args *unpacked_args = (struct collection_args *)(arg);
-    rocket_state_t *state = unpacked_args->state;
     processing_context_t context;
 
     ininfo("Collection thread started.\n");
@@ -309,15 +321,24 @@ void *collection_main(void *arg) {
 
     ininfo("Sensor frequencies set.\n");
 
+    ininfo("Setting up ADC device.\n");
+
+    adcfd = open(CONFIG_INSPACE_TELEMETRY_ADC, O_RDONLY | O_NONBLOCK);
+    if (adcfd < 0) {
+        inerr("Failed to open %s: %d\n", CONFIG_INSPACE_TELEMETRY_ADC, errno);
+    }
+
+    ininfo("ADC device setup.\n");
+
     /* Measure data forever */
 
     for (;;) {
 
-        /* Get the current flight state */
+        /* Read the battery voltage ADC */
 
-        err = state_get_flightstate(state, &flight_state); // TODO: error handling
-        if (err) {
-            inerr("Could not get flight state: %d\n", err);
+        bread = read(adcfd, &adcdata, sizeof(adcdata));
+        if (bread > 0) {
+            voltage_handler(&context, &adcdata);
         }
 
         /* Wait for new data */
@@ -652,4 +673,34 @@ static void alt_handler(void *ctx, void *data) {
     processing_context_t *context = (processing_context_t *)ctx;
     add_msl_block(&context->logging, alt_data);
     add_msl_block(&context->transmit, alt_data);
+}
+
+/* Add a voltage block to the packet being assembled
+ *
+ * @param collection Collection information where the block should be added
+ * @param node The packet currently being assembled
+ * @param data The voltage data to add
+ */
+static void add_voltage_block(collection_info_t *collection, struct adc_msg_s *data) {
+    uint8_t *block;
+    block = add_or_new(collection, DATA_VOLTAGE, us_to_ms(orb_absolute_time()));
+    if (block) {
+        volt_blk_init((struct volt_blk_t *)block_body(block), data->am_channel,
+                      (data->am_data * MAX_VOLTAGE_MV / (ADC_MAX_VAL)));
+    }
+}
+
+/* Handle incoming voltage data.
+ *
+ * @param ctx Context information, `processing_context_t`
+ * @param data The voltage data to add, as a `struct adc_msg_s`
+ */
+static void voltage_handler(void *ctx, void *data) {
+    processing_context_t *context = (processing_context_t *)ctx;
+    if (context->logging.block_count[DATA_VOLTAGE] < TRANSMIT_NUM_LOW_PRIORITY_READINGS) {
+        add_voltage_block(&context->logging, data);
+    }
+    if (context->transmit.block_count[DATA_VOLTAGE] < TRANSMIT_NUM_LOW_PRIORITY_READINGS) {
+        add_voltage_block(&context->transmit, data);
+    }
 }
