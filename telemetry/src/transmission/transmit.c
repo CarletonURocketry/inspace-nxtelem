@@ -10,7 +10,6 @@
 #endif
 
 #include "../packets/packets.h"
-#include "../rocket-state/rocket-state.h"
 #include "../syslogging.h"
 #include "transmit.h"
 
@@ -51,7 +50,6 @@ void *transmit_main(void *arg) {
     int err;
     int radio; /* Radio device file descriptor */
     struct transmit_args *unpacked_args = (struct transmit_args *)arg;
-    rocket_state_t *state = unpacked_args->state;
     packet_buffer_t *buffer = unpacked_args->buffer;
     uint32_t seq_num = 0;
 
