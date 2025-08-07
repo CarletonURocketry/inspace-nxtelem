@@ -11,6 +11,7 @@
 #include "packets/buffering.h"
 #include "syslogging.h"
 #include "transmission/transmit.h"
+#include "pwm/pwm_olg.h"
 
 /* Buffers for sharing sensor data between threads */
 
@@ -21,13 +22,12 @@ static pthread_t transmit_thread;
 static pthread_t log_thread;
 static pthread_t collect_thread;
 static pthread_t fusion_thread;
+static pthread_t startup_sound_thread;
 
 static rocket_state_t state; /* The shared rocket state. */
 
 int main(int argc, char **argv) {
     int err;
-
-    /* Thread handles. */
 
     ininfo("You are running the Carleton University InSpace telemetry system.");
 
@@ -82,6 +82,13 @@ int main(int argc, char **argv) {
     err = pthread_create(&fusion_thread, NULL, fusion_main, &fusion_thread_args);
     if (err) {
         inerr("Problem starting fusion thread: %d\n", err);
+        exit(EXIT_FAILURE);
+    }
+
+    /* No args needed for startup sound thread */
+    err = pthread_create(&startup_sound_thread, NULL, startup_sound_main, NULL);
+    if (err) {
+        inerr("Problem starting startup thread: %d\n", err);
         exit(EXIT_FAILURE);
     }
 
