@@ -414,7 +414,7 @@ static uint8_t *add_or_new(collection_info_t *collection, enum block_type_e type
         }
 
         // Leave seq num up to the logger/transmitter (don't know if or in what order packets get transmitted)
-        collection->current->end = init_pkt(collection->current->packet, 0, mission_time);
+        collection->current->end = pkt_init(collection->current->packet, 0, mission_time);
         next_block = pkt_create_blk(collection->current->packet, collection->current->end, type, mission_time);
         if (next_block == NULL) {
             inerr("Couldn't add a block to a new packet\n");

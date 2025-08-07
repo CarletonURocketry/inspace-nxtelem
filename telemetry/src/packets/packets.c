@@ -116,7 +116,7 @@ size_t blk_body_len(enum block_type_e type) {
  * @param mission_time The mission time of the packet
  * @returns A pointer to the first byte of the packet body
  */
-uint8_t *init_pkt(uint8_t *packet, uint8_t packet_num, uint32_t mission_time) {
+uint8_t *pkt_init(uint8_t *packet, uint8_t packet_num, uint32_t mission_time) {
     pkt_hdr_t *header = (pkt_hdr_t *)packet;
     pkt_hdr_init(header, packet_num, mission_time);
     return packet + sizeof(pkt_hdr_t);
