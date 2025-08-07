@@ -7,6 +7,7 @@
 #define F 698.46       /* PWM frequency for F key */
 #define G_SHARP 830.61 /* PWM frequency for G# key */
 
+#define array_len(arr) ((sizeof(arr)) / sizeof((arr)[0]))
 #define err_to_ptr(err) ((void *)((err)))
 
 typedef struct {
@@ -24,7 +25,7 @@ static const note_s olg_jingle[] = {
     {.note = 1, .note_duration_us = 50000},  {.note = G_SHARP, .note_duration_us = 200000},
     {.note = F, .note_duration_us = 700000},
 };
-static const uint8_t olg_jingle_length = 15;
+static const uint8_t olg_jingle_length = array_len(olg_jingle);
 
 /*
  * Sets the frequency of a specified PWM device
@@ -112,7 +113,7 @@ void *startup_sound_main(void *arg) {
     int err;
     int pwm_fd;
 
-    pwm_fd = open("/dev/pwm0", O_RDWR);
+    pwm_fd = open(CONFIG_INSPACE_TELEMETRY_PWM, O_RDWR);
     if (pwm_fd < 0) {
         pthread_exit(err_to_ptr(pwm_fd));
     }
