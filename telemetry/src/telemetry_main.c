@@ -98,7 +98,6 @@ int main(int argc, char **argv) {
     err = pthread_join(transmit_thread, NULL);
     err = pthread_join(log_thread, NULL);
     err = pthread_join(fusion_thread, NULL);
-    err = pthread_join(startup_sound_thread, NULL);
 
     return err;
 }
