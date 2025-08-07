@@ -12,22 +12,22 @@
 #include "syslogging.h"
 #include "transmission/transmit.h"
 
+/* Buffers for sharing sensor data between threads */
+
+static packet_buffer_t transmit_buffer;
+static packet_buffer_t logging_buffer;
+
+static pthread_t transmit_thread;
+static pthread_t log_thread;
+static pthread_t collect_thread;
+static pthread_t fusion_thread;
+
+static rocket_state_t state; /* The shared rocket state. */
+
 int main(int argc, char **argv) {
-
-    int err = 0;
-    rocket_state_t state; /* The shared rocket state. */
-
-    /* Buffers for sharing sensor data between threads */
-
-    packet_buffer_t transmit_buffer;
-    packet_buffer_t logging_buffer;
+    int err;
 
     /* Thread handles. */
-
-    pthread_t transmit_thread;
-    pthread_t log_thread;
-    pthread_t collect_thread;
-    pthread_t fusion_thread;
 
     ininfo("You are running the Carleton University InSpace telemetry system.");
 

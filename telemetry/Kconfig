@@ -81,6 +81,13 @@ config INSPACE_TELEMETRY_STARTBUFFER
         seconds is kept up to date. This ensures that lift-off detection latency
         does not cause data loss about the initial lift-off.
 
+config INSPACE_TELEMETRY_BUFFER_N_PACKETS
+	int "Number of buffered packets"
+	default 3
+	range 0 128
+	---help---
+		The number of packets to buffer at a time in the packet queues.
+
 config INSPACE_TELEMETRY_FLIGHT_FS
     string "Flight logging filesystem"
     default "/mnt/pwrfs"
@@ -118,5 +125,49 @@ config INSPACE_TELEMETRY_EEPROM
     default "/dev/eeprom"
     ---help---
         The path identifier of the eeprom device for storing settings.
+
+comment "Sampling options"
+
+config INSPACE_TELEMETRY_ACCEL_SF
+	int "Accelerometer sampling frequency"
+	default 100
+	range 1 6600
+	---help---
+		The sampling frequency for the accelerometer in Hz
+
+config INSPACE_TELEMETRY_GYRO_SF
+	int "Gyroscope sampling frequency"
+	default 100
+	range 1 6600
+	---help---
+		The sampling frequency for the gyroscope in Hz
+
+config INSPACE_TELEMETRY_MAG_SF
+	int "Magnetometer sampling frequency"
+	default 50
+	range 1 50
+	---help---
+		The sampling frequency for the magnetometer in Hz
+
+config INSPACE_TELEMETRY_BARO_SF
+	int "Barometer sampling frequency"
+	default 50
+	range 1 100
+	---help---
+		The sampling frequency for the barometer in Hz
+
+config INSPACE_TELEMETRY_GPS_SF
+	int "GPS sampling frequency"
+	default 10
+	range 1 10
+	---help---
+		The sampling frequency for the GPS in Hz
+
+config INSPACE_TELEMETRY_ALT_SF
+	int "Altitude sampling frequency"
+	default 25
+	range 1 INSPACE_TELEMETRY_BARO_SF
+	---help---
+		The sampling frequency for fusion altitude
 
 endif # INSPACE_TELEMETRY
