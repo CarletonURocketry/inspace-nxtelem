@@ -10,7 +10,7 @@
 #endif
 
 #include "../packets/packets.h"
-#include "../rocket-state/rocket-state.h"
+#include "../collection/status-update.h"
 #include "../syslogging.h"
 #include "transmit.h"
 

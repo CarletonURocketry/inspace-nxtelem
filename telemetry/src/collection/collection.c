@@ -54,6 +54,22 @@
 
 #define MAX_VOLTAGE_MV (4200)
 
+#if defined(CONFIG_SENSORS_LSM6DSO32) || defined(CONFIG_SENSORS_FAKESENSOR)
+#define USE_SENSOR_ACCEL_AND_GYRO
+#endif
+
+#if defined(CONFIG_SENSORS_MS56XX) || defined(CONFIG_SENSORS_FAKESENSOR)
+#define USE_SENSOR_BARO
+#endif
+
+#if defined(CONFIG_SENSORS_LIS2MDL) || defined(CONFIG_SENSORS_FAKESENSOR)
+#define USE_SENSOR_MAG
+#endif
+
+#if defined(CONFIG_SENSORS_L86XXX) || defined(CONFIG_SENSORS_FAKESENSOR)
+#define USE_SENSOR_GNSS
+#endif
+
 typedef struct {
     packet_buffer_t *buffer;
     packet_node_t *current;
@@ -68,17 +84,17 @@ typedef struct {
 /* Enumeration of the sensors in the uORB network. Includes fusion 'sensors' */
 
 enum uorb_sensors {
-#ifdef CONFIG_SENSORS_LSM6DSO32
+#ifdef USE_SENSOR_ACCEL_AND_GYRO
     SENSOR_ACCEL, /* Accelerometer */
     SENSOR_GYRO,  /* Gyroscope */
 #endif
-#ifdef CONFIG_SENSORS_MS56XX
+#ifdef USE_SENSOR_BARO
     SENSOR_BARO, /* Barometer */
 #endif
-#ifdef CONFIG_SENSORS_LIS2MDL
+#ifdef USE_SENSOR_MAG
     SENSOR_MAG, /* Magnetometer */
 #endif
-#ifdef CONFIG_SENSORS_L86XXX
+#ifdef USE_SENSOR_GNSS
     SENSOR_GNSS, /* GNSS */
 #endif
     SENSOR_ALT,    /* Altitude fusion */
@@ -89,17 +105,17 @@ enum uorb_sensors {
 /* A buffer that can hold any of the types of data created by the sensors in uorb_inputs */
 
 union uorb_data {
-#ifdef CONFIG_SENSORS_LSM6DSO32
+#ifdef USE_SENSOR_ACCEL_AND_GYRO
     struct sensor_accel accel;
     struct sensor_gyro gyro;
 #endif
-#ifdef CONFIG_SENSORS_MS56XX
+#ifdef USE_SENSOR_BARO
     struct sensor_baro baro;
 #endif
-#ifdef CONFIG_SENSORS_LIS2MDL
+#ifdef USE_SENSOR_MAG
     struct sensor_mag mag;
 #endif
-#ifdef CONFIG_SENSORS_L86XXX
+#ifdef USE_SENSOR_GNSS
     struct sensor_gnss gnss;
 #endif
     struct fusion_altitude alt;
@@ -121,16 +137,16 @@ static uint8_t *add_or_new(collection_info_t *collection, enum block_type_e type
 
 /* Data handlers */
 
-#ifdef CONFIG_SENSORS_MS56XX
+#ifdef USE_SENSOR_BARO
 static void baro_handler(void *ctx, void *data);
 #endif
-#ifdef CONFIG_SENSORS_LIS2MDL
+#ifdef USE_SENSOR_MAG
 static void mag_handler(void *ctx, void *data);
 #endif
-#ifdef CONFIG_SENSORS_L86XXX
+#ifdef USE_SENSOR_GNSS
 static void gnss_handler(void *ctx, void *data);
 #endif
-#ifdef CONFIG_SENSORS_LSM6DSO32
+#ifdef USE_SENSOR_ACCEL_AND_GYRO
 static void accel_handler(void *ctx, void *data);
 static void gyro_handler(void *ctx, void *data);
 #endif
@@ -142,17 +158,17 @@ static void status_handler(void *ctx, void *data);
 /* uORB polling file descriptors */
 
 static struct pollfd uorb_fds[] = {
-#ifdef CONFIG_SENSORS_LSM6DSO32
+#ifdef USE_SENSOR_ACCEL_AND_GYRO
     [SENSOR_ACCEL] = {.fd = -1, .events = POLLIN, .revents = 0},
     [SENSOR_GYRO] = {.fd = -1, .events = POLLIN, .revents = 0},
 #endif
-#ifdef CONFIG_SENSORS_MS56XX
+#ifdef USE_SENSOR_BARO
     [SENSOR_BARO] = {.fd = -1, .events = POLLIN, .revents = 0},
 #endif
-#ifdef CONFIG_SENSORS_LIS2MDL
+#ifdef USE_SENSOR_MAG
     [SENSOR_MAG] = {.fd = -1, .events = POLLIN, .revents = 0},
 #endif
-#ifdef CONFIG_SENSORS_L86XXX
+#ifdef USE_SENSOR_GNSS
     [SENSOR_GNSS] = {.fd = -1, .events = POLLIN, .revents = 0},
 #endif
     [SENSOR_ALT] = {.fd = -1, .events = POLLIN, .revents = 0},
@@ -160,45 +176,34 @@ static struct pollfd uorb_fds[] = {
     [SENSOR_STATUS] = {.fd = -1, .events = POLLIN, .revents = 0},
 };
 
-/* uORB metadata definitions */
-#if defined(CONFIG_DEBUG_UORB)
-static const char error_message_format[] = "error message - timestamp:%" PRIu64 ", proc_id %d error %d";
-static const char status_message_format[] = "status message - timestamp%" PRIu64 ", status %d";
-ORB_DEFINE(error_message, struct error_message, error_message_format);
-ORB_DEFINE(status_message, struct status_message, status_message_format);
-#else
-ORB_DEFINE(error_message, struct error_message, 0);
-ORB_DEFINE(status_message, struct status_message, 0);
-#endif
-
 /* uORB sensor metadatas */
 
-#ifdef CONFIG_SENSORS_LSM6DSO32
+#ifdef USE_SENSOR_ACCEL_AND_GYRO
 ORB_DECLARE(sensor_accel);
 ORB_DECLARE(sensor_gyro);
 #endif
-#ifdef CONFIG_SENSORS_MS56XX
+#ifdef USE_SENSOR_BARO
 ORB_DECLARE(sensor_baro);
 #endif
-#ifdef CONFIG_SENSORS_LIS2MDL
+#ifdef USE_SENSOR_MAG
 ORB_DECLARE(sensor_mag);
 #endif
-#ifdef CONFIG_SENSORS_L86XXX
+#ifdef USE_SENSOR_GNSS
 ORB_DECLARE(sensor_gnss);
 #endif
 ORB_DECLARE(fusion_altitude);
 
 static struct orb_metadata const *uorb_metas[] = {
-#ifdef CONFIG_SENSORS_LSM6DSO32
+#ifdef USE_SENSOR_ACCEL_AND_GYRO
     [SENSOR_ACCEL] = ORB_ID(sensor_accel),    [SENSOR_GYRO] = ORB_ID(sensor_gyro),
 #endif
-#ifdef CONFIG_SENSORS_MS56XX
+#ifdef USE_SENSOR_BARO
     [SENSOR_BARO] = ORB_ID(sensor_baro),
 #endif
-#ifdef CONFIG_SENSORS_LIS2MDL
+#ifdef USE_SENSOR_MAG
     [SENSOR_MAG] = ORB_ID(sensor_mag),
 #endif
-#ifdef CONFIG_SENSORS_L86XXX
+#ifdef USE_SENSOR_GNSS
     [SENSOR_GNSS] = ORB_ID(sensor_gnss),
 #endif
     [SENSOR_ALT] = ORB_ID(fusion_altitude),   [SENSOR_ERROR] = ORB_ID(error_message),
@@ -208,16 +213,16 @@ static struct orb_metadata const *uorb_metas[] = {
 /* Sensor desired sampling rates in Hz*/
 
 static const uint32_t sample_freqs[] = {
-#ifdef CONFIG_SENSORS_LSM6DSO32
+#ifdef USE_SENSOR_ACCEL_AND_GYRO
     [SENSOR_ACCEL] = CONFIG_INSPACE_TELEMETRY_ACCEL_SF, [SENSOR_GYRO] = CONFIG_INSPACE_TELEMETRY_GYRO_SF,
 #endif
-#ifdef CONFIG_SENSORS_MS56XX
+#ifdef USE_SENSOR_BARO
     [SENSOR_BARO] = CONFIG_INSPACE_TELEMETRY_BARO_SF,
 #endif
-#ifdef CONFIG_SENSORS_LIS2MDL
+#ifdef USE_SENSOR_MAG
     [SENSOR_MAG] = CONFIG_INSPACE_TELEMETRY_MAG_SF,
 #endif
-#ifdef CONFIG_SENSORS_L86XXX
+#ifdef USE_SENSOR_GNSS
     [SENSOR_GNSS] = CONFIG_INSPACE_TELEMETRY_GPS_SF,
 #endif
     [SENSOR_ALT] = CONFIG_INSPACE_TELEMETRY_ALT_SF,     [SENSOR_ERROR] = LOW_SAMPLE_RATE_DEFAULT,
@@ -227,13 +232,13 @@ static const uint32_t sample_freqs[] = {
 /* Data handlers for different sensors */
 
 static const uorb_data_callback_t uorb_handlers[] = {
-#ifdef CONFIG_SENSORS_MS56XX
+#ifdef USE_SENSOR_BARO
     [SENSOR_BARO] = baro_handler,
 #endif
-#ifdef CONFIG_SENSORS_LSM6DSO32
+#ifdef USE_SENSOR_ACCEL_AND_GYRO
     [SENSOR_GYRO] = gyro_handler, [SENSOR_ACCEL] = accel_handler,
 #endif
-#ifdef CONFIG_SENSORS_LIS2MDL
+#ifdef USE_SENSOR_MAG
     [SENSOR_MAG] = mag_handler,
 #endif
 #ifdef CONFIG_SENSORS_L86_XXX
@@ -307,7 +312,7 @@ void *collection_main(void *arg) {
 
     ininfo("Configuring sensors with their specific requirements.\n");
 
-#ifdef CONFIG_SENSORS_LSM6DSO32
+#ifdef USE_SENSOR_ACCEL_AND_GYRO
     ininfo("Configuring accelerometer FSR to +/-32g.\n");
     err = orb_ioctl(uorb_fds[SENSOR_ACCEL].fd, SNIOC_SETFULLSCALE, 32);
     if (err < 0) {
@@ -320,7 +325,7 @@ void *collection_main(void *arg) {
         inerr("Couldn't set FSR of sensor_gyro: %d\n", errno);
     }
 #endif
-#ifdef CONFIG_SENSORS_LIS2MDL
+#ifdef USE_SENSOR_MAG
     /* TODO: maybe low pass filter? */
 #endif
 
@@ -485,7 +490,7 @@ static uint8_t *add_or_new(collection_info_t *collection, enum block_type_e type
     return write_to;
 }
 
-#ifdef CONFIG_SENSORS_MS56XX
+#ifdef USE_SENSOR_BARO
 /**
  * Add a pressure block to the packet being assembled
  *
@@ -533,7 +538,7 @@ static void baro_handler(void *ctx, void *data) {
 }
 #endif
 
-#ifdef CONFIG_SENSORS_LIS2MDL
+#ifdef USE_SENSOR_MAG
 /**
  * Add a magnetometer block to the packet being assembled
  *
@@ -562,7 +567,7 @@ static void mag_handler(void *ctx, void *data) {
 }
 #endif
 
-#ifdef CONFIG_SENSORS_LSM6DSO32
+#ifdef USE_SENSOR_ACCEL_AND_GYRO
 /* Add an acceleration block to the packet being assembled
  *
  * @param collection Collection information where the block should be added
@@ -615,7 +620,7 @@ static void gyro_handler(void *ctx, void *data) {
 }
 #endif
 
-#ifdef CONFIG_SENSORS_L86XXX
+#ifdef USE_SENSOR_GNSS
 /**
  * Add an gnss block to the packet being assembled
  *
@@ -631,7 +636,7 @@ static void add_gnss_block(collection_info_t *collection, struct sensor_gnss *gn
 }
 #endif
 
-#ifdef CONFIG_SENSORS_L86XXX
+#ifdef USE_SENSOR_GNSS
 /**
  * Add a gnss mean sea level altitude block to the packet being assembled
  *
@@ -659,7 +664,7 @@ static void add_msl_block(collection_info_t *collection, struct fusion_altitude 
     }
 }
 
-#ifdef CONFIG_SENSORS_L86XXX
+#ifdef USE_SENSOR_GNSS
 /**
  * A uorb_data_callback_t function - adds gnss data to the required packets
  *

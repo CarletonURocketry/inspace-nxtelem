@@ -3,15 +3,14 @@
 #include <stdatomic.h>
 #include <stdlib.h>
 
-#include "rocket-state/rocket-state.h"
-
 #include "collection/collection.h"
+#include "collection/status-update.h"
 #include "fusion/fusion.h"
 #include "logging/logging.h"
 #include "packets/buffering.h"
+#include "rocket-state/rocket-state.h"
 #include "syslogging.h"
 #include "transmission/transmit.h"
-#include "sensors/sensors.h"
 
 /* Buffers for sharing sensor data between threads */
 

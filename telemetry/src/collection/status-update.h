@@ -1,11 +1,9 @@
-#ifndef _UORB_DATA_H
-#define _UORB_DATA_H
+#ifndef _STATUS_UPDATE_H_
+#define _STATUS_UPDATE_H_
 
 #include <stdint.h>
 
-#include <uORB/uORB.h>
-
-#include "../syslogging.h"
+#include "uORB/uORB.h"
 
 /* Possible status codes */
 enum status_code_e {
@@ -56,28 +54,7 @@ struct status_message {
 ORB_DECLARE(error_message);
 ORB_DECLARE(status_message);
 
-/**
- * Publish a status message
- *
- * @param outputs An outputs struct that has been set up
- * @return 0 if the code was published successfully, or a negative error code on failure
- */
-static int publish_status(enum status_code_e status_code) {
-    struct status_message status = {.timestamp = orb_absolute_time(), .status_code = status_code};
-    indebug("Publishing a status message with code %d", status_code);
-    return orb_publish_auto(ORB_ID(status_message), NULL, &status, NULL);
-}
+int publish_status(enum status_code_e status_code);
+int publish_error(enum process_id_e proc_id, enum error_code_e error_code);
 
-/**
- * Publish an error message
- *
- * @param outputs An outputs struct that has been set up
- * @return 0 if the error was published successfully, or a negative error code on failure
- */
-static int publish_error(enum process_id_e proc_id, enum error_code_e error_code) {
-    struct error_message error = {.timestamp = orb_absolute_time(), .proc_id = proc_id, .error_code = error_code};
-    indebug("Publishing an error message for process %d with code %d", proc_id, error_code);
-    return orb_publish_auto(ORB_ID(error_message), NULL, &error, NULL);
-}
-
-#endif // _UORB_DATA_
+#endif // _STATUS_UPDATE_H_

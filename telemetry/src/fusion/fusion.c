@@ -40,6 +40,9 @@ ORB_DEFINE(fusion_altitude, struct fusion_altitude, fusion_alt_format);
 ORB_DEFINE(fusion_altitude, struct fusion_altitude, 0);
 #endif
 
+ORB_DECLARE(sensor_baro);
+ORB_DECLARE(sensor_accel);
+
 static struct fusion_altitude calculate_altitude(struct sensor_baro *baro_data);
 static struct accel_sample calculate_accel_magnitude(struct sensor_accel *accel_data);
 static ssize_t get_sensor_data(struct pollfd *sensor, void *data, size_t size);
@@ -55,20 +58,16 @@ void *fusion_main(void *arg) {
     struct fusion_altitude calculated_altitude;
     struct accel_sample calculated_accel_mag;
     struct pollfd fds[2] = {0};
-    const struct orb_metadata *barometa;
-    const struct orb_metadata *accelmeta;
 
     state_get_flightstate(state, &flight_state);
     state_get_flightsubstate(state, &flight_substate);
 
     /* Input sensors, may want to directly read instead */
 
-    // TODO make this way cleaner and handle errors
-    barometa = orb_get_meta("sensor_baro");
-    accelmeta = orb_get_meta("sensor_accel");
-
-    fds[0].fd = orb_subscribe(barometa);
-    fds[1].fd = orb_subscribe(accelmeta);
+    fds[0].fd = orb_subscribe(ORB_ID(sensor_baro));
+    fds[1].fd = orb_subscribe(ORB_ID(sensor_accel));
+    fds[0].events = POLLIN;
+    fds[1].events = POLLIN;
 
     detector_init(&detector, orb_absolute_time());
     detector_set_state(&detector, flight_state, flight_substate);
@@ -110,6 +109,8 @@ void *fusion_main(void *arg) {
         if ((++iter & 0xFF) == 0) {
             state_get_flightstate(state, &flight_state);
             state_get_flightsubstate(state, &flight_substate);
+            // This is how the detector gets set into the IDLE state by the logging thread
+            detector_set_state(&detector, flight_state, flight_substate);
             publish_state_update(flight_state, flight_substate);
         }
 
@@ -151,7 +152,7 @@ void *fusion_main(void *arg) {
             state_set_flightstate(state, STATE_LANDED);
             // Set the detector back to the landed state right away - airborne events will only cause a state transition
             // once the system is back in the idle state
-            detector_set_state(&detector, STATE_IDLE, SUBSTATE_UNKNOWN);
+            detector_set_state(&detector, STATE_LANDED, SUBSTATE_UNKNOWN);
             publish_status(STATUS_TELEMETRY_CHANGED_LANDED);
         } break;
 
