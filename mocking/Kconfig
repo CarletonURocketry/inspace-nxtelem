@@ -5,36 +5,52 @@
 
 config INSPACE_MOCKING
 	tristate "Sensor Mocking"
-	select BOARDCTL_ROMDISK
-	select GNSSUTILS_MINMEA_LIB
-	select SENSORS_GNSS
-	select SENSORS_FAKESENSOR
+	depends on SENSORS_FAKESENSOR
+	depends on UORB
+	depends on SENSORS_GNSS
 	default n
 	---help---
 		Enable mocking of sensors using test data
 
 if INSPACE_MOCKING
 
+comment "Program options"
+
 config INSPACE_MOCKING_PROGNAME
 	string "Program name"
 	default "inspace_mock"
 	---help---
-		This is the name of the program that sets up sensor mocking
+		This is the name of the program that sets up sensor mocking.
+
+comment "Mounting options"
+
+config INSPACE_MOCKING_ROMFS
+	bool "Use ROMFS file system"
+	depends on BOARDCTL_ROMDISK
+	depends on FS_ROMDISK
+	default y
+	---help---
+		Use the ROMFS file system to mount the CSV data for fake sensors.
 
 config INSPACE_MOCKING_MOUNT
 	string "ROMFS mount point"
 	default "/inspace"
+	depends on INSPACE_MOCKING_ROMFS
 	---help---
-		Where to mount the ROMFS containing the files in the test-data directory
+		Where to mount the ROMFS containing the files in the test-data directory.
+
+comment "Test data options"
 
 config INSPACE_MOCKING_DATA_DIR
 	string "Directory with fakesensor CSV files"
-	default "test-data/2024-06-24-data"
+	default "test-data/quick-mock-flight"
 	---help---
 		The directory that contains the flight data to use for the fakesensors
 
 if SENSORS_FAKESENSOR
+
 menu "Faked Sensors"
+
 config INSPACE_FAKE_BARO
 	bool "Fake Barometic Sensor"
 	default n
@@ -116,5 +132,7 @@ config INSPACE_FAKE_MAG_MAX_BATCH
 		The maximum batch size of sensor measurements
 
 endmenu # Faked Sensors
+
 endif # SENSORS_FAKESENSOR
+
 endif
