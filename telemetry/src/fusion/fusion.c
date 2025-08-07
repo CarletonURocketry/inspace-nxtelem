@@ -1,8 +1,8 @@
 #include <math.h>
 #include <nuttx/sensors/sensor.h>
+#include <poll.h>
 #include <pthread.h>
 #include <sys/ioctl.h>
-#include <poll.h>
 
 #include "../rocket-state/rocket-state.h"
 #include "../syslogging.h"
@@ -53,9 +53,14 @@ void *fusion_main(void *arg) {
     struct detector detector;
     struct fusion_altitude calculated_altitude;
     struct accel_sample calculated_accel_mag;
-    struct pollfd fds[2] = {0};
+    struct pollfd fds[2] = {
+        {.fd = -1, .events = POLLIN, .revents = 0},
+        {.fd = -1, .events = POLLIN, .revents = 0},
+    };
     const struct orb_metadata *barometa;
     const struct orb_metadata *accelmeta;
+
+    ininfo("Fusion thread started.");
 
     state_get_flightstate(state, &flight_state);
     state_get_flightsubstate(state, &flight_substate);
@@ -69,6 +74,8 @@ void *fusion_main(void *arg) {
     fds[0].fd = orb_subscribe(barometa);
     fds[1].fd = orb_subscribe(accelmeta);
 
+    ininfo("Fusion topics subscribed.");
+
     detector_init(&detector, orb_absolute_time());
     detector_set_state(&detector, flight_state, flight_substate);
 
@@ -81,6 +88,8 @@ void *fusion_main(void *arg) {
     if (altitude_fd < 0) {
         inerr("Fusion could not advertise altitude topic: %d\n", altitude_fd);
     }
+
+    ininfo("Altitude advertised.");
 
     /* Output sensors */
 

@@ -122,9 +122,13 @@ void *logging_main(void *arg) {
 
         case STATE_AIRBORNE: {
 
-            /* Not safe to eject from now until files are copied */
+            /* Not safe to eject from now onward until files are copied. if-statement is to guard against idle state
+             * fall-through.
+             */
 
-            ejectled_set(false);
+            if (flight_state == STATE_AIRBORNE) {
+                ejectled_set(false);
+            }
 
             // Get the next packet, or wait if there isn't one yet
             packet_node_t *next_packet = packet_buffer_get_full(buffer);
@@ -472,7 +476,7 @@ static int ejectled_set(bool on) {
         inerr("Could not turn on eject LED: %d\n", errno);
         return errno;
     }
-    ininfo("Eject LED %s.", on ? "on" : "off");
+    indebug("Eject LED %s.", on ? "on" : "off");
 
     err = close(fd);
     if (err < 0) {
