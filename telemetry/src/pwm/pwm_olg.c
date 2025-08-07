@@ -1,35 +1,27 @@
 #include <pthread.h>
 #include <sys/ioctl.h>
 
-#include "pwm_olg.h"
 #include "../syslogging.h"
+#include "pwm_olg.h"
 
-#define F 698.46    /* PWM frequency for F key */
-#define G_SHARP 830.61   /* PWM frequency for G# key */
+#define F 698.46       /* PWM frequency for F key */
+#define G_SHARP 830.61 /* PWM frequency for G# key */
 
 #define err_to_ptr(err) ((void *)((err)))
 
-typedef struct
-{
-    float note; /* Frequency of note */
+typedef struct {
+    float note;                /* Frequency of note */
     uint32_t note_duration_us; /* Duration of note in */
 } note_s;
 
 static const note_s olg_jingle[] = {
-    {.note = F, .note_duration_us = 130000},
-    {.note = G_SHARP, .note_duration_us = 130000},
-    {.note = F, .note_duration_us = 130000},
-    {.note = G_SHARP, .note_duration_us = 700000},
-    {.note = F, .note_duration_us = 130000},
-    {.note = G_SHARP, .note_duration_us = 130000},
-    {.note = F, .note_duration_us = 130000},
-    {.note = G_SHARP, .note_duration_us = 700000},
-    {.note = F, .note_duration_us = 130000},
-    {.note = G_SHARP, .note_duration_us = 130000},
-    {.note = F, .note_duration_us = 130000},
-    {.note = G_SHARP, .note_duration_us = 200000},
-    {.note = 1, .note_duration_us = 50000},
-    {.note = G_SHARP, .note_duration_us = 200000},
+    {.note = F, .note_duration_us = 130000}, {.note = G_SHARP, .note_duration_us = 130000},
+    {.note = F, .note_duration_us = 130000}, {.note = G_SHARP, .note_duration_us = 700000},
+    {.note = F, .note_duration_us = 130000}, {.note = G_SHARP, .note_duration_us = 130000},
+    {.note = F, .note_duration_us = 130000}, {.note = G_SHARP, .note_duration_us = 700000},
+    {.note = F, .note_duration_us = 130000}, {.note = G_SHARP, .note_duration_us = 130000},
+    {.note = F, .note_duration_us = 130000}, {.note = G_SHARP, .note_duration_us = 200000},
+    {.note = 1, .note_duration_us = 50000},  {.note = G_SHARP, .note_duration_us = 200000},
     {.note = F, .note_duration_us = 700000},
 };
 static const uint8_t olg_jingle_length = 15;
@@ -96,16 +88,16 @@ static int pwm_turn_off(int pwm_fd) {
 }
 
 /*
- * Plays the OLG lottery winner jingle on a PWM device by setting the 
- * device to vibrate at frequencies corresponding to different music 
+ * Plays the OLG lottery winner jingle on a PWM device by setting the
+ * device to vibrate at frequencies corresponding to different music
  * notes for certain lengths of time
  * @param pwm_fd The file descriptor of the PWM device
  * @return 0 on success, error code on failure
  */
 static int play_olg_jingle(int pwm_fd) {
     int err;
-    
-    for (int i = 0; i < olg_jingle_length; ++i){
+
+    for (int i = 0; i < olg_jingle_length; ++i) {
         err = set_pwm_freq(pwm_fd, olg_jingle[i].note);
         if (err < 0) {
             return errno;
@@ -116,16 +108,16 @@ static int play_olg_jingle(int pwm_fd) {
     return err;
 }
 
-void *startup_sound_main(void *arg){
+void *startup_sound_main(void *arg) {
     int err;
     int pwm_fd;
-    
+
     pwm_fd = open("/dev/pwm0", O_RDWR);
     if (pwm_fd < 0) {
         pthread_exit(err_to_ptr(pwm_fd));
     }
-    
-    for (int i = 0; i < 3; ++i){
+
+    for (int i = 0; i < 3; ++i) {
         play_olg_jingle(pwm_fd);
         set_pwm_freq(pwm_fd, 1);
         usleep(3000000);
