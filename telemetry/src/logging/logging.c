@@ -1,11 +1,14 @@
 #include <nuttx/config.h>
+#include <nuttx/ioexpander/gpio.h>
 
 #include <dirent.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <limits.h>
 #include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/ioctl.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <time.h>
@@ -41,6 +44,8 @@ static int try_open_file(FILE **file_to_open, char *filename, const char *open_o
 static int find_max_boot_number(const char *dir, const char *format);
 static double timespec_diff(struct timespec *new_time, struct timespec *old_time);
 static int close_synced(FILE *to_close);
+
+static int ejectled_set(bool on);
 
 int should_swap(struct timespec *last_swap, struct timespec *now);
 int swap_files(FILE **active_file, FILE **standby_file);
@@ -116,6 +121,11 @@ void *logging_main(void *arg) {
         } /* Purposeful fall-through */
 
         case STATE_AIRBORNE: {
+
+            /* Not safe to eject from now until files are copied */
+
+            ejectled_set(false);
+
             // Get the next packet, or wait if there isn't one yet
             packet_node_t *next_packet = packet_buffer_get_full(buffer);
             ((pkt_hdr_t *)next_packet->packet)->packet_num = packet_seq_num++;
@@ -179,6 +189,8 @@ void *logging_main(void *arg) {
             }
 
             /* Now that logs are copied to FAT partition, move back to the idle state for another go. */
+
+            ejectled_set(true); /* It's now safe to take out the SD card */
             flight_state = STATE_IDLE;
             // TODO - delete old storage files or clear data in some way, to recover their space
 
@@ -438,4 +450,34 @@ static int close_synced(FILE *to_close) {
     fflush(to_close);
     fsync(fileno(to_close));
     return fclose(to_close);
+}
+
+/* Turns on/off the eject LED.
+ *
+ * @param on True to turn on the LED, false to turn off the LED.
+ * @return 0 on success, errno code on failure.
+ */
+static int ejectled_set(bool on) {
+    int fd;
+    int err;
+
+    fd = open(CONFIG_INSPACE_TELEMETRY_EJECTLED, O_RDONLY);
+    if (fd < 0) {
+        inerr("Could not open %s: %d\n", CONFIG_INSPACE_TELEMETRY_EJECTLED, errno);
+        return errno;
+    }
+
+    err = ioctl(fd, GPIOC_WRITE, on);
+    if (err < 0) {
+        inerr("Could not turn on eject LED: %d\n", errno);
+        return errno;
+    }
+    ininfo("Eject LED %s.", on ? "on" : "off");
+
+    err = close(fd);
+    if (err < 0) {
+        inerr("Couldn't close eject LED file: %d\n", errno);
+        return errno;
+    }
+    return 0;
 }

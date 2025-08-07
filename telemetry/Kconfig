@@ -132,6 +132,12 @@ config INSPACE_TELEMETRY_ADC
     ---help---
         The path identifier of the ADC device that measures battery voltage.
 
+config INSPACE_TELEMETRY_EJECTLED
+    string "Eject LED"
+    default "/dev/gpio0"
+    ---help---
+        The path identifier of the GPIO which control the EJECT LED.
+
 comment "Sampling options"
 
 config INSPACE_TELEMETRY_ACCEL_SF

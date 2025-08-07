@@ -8,10 +8,10 @@
 #include <poll.h>
 #include <pthread.h>
 #include <sys/ioctl.h>
-
-#include <nuttx/analog/adc.h>>
-#include <nuttx/sensors/sensor.h>
 #include <unistd.h>
+
+#include <nuttx/analog/adc.h>
+#include <nuttx/sensors/sensor.h>
 
 #include "../fusion/fusion.h"
 #include "../syslogging.h"
