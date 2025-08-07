@@ -1,6 +1,7 @@
 #ifndef _INSPACE_PACKET_QUEUE_H_
 #define _INSPACE_PACKET_QUEUE_H_
 
+#include <nuttx/queue.h>
 #include <pthread.h>
 
 #include "packets.h"
@@ -8,31 +9,26 @@
 typedef struct packet_node packet_node_t;
 
 /* The data type exchanged by the buffer */
+
 struct packet_node {
-    /* A packet that can be written directly to the radio or storage medium */
-    uint8_t packet[PACKET_MAX_SIZE];
-    /* Points to the end of a packet, where the blocks stop */
-    uint8_t *end;
-    /* The next node in the packet queue */
-    packet_node_t *next;
-    /* The previous node in the packet queue */
-    packet_node_t *prev;
+    /* Entry struct that allows node to be used by NuttX queue impl
+     * WARNING: must be first member in struct */
+    sq_entry_t entry;
+    uint8_t packet[PACKET_MAX_SIZE]; /* A packet that can be written directly to the radio or storage medium */
+    uint8_t *end;                    /* Points to the end of a packet, where the blocks stop */
 };
 
 /* A doubly-linked list used to store packets that can be used concurrently */
+
 struct packet_queue {
-    /* A lock for concurrency */
-    pthread_mutex_t lock;
-    /* Allows consumers to wait on new packets */
-    pthread_cond_t not_empty;
-    /* The first node in the queue */
-    packet_node_t *head;
-    /* The last node in the queue */
-    packet_node_t *tail;
+    struct sq_queue_s q;      /* Underlying queue for NuttX impl */
+    pthread_mutex_t lock;     /* A lock for concurrency */
+    pthread_cond_t not_empty; /* Allows consumers to wait on new packets */
 };
 
 /* The number of buffers statically allocated to the packet buffer, to save allocation time */
-#define PACKET_QUEUE_NUM_BUFFERS 3
+
+#define PACKET_QUEUE_NUM_BUFFERS CONFIG_INSPACE_TELEMETRY_BUFFER_N_PACKETS
 
 /* Uses doubly-linked lists to offer a queue of packets for a writer and single reader */
 typedef struct {

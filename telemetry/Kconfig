@@ -81,6 +81,13 @@ config INSPACE_TELEMETRY_STARTBUFFER
         seconds is kept up to date. This ensures that lift-off detection latency
         does not cause data loss about the initial lift-off.
 
+config INSPACE_TELEMETRY_BUFFER_N_PACKETS
+	int "Number of buffered packets"
+	default 3
+	range 0 128
+	---help---
+		The number of packets to buffer at a time in the packet queues.
+
 config INSPACE_TELEMETRY_FLIGHT_FS
     string "Flight logging filesystem"
     default "/mnt/pwrfs"
