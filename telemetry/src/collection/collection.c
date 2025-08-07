@@ -1,3 +1,8 @@
+/* The collection thread is responsible for collecting all the sensor measurements available and packaging them into the
+ * correct packet format. Packets are then published to both the logging and transmission sinks so that they can be
+ * output properly.
+ */
+
 #include <math.h>
 #include <pthread.h>
 #include <sys/ioctl.h>
@@ -15,36 +20,15 @@
 
 #define err_to_ptr(err) ((void *)((err)))
 
-/* Convert microseconds to milliseconds */
+/* Unit conversion helpers */
 
 #define us_to_ms(us) (us / 1000)
-
-/* Convert millibar to pascals */
-
 #define pascals(millibar) (millibar * 100)
-
-/* Convert meters to millimeters */
-
 #define millimeters(meters) (meters * 1000)
-
-/* Convert a degree to a tenth of a microdegree */
-
 #define point_one_microdegrees(degrees) (1E7f * degrees)
-
-/* Convert a radian to a tenth of a degree */
-
 #define tenth_degree(radian) (radian * 18 / M_PI)
-
-/* Convert gauss to milligauss */
-
 #define tenth_microtesla(microtesla) (microtesla * 1000)
-
-/* Convert meters per second squared to centimeters per second squared */
-
 #define cm_per_sec_squared(meters_per_sec_squared) (meters_per_sec_squared * 100)
-
-/* Convert a degrees celsius to millidegrees */
-
 #define millidegrees(celsius) (celsius * 1000)
 
 /* How many measurements to read from sensors at a time (match to size of internal buffers) */
@@ -136,7 +120,7 @@ static const uint32_t sample_freqs[] = {
 
 /* Data handlers for different sensors */
 
-static const uorb_data_callback_t handlers[] = {
+static const uorb_data_callback_t uorb_handlers[] = {
 #ifdef CONFIG_SENSORS_MS56XX
     [SENSOR_BARO] = baro_handler,
 #endif
@@ -343,23 +327,29 @@ void *collection_main(void *arg) {
 
         for (int i = 0; i < NUM_SENSORS; i++) {
 
-            /* Skip invalid sensors */
+            /* Skip invalid sensors and sensors without new data */
 
-            if (uorb_fds[i].fd < 0) {
+            if (uorb_fds[i].fd < 0 || !(uorb_fds[i].revents & POLL_IN)) {
                 continue;
             }
 
-            void *sensor_end = get_sensor_data_end(&uorb_fds[i], uorb_data_buffers[i], uorb_metas[i]->o_size);
-            void *sensor_start = uorb_data_buffers[i];
-            process_one(handlers[i], &context, &sensor_start, sensor_end, uorb_metas[i]->o_size);
+            /* If we are here, a valid sensor has some data ready to be read. Add it to a packet. */
+
+            uorb_fds[i].revents = 0; /* Mark the event as handled */
+
+            err = orb_copy(uorb_metas[i], uorb_fds[i].fd, uorb_data_buffers[i]);
+            if (err < 0) {
+                inerr("Error reading data from %s: %d\n", uorb_metas[i]->o_name, errno);
+                continue;
+            }
+            uorb_handlers[i](&context, uorb_data_buffers[i]); /* Add the data to a packet */
         }
     }
 
     pthread_exit(0);
 }
 
-/**
- * Sets up a collection_info_t struct with a packet buffer and gets an initially empty node to work on
+/* Sets up a collection_info_t struct with a packet buffer and gets an initially empty node to work on
  *
  * @param collection The collection_info_t struct to set up
  * @param packet_buffer The buffer to get packets from a put into
@@ -375,8 +365,7 @@ static int setup_collection(collection_info_t *collection, packet_buffer_t *pack
     return 0;
 }
 
-/**
- * Resets the current block count for the collected data
+/* Resets the current block count for the collected data
  *
  * @param collection Information about collected data
  */
@@ -386,8 +375,7 @@ static void reset_block_count(collection_info_t *collection) {
     }
 }
 
-/**
- * Adds a block to the current packet being worked on
+/* Adds a block to the current packet being worked on
  *
  * @param collection Collection information containing a packet to add the block to
  * @param type The type of block to add
@@ -414,7 +402,7 @@ static uint8_t *add_or_new(collection_info_t *collection, enum block_type_e type
     // The last byte of the packet will be where the block is allocated, but we need to know where it will end to update
     // (*node)->end
     uint8_t *next_block = add_block(collection, type, mission_time);
-    // Can't add to this packet, it's full or we can just assume its done being asssembled
+    // Can't add to this packet, it's full or we can just assume its done being assembled
     if (next_block == NULL) {
         indebug("Completed a packet length %d\n", collection->current->end - collection->current->packet);
         packet_buffer_put_full(collection->buffer, collection->current);

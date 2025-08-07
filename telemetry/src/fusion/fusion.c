@@ -11,19 +11,19 @@
 #include "uORB/uORB.h"
 
 /* The pressure at sea level in millibar*/
-#define SEA_PRESSURE 1013.25
+#define SEA_PRESSURE (1013.25)
 
 /* The universal gas constant */
-#define GAS_CONSTANT 8.31432
+#define GAS_CONSTANT (8.31432)
 
 /* Constant for acceleration due to gravity */
-#define GRAVITY 9.80665
+#define GRAVITY (9.80665)
 
 /* Constant for the mean molar mass of atmospheric gases */
-#define MOLAR_MASS 0.0289644
+#define MOLAR_MASS (0.0289644)
 
 /* Constant for the conversion from Celsius to Kelvin */
-#define KELVIN 273
+#define KELVIN (273)
 
 /* UORB declarations */
 
@@ -42,6 +42,7 @@ ORB_DEFINE(fusion_altitude, struct fusion_altitude, 0);
 
 static struct fusion_altitude calculate_altitude(struct sensor_baro *baro_data);
 static struct accel_sample calculate_accel_magnitude(struct sensor_accel *accel_data);
+static ssize_t get_sensor_data(struct pollfd *sensor, void *data, size_t size);
 
 void *fusion_main(void *arg) {
     rocket_state_t *state = ((struct fusion_args *)arg)->state;
@@ -52,7 +53,7 @@ void *fusion_main(void *arg) {
     struct detector detector;
     struct fusion_altitude calculated_altitude;
     struct accel_sample calculated_accel_mag;
-    struct pollfd fds[] = {};
+    struct pollfd fds[2] = {0};
     const struct orb_metadata *barometa;
     const struct orb_metadata *accelmeta;
 
@@ -87,7 +88,7 @@ void *fusion_main(void *arg) {
 
         /* Wait for new data */
 
-        poll(fds, 2, -1);
+        poll(fds, sizeof(fds) / sizeof(fds[0]), -1);
 
         int len = get_sensor_data(&fds[0], baro_data, sizeof(baro_data));
 
@@ -181,4 +182,34 @@ static struct accel_sample calculate_accel_magnitude(struct sensor_accel *accel_
 
     output.acceleration = sqrtf(powf(accel_data->x, 2) + powf(accel_data->y, 2) + powf(accel_data->z, 2));
     return output;
+}
+
+/* Gets data from the sensor if the POLLIN event has occured
+ *
+ * @param sensor A pollfd struct with a valid or invalid file descriptor
+ * @param data An array of uORB data structs of the type this sensor uses
+ * @param size The size of the data parameter in bytes
+ * @return The number of bytes read from the sensor or 0 if there was none to read
+ */
+static ssize_t get_sensor_data(struct pollfd *sensor, void *data, size_t size) {
+    ssize_t len;
+
+    /* If the sensor wasn't set up right, POLLIN won't get set, meaning there's no need to avoid using
+     * the sensor if its metadata or fd weren't set up properly
+     */
+
+    if (sensor->revents == POLLIN) {
+        len = orb_copy_multi(sensor->fd, data, size);
+
+        if (len < 0) {
+            /* If there's no data to read or there's no fetch function, but that shouldn't happen if we get POLLIN */
+
+            if (errno != ENODATA) {
+                inerr("Error reading from uORB data: %d\n", errno);
+            }
+            return 0;
+        }
+        return len;
+    }
+    return 0;
 }
