@@ -35,6 +35,10 @@
 
 #define TRANSMIT_NUM_LOW_PRIORITY_READINGS 2
 
+/* Minimum buffer size for copying multiple amounts of data at once */
+
+#define DATA_BUF_MIN 5
+
 typedef struct {
     packet_buffer_t *buffer;
     packet_node_t *current;
@@ -151,7 +155,7 @@ ORB_DECLARE(fusion_altitude);
 
 static struct orb_metadata const *uorb_metas[] = {
 #ifdef CONFIG_SENSORS_LSM6DSO32
-    [SENSOR_ACCEL] = ORB_ID(sensor_accel), [SENSOR_GYRO] = ORB_ID(sensor_gyro),
+    [SENSOR_ACCEL] = ORB_ID(sensor_accel),  [SENSOR_GYRO] = ORB_ID(sensor_gyro),
 #endif
 #ifdef CONFIG_SENSORS_MS56XX
     [SENSOR_BARO] = ORB_ID(sensor_baro),
@@ -201,7 +205,9 @@ static const uorb_data_callback_t uorb_handlers[] = {
     [SENSOR_ALT] = alt_handler,
 };
 
-static union uorb_data data_buf; /* Data buffer for copying uORB data */
+/* Data buffer for copying uORB data */
+
+static uint8_t data_buf[sizeof(union uorb_data) * DATA_BUF_MIN];
 
 /* The numbers of sensors that are available to be polled */
 
@@ -332,12 +338,17 @@ void *collection_main(void *arg) {
 
             uorb_fds[i].revents = 0; /* Mark the event as handled */
 
-            err = orb_copy(uorb_metas[i], uorb_fds[i].fd, &data_buf);
+            err = orb_copy_multi(uorb_fds[i].fd, &data_buf, sizeof(data_buf));
             if (err < 0) {
                 inerr("Error reading data from %s: %d\n", uorb_metas[i]->o_name, errno);
                 continue;
             }
-            uorb_handlers[i](&context, &data_buf); /* Add the data to a packet */
+
+            /* Add all the data to a packet */
+
+            for (int j = 0; j < (err / uorb_metas[i]->o_size); j++) {
+                uorb_handlers[i](&context, &data_buf);
+            }
         }
     }
 
