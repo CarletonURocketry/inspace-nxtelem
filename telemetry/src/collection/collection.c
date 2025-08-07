@@ -353,23 +353,6 @@ void *collection_main(void *arg) {
             void *sensor_start = uorb_data_buffers[i];
             process_one(handlers[i], &context, &sensor_start, sensor_end, uorb_metas[i]->o_size);
         }
-
-        /* Decide whether to move to lift-off state. TODO: real logic */
-
-        switch (flight_state) {
-        case STATE_IDLE: {
-            // Perform lift-off detection operations
-            // If lift-off:
-            // state_set_flightstate(state, STATE_AIRBORNE);
-        } break;
-        case STATE_AIRBORNE: {
-            // Perform landing detection operations
-            // If landed
-            // state_set_flightstate(state, STATE_LANDED);
-        } break;
-        case STATE_LANDED:
-            break; /* Do nothing, just continue collecting */
-        }
     }
 
     pthread_exit(0);
