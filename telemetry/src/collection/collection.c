@@ -33,6 +33,28 @@
 #define cm_per_sec_squared(meters_per_sec_squared) (meters_per_sec_squared * 100)
 #define millidegrees(celsius) (celsius * 1000)
 
+/* Conditional compilation for sensors */
+
+#if defined(CONFIG_INSPACE_FAKE_ACCEL) || defined(CONFIG_SENSORS_LSM6DSO32)
+#define HAS_ACCEL
+#endif
+
+#if defined(CONFIG_INSPACE_FAKE_GYRO) || defined(CONFIG_SENSORS_LSM6DSO32)
+#define HAS_GYRO
+#endif
+
+#if defined(CONFIG_INSPACE_FAKE_BARO) || defined(CONFIG_SENSORS_MS56XX)
+#define HAS_BARO
+#endif
+
+#if defined(CONFIG_INSPACE_FAKE_MAG) || defined(CONFIG_SENSORS_LIS2MDL)
+#define HAS_MAG
+#endif
+
+#if defined(CONFIG_INSPACE_FAKE_GNSS) || defined(CONFIG_SENSORS_L86XXX)
+#define HAS_GNSS
+#endif
+
 /* How many readings of each type of lower-priority data to add to each packet */
 
 #define TRANSMIT_NUM_LOW_PRIORITY_READINGS 2
@@ -63,17 +85,19 @@ typedef struct {
 /* Enumeration of the sensors in the uORB network. Includes fusion 'sensors' */
 
 enum uorb_sensors {
-#ifdef CONFIG_SENSORS_LSM6DSO32
+#ifdef HAS_ACCEL
     SENSOR_ACCEL, /* Accelerometer */
-    SENSOR_GYRO,  /* Gyroscope */
 #endif
-#ifdef CONFIG_SENSORS_MS56XX
+#ifdef HAS_GYRO
+    SENSOR_GYRO, /* Gyroscope */
+#endif
+#ifdef HAS_BARO
     SENSOR_BARO, /* Barometer */
 #endif
-#ifdef CONFIG_SENSORS_LIS2MDL
+#ifdef HAS_MAG
     SENSOR_MAG, /* Magnetometer */
 #endif
-#ifdef CONFIG_SENSORS_L86XXX
+#ifdef HAS_GNSS
     SENSOR_GNSS, /* GNSS */
 #endif
     SENSOR_ALT, /* Altitude fusion */
@@ -82,17 +106,19 @@ enum uorb_sensors {
 /* A buffer that can hold any of the types of data created by the sensors in uorb_inputs */
 
 union uorb_data {
-#ifdef CONFIG_SENSORS_LSM6DSO32
+#ifdef HAS_ACCEL
     struct sensor_accel accel;
+#endif
+#ifdef HAS_GYRO
     struct sensor_gyro gyro;
 #endif
-#ifdef CONFIG_SENSORS_MS56XX
+#ifdef HAS_BARO
     struct sensor_baro baro;
 #endif
-#ifdef CONFIG_SENSORS_LIS2MDL
+#ifdef HAS_MAG
     struct sensor_mag mag;
 #endif
-#ifdef CONFIG_SENSORS_L86XXX
+#ifdef HAS_GYRO
     struct sensor_gnss gnss;
 #endif
     struct fusion_altitude alt;
@@ -112,17 +138,19 @@ static uint8_t *add_or_new(collection_info_t *collection, enum block_type_e type
 
 /* Data handlers */
 
-#ifdef CONFIG_SENSORS_MS56XX
+#ifdef HAS_BARO
 static void baro_handler(void *ctx, void *data);
 #endif
-#ifdef CONFIG_SENSORS_LIS2MDL
+#ifdef HAS_MAG
 static void mag_handler(void *ctx, void *data);
 #endif
-#ifdef CONFIG_SENSORS_L86XXX
+#ifdef HAS_GNSS
 static void gnss_handler(void *ctx, void *data);
 #endif
-#ifdef CONFIG_SENSORS_LSM6DSO32
+#ifdef HAS_ACCEL
 static void accel_handler(void *ctx, void *data);
+#endif
+#ifdef HAS_GYRO
 static void gyro_handler(void *ctx, void *data);
 #endif
 static void alt_handler(void *ctx, void *data);
@@ -131,17 +159,19 @@ static void voltage_handler(void *ctx, void *data);
 /* uORB polling file descriptors */
 
 static struct pollfd uorb_fds[] = {
-#ifdef CONFIG_SENSORS_LSM6DSO32
+#ifdef HAS_ACCEL
     [SENSOR_ACCEL] = {.fd = -1, .events = POLLIN, .revents = 0},
+#endif
+#ifdef HAS_GYRO
     [SENSOR_GYRO] = {.fd = -1, .events = POLLIN, .revents = 0},
 #endif
-#ifdef CONFIG_SENSORS_MS56XX
+#ifdef HAS_BARO
     [SENSOR_BARO] = {.fd = -1, .events = POLLIN, .revents = 0},
 #endif
-#ifdef CONFIG_SENSORS_LIS2MDL
+#ifdef HAS_MAG
     [SENSOR_MAG] = {.fd = -1, .events = POLLIN, .revents = 0},
 #endif
-#ifdef CONFIG_SENSORS_L86XXX
+#ifdef HAS_GNSS
     [SENSOR_GNSS] = {.fd = -1, .events = POLLIN, .revents = 0},
 #endif
     [SENSOR_ALT] = {.fd = -1, .events = POLLIN, .revents = 0},
@@ -149,32 +179,37 @@ static struct pollfd uorb_fds[] = {
 
 /* uORB sensor metadatas */
 
-#ifdef CONFIG_SENSORS_LSM6DSO32
+#ifdef HAS_ACCEL
 ORB_DECLARE(sensor_accel);
+#endif
+#ifdef HAS_GYRO
 ORB_DECLARE(sensor_gyro);
 #endif
-#ifdef CONFIG_SENSORS_MS56XX
+#ifdef HAS_BARO
 ORB_DECLARE(sensor_baro);
 #endif
-#ifdef CONFIG_SENSORS_LIS2MDL
+#ifdef HAS_MAG
 ORB_DECLARE(sensor_mag);
 #endif
-#ifdef CONFIG_SENSORS_L86XXX
+#ifdef HAS_GNSS
 ORB_DECLARE(sensor_gnss);
 #endif
 ORB_DECLARE(fusion_altitude);
 
 static struct orb_metadata const *uorb_metas[] = {
-#ifdef CONFIG_SENSORS_LSM6DSO32
-    [SENSOR_ACCEL] = ORB_ID(sensor_accel),  [SENSOR_GYRO] = ORB_ID(sensor_gyro),
+#ifdef HAS_ACCEL
+    [SENSOR_ACCEL] = ORB_ID(sensor_accel),
 #endif
-#ifdef CONFIG_SENSORS_MS56XX
+#ifdef HAS_GYRO
+    [SENSOR_GYRO] = ORB_ID(sensor_gyro),
+#endif
+#ifdef HAS_BARO
     [SENSOR_BARO] = ORB_ID(sensor_baro),
 #endif
-#ifdef CONFIG_SENSORS_LIS2MDL
+#ifdef HAS_MAG
     [SENSOR_MAG] = ORB_ID(sensor_mag),
 #endif
-#ifdef CONFIG_SENSORS_L86XXX
+#ifdef HAS_GNSS
     [SENSOR_GNSS] = ORB_ID(sensor_gnss),
 #endif
     [SENSOR_ALT] = ORB_ID(fusion_altitude),
@@ -183,16 +218,19 @@ static struct orb_metadata const *uorb_metas[] = {
 /* Sensor desired sampling rates in Hz*/
 
 static const uint32_t sample_freqs[] = {
-#ifdef CONFIG_SENSORS_LSM6DSO32
-    [SENSOR_ACCEL] = CONFIG_INSPACE_TELEMETRY_ACCEL_SF, [SENSOR_GYRO] = CONFIG_INSPACE_TELEMETRY_GYRO_SF,
+#ifdef HAS_ACCEL
+    [SENSOR_ACCEL] = CONFIG_INSPACE_TELEMETRY_ACCEL_SF,
 #endif
-#ifdef CONFIG_SENSORS_MS56XX
+#ifdef HAS_GYRO
+    [SENSOR_GYRO] = CONFIG_INSPACE_TELEMETRY_GYRO_SF,
+#endif
+#ifdef HAS_BARO
     [SENSOR_BARO] = CONFIG_INSPACE_TELEMETRY_BARO_SF,
 #endif
-#ifdef CONFIG_SENSORS_LIS2MDL
+#ifdef HAS_MAG
     [SENSOR_MAG] = CONFIG_INSPACE_TELEMETRY_MAG_SF,
 #endif
-#ifdef CONFIG_SENSORS_L86XXX
+#ifdef HAS_GNSS
     [SENSOR_GNSS] = CONFIG_INSPACE_TELEMETRY_GPS_SF,
 #endif
     [SENSOR_ALT] = CONFIG_INSPACE_TELEMETRY_ALT_SF,
@@ -201,17 +239,20 @@ static const uint32_t sample_freqs[] = {
 /* Data handlers for different sensors */
 
 static const uorb_data_callback_t uorb_handlers[] = {
-#ifdef CONFIG_SENSORS_MS56XX
+#ifdef HAS_BARO
     [SENSOR_BARO] = baro_handler,
 #endif
-#ifdef CONFIG_SENSORS_LSM6DSO32
-    [SENSOR_GYRO] = gyro_handler, [SENSOR_ACCEL] = accel_handler,
+#ifdef HAS_GYRO
+    [SENSOR_GYRO] = gyro_handler,
 #endif
-#ifdef CONFIG_SENSORS_LIS2MDL
+#ifdef HAS_ACCEL
+    [SENSOR_ACCEL] = accel_handler,
+#endif
+#ifdef HAS_MAG
     [SENSOR_MAG] = mag_handler,
 #endif
-#ifdef CONFIG_SENSORS_L86_XXX
-    [SENSOR_GPS] = gnss_handler,
+#ifdef HAS_GNSS
+    [SENSOR_GNSS] = gnss_handler,
 #endif
     [SENSOR_ALT] = alt_handler,
 };
@@ -281,20 +322,23 @@ void *collection_main(void *arg) {
 
     ininfo("Configuring sensors with their specific requirements.\n");
 
-#ifdef CONFIG_SENSORS_LSM6DSO32
+#ifdef HAS_ACCEL
     ininfo("Configuring accelerometer FSR to +/-32g.\n");
     err = orb_ioctl(uorb_fds[SENSOR_ACCEL].fd, SNIOC_SETFULLSCALE, 32);
     if (err < 0) {
         inerr("Couldn't set FSR of sensor_accel: %d\n", errno);
     }
+#endif
 
+#ifdef HAS_ACCEL
     ininfo("Configuring gyro FSR to +/-2000dps.\n");
     err = orb_ioctl(uorb_fds[SENSOR_GYRO].fd, SNIOC_SETFULLSCALE, 2000);
     if (err < 0) {
         inerr("Couldn't set FSR of sensor_gyro: %d\n", errno);
     }
 #endif
-#ifdef CONFIG_SENSORS_LIS2MDL
+
+#ifdef HAS_MAG
     /* TODO: maybe low pass filter? */
 #endif
 
@@ -461,9 +505,8 @@ static uint8_t *add_or_new(collection_info_t *collection, enum block_type_e type
     return write_to;
 }
 
-#ifdef CONFIG_SENSORS_MS56XX
-/**
- * Add a pressure block to the packet being assembled
+#ifdef HAS_BARO
+/* Add a pressure block to the packet being assembled
  *
  * @param collection Collection information where the block should be added
  * @param node The packet currently being assembled
@@ -476,8 +519,7 @@ static void add_pres_blk(collection_info_t *collection, struct sensor_baro *baro
     }
 }
 
-/**
- * Add a temperature block to the packet being assembled
+/* Add a temperature block to the packet being assembled
  *
  * @param collection Collection information where the block should be added
  * @param node The packet currently being assembled
@@ -490,8 +532,7 @@ static void add_temp_blk(collection_info_t *collection, struct sensor_baro *baro
     }
 }
 
-/**
- * A uorb_data_callback_t function - adds barometric data to the required packets
+/* A uorb_data_callback_t function - adds barometric data to the required packets
  *
  * @param ctx Context information, type processing_context_t
  * @param data Barometric data to add, type struct sensor_baro
@@ -511,9 +552,8 @@ static void baro_handler(void *ctx, void *data) {
 }
 #endif
 
-#ifdef CONFIG_SENSORS_LIS2MDL
-/**
- * Add a magnetometer block to the packet being assembled
+#ifdef HAS_MAG
+/* Add a magnetometer block to the packet being assembled
  *
  * @param collection Collection information where the block should be added
  * @param node The packet currently being assembled
@@ -527,8 +567,7 @@ static void add_mag_blk(collection_info_t *collection, struct sensor_mag *mag_da
     }
 }
 
-/**
- * A uorb_data_callback_t function - adds magnetometer data to the required packets
+/* A uorb_data_callback_t function - adds magnetometer data to the required packets
  *
  * @param ctx Context information, type processing_context_t
  * @param data magnetometer data to add, type struct sensor_mag
@@ -541,7 +580,7 @@ static void mag_handler(void *ctx, void *data) {
 }
 #endif
 
-#ifdef CONFIG_SENSORS_LSM6DSO32
+#ifdef HAS_ACCEL
 /* Add an acceleration block to the packet being assembled
  *
  * @param collection Collection information where the block should be added
@@ -567,7 +606,9 @@ static void accel_handler(void *ctx, void *data) {
     add_accel_blk(&context->logging, accel_data);
     add_accel_blk(&context->transmit, accel_data);
 }
+#endif
 
+#ifdef HAS_GYRO
 /* Add an gyro block to the packet being assembled
  *
  * @param collection Collection information where the block should be added
@@ -595,9 +636,8 @@ static void gyro_handler(void *ctx, void *data) {
 }
 #endif
 
-#ifdef CONFIG_SENSORS_L86XXX
-/**
- * Add an gnss block to the packet being assembled
+#ifdef HAS_GNSS
+/* Add an gnss block to the packet being assembled
  *
  * @param collection Collection information where the block should be added
  * @param node The packet currently being assembled
@@ -610,11 +650,8 @@ static void add_gnss_block(collection_info_t *collection, struct sensor_gnss *gn
                        point_one_microdegrees(gnss_data->longitude));
     }
 }
-#endif
 
-#ifdef CONFIG_SENSORS_L86XXX
-/**
- * Add a gnss mean sea level altitude block to the packet being assembled
+/* Add a gnss mean sea level altitude block to the packet being assembled
  *
  * @param collection Collection information where the block should be added
  * @param node The packet currently being assembled
@@ -642,9 +679,8 @@ static void add_msl_block(collection_info_t *collection, struct fusion_altitude 
     }
 }
 
-#ifdef CONFIG_SENSORS_L86XXX
-/**
- * A uorb_data_callback_t function - adds gnss data to the required packets
+#ifdef HAS_GNSS
+/* A uorb_data_callback_t function - adds gnss data to the required packets
  *
  * @param ctx Context information, type processing_context_t
  * @param data GNSS data to add, type struct sensor_gnss
