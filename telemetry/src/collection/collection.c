@@ -11,7 +11,6 @@
 
 #include "../fusion/fusion.h"
 #include "../rocket-state/rocket-state.h"
-#include "../sensors/sensors.h"
 #include "../syslogging.h"
 #include "collection.h"
 #include "uORB/uORB.h"
@@ -31,10 +30,6 @@
 #define cm_per_sec_squared(meters_per_sec_squared) (meters_per_sec_squared * 100)
 #define millidegrees(celsius) (celsius * 1000)
 
-/* How many measurements to read from sensors at a time (match to size of internal buffers) */
-
-#define DATA_BUFFER_SIZE 1
-
 /* How many readings of each type of lower-priority data to add to each packet */
 
 #define TRANSMIT_NUM_LOW_PRIORITY_READINGS 2
@@ -50,18 +45,72 @@ typedef struct {
     collection_info_t transmit;
 } processing_context_t;
 
+/* Enumeration of the sensors in the uORB network. Includes fusion 'sensors' */
+
+enum uorb_sensors {
+#ifdef CONFIG_SENSORS_LSM6DSO32
+    SENSOR_ACCEL, /* Accelerometer */
+    SENSOR_GYRO,  /* Gyroscope */
+#endif
+#ifdef CONFIG_SENSORS_MS56XX
+    SENSOR_BARO, /* Barometer */
+#endif
+#ifdef CONFIG_SENSORS_LIS2MDL
+    SENSOR_MAG, /* Magnetometer */
+#endif
+#ifdef CONFIG_SENSORS_L86XXX
+    SENSOR_GNSS, /* GNSS */
+#endif
+    SENSOR_ALT, /* Altitude fusion */
+};
+
+/* A buffer that can hold any of the types of data created by the sensors in uorb_inputs */
+
+union uorb_data {
+#ifdef CONFIG_SENSORS_LSM6DSO32
+    struct sensor_accel accel;
+    struct sensor_gyro gyro;
+#endif
+#ifdef CONFIG_SENSORS_MS56XX
+    struct sensor_baro baro;
+#endif
+#ifdef CONFIG_SENSORS_LIS2MDL
+    struct sensor_mag mag;
+#endif
+#ifdef CONFIG_SENSORS_L86XXX
+    struct sensor_gnss gnss;
+#endif
+    struct fusion_altitude alt;
+};
+
+/* A function pointer to a function that will perform operations on single pieces of uORB data
+ *
+ * @param context Context given to the callback by the program using this interface
+ * @param element The element to perform processing on, where the length is implied by knowing the type of element
+ */
+typedef void (*uorb_data_callback_t)(void *context, void *element);
+
 static int setup_collection(collection_info_t *collection, packet_buffer_t *packet_buffer);
 static void reset_block_count(collection_info_t *collection);
 static uint8_t *add_block(collection_info_t *collection, enum block_type_e type, uint32_t mission_time);
 static uint8_t *add_or_new(collection_info_t *collection, enum block_type_e type, uint32_t mission_time);
-static void baro_handler(void *ctx, uint8_t *data);
-static void accel_handler(void *ctx, uint8_t *data);
-static void mag_handler(void *ctx, uint8_t *data);
-#ifdef CONFIG_SENSORS_L86XXX
-static void gnss_handler(void *ctx, uint8_t *data);
+
+/* Data handlers */
+
+#ifdef CONFIG_SENSORS_MS56XX
+static void baro_handler(void *ctx, void *data);
 #endif
-static void gyro_handler(void *ctx, uint8_t *data);
-static void alt_handler(void *ctx, uint8_t *data);
+#ifdef CONFIG_SENSORS_LIS2MDL
+static void mag_handler(void *ctx, void *data);
+#endif
+#ifdef CONFIG_SENSORS_L86XXX
+static void gnss_handler(void *ctx, void *data);
+#endif
+#ifdef CONFIG_SENSORS_LSM6DSO32
+static void accel_handler(void *ctx, void *data);
+static void gyro_handler(void *ctx, void *data);
+#endif
+static void alt_handler(void *ctx, void *data);
 
 /* uORB polling file descriptors */
 
@@ -136,40 +185,7 @@ static const uorb_data_callback_t uorb_handlers[] = {
     [SENSOR_ALT] = alt_handler,
 };
 
-/* Separate buffers use more memory but allow us to process in pieces while still reading only once */
-
-#ifdef CONFIG_SENSORS_LSM6DSO32
-static struct sensor_accel accel_data_buf[DATA_BUFFER_SIZE];
-static struct sensor_gyro gyro_data_buf[DATA_BUFFER_SIZE];
-#endif
-#ifdef CONFIG_SENSORS_MS56XX
-static struct sensor_baro baro_data_buf[DATA_BUFFER_SIZE];
-#endif
-#ifdef CONFIG_SENSORS_LIS2MDL
-static struct sensor_mag mag_data_buf[DATA_BUFFER_SIZE];
-#endif
-#ifdef CONFIG_SENSORS_L86XXX
-struct sensor_gnss gnss_data_buf[DATA_BUFFER_SIZE];
-#endif
-static struct fusion_altitude alt_data_buf[DATA_BUFFER_SIZE];
-
-/* Put the buffers in array so that agnostic code can read into the write buffer. */
-
-static void *uorb_data_buffers[] = {
-#ifdef CONFIG_SENSORS_LSM6DSO32
-    [SENSOR_ACCEL] = &accel_data_buf, [SENSOR_GYRO] = &gyro_data_buf,
-#endif
-#ifdef CONFIG_SENSORS_MS56XX
-    [SENSOR_BARO] = &baro_data_buf,
-#endif
-#ifdef CONFIG_SENSORS_LIS2MDL
-    [SENSOR_MAG] = &mag_data_buf,
-#endif
-#ifdef CONFIG_SENSORS_L86XXX
-    [SENSOR_GNSS] = &gnss_data_buf,
-#endif
-    [SENSOR_ALT] = &alt_data_buf,
-};
+static union uorb_data data_buf; /* Data buffer for copying uORB data */
 
 /* The numbers of sensors that are available to be polled */
 
@@ -337,12 +353,12 @@ void *collection_main(void *arg) {
 
             uorb_fds[i].revents = 0; /* Mark the event as handled */
 
-            err = orb_copy(uorb_metas[i], uorb_fds[i].fd, uorb_data_buffers[i]);
+            err = orb_copy(uorb_metas[i], uorb_fds[i].fd, &data_buf);
             if (err < 0) {
                 inerr("Error reading data from %s: %d\n", uorb_metas[i]->o_name, errno);
                 continue;
             }
-            uorb_handlers[i](&context, uorb_data_buffers[i]); /* Add the data to a packet */
+            uorb_handlers[i](&context, &data_buf); /* Add the data to a packet */
         }
     }
 
@@ -399,33 +415,42 @@ static uint8_t *add_block(collection_info_t *collection, enum block_type_e type,
  * @return The location to write the requested type of block
  */
 static uint8_t *add_or_new(collection_info_t *collection, enum block_type_e type, uint32_t mission_time) {
-    // The last byte of the packet will be where the block is allocated, but we need to know where it will end to update
-    // (*node)->end
-    uint8_t *next_block = add_block(collection, type, mission_time);
-    // Can't add to this packet, it's full or we can just assume its done being assembled
+    uint8_t *next_block;
+    uint8_t *write_to;
+
+    /* The last byte of the packet will be where the block is allocated, but we need to know where it will end to update
+     * (*node)->end */
+
+    next_block = add_block(collection, type, mission_time);
     if (next_block == NULL) {
+        /* Can't add to this packet, it's full or we can just assume its done being assembled */
         indebug("Completed a packet length %d\n", collection->current->end - collection->current->packet);
         packet_buffer_put_full(collection->buffer, collection->current);
         collection->current = packet_buffer_get_empty(collection->buffer);
         reset_block_count(collection);
+
         if (collection->current == NULL) {
             inerr("Couldn't get an empty packet or overwrite a full one - not enough packets in buffer\n");
             return NULL;
         }
 
-        // Leave seq num up to the logger/transmitter (don't know if or in what order packets get transmitted)
+        /* Leave seq num up to the logger/transmitter (don't know if or in what order packets get transmitted) */
+
         collection->current->end = pkt_init(collection->current->packet, 0, mission_time);
         next_block = pkt_create_blk(collection->current->packet, collection->current->end, type, mission_time);
+
         if (next_block == NULL) {
             inerr("Couldn't add a block to a new packet\n");
             return NULL;
         }
     }
-    uint8_t *write_to = collection->current->end;
+
+    write_to = collection->current->end;
     collection->current->end = next_block;
     return write_to;
 }
 
+#ifdef CONFIG_SENSORS_MS56XX
 /**
  * Add a pressure block to the packet being assembled
  *
@@ -460,7 +485,7 @@ static void add_temp_blk(collection_info_t *collection, struct sensor_baro *baro
  * @param ctx Context information, type processing_context_t
  * @param data Barometric data to add, type struct sensor_baro
  */
-static void baro_handler(void *ctx, uint8_t *data) {
+static void baro_handler(void *ctx, void *data) {
     struct sensor_baro *baro_data = (struct sensor_baro *)data;
     processing_context_t *context = (processing_context_t *)ctx;
     add_pres_blk(&context->logging, baro_data);
@@ -473,35 +498,9 @@ static void baro_handler(void *ctx, uint8_t *data) {
         add_temp_blk(&context->transmit, baro_data);
     }
 }
+#endif
 
-/**
- * Add an acceleration block to the packet being assembled
- *
- * @param collection Collection information where the block should be added
- * @param node The packet currently being assembled
- * @param accel_data The accel data to add
- */
-static void add_accel_blk(collection_info_t *collection, struct sensor_accel *accel_data) {
-    uint8_t *block = add_or_new(collection, DATA_ACCEL_REL, us_to_ms(accel_data->timestamp));
-    if (block) {
-        accel_blk_init((struct accel_blk_t *)block_body(block), cm_per_sec_squared(accel_data->x),
-                       cm_per_sec_squared(accel_data->y), cm_per_sec_squared(accel_data->z));
-    }
-}
-
-/**
- * A uorb_data_callback_t function - adds acceleration data to the required packets
- *
- * @param ctx Context information, type processing_context_t
- * @param data Acceleration data to add, type struct sensor_accel
- */
-static void accel_handler(void *ctx, uint8_t *data) {
-    struct sensor_accel *accel_data = (struct sensor_accel *)data;
-    processing_context_t *context = (processing_context_t *)ctx;
-    add_accel_blk(&context->logging, accel_data);
-    add_accel_blk(&context->transmit, accel_data);
-}
-
+#ifdef CONFIG_SENSORS_LIS2MDL
 /**
  * Add a magnetometer block to the packet being assembled
  *
@@ -523,15 +522,42 @@ static void add_mag_blk(collection_info_t *collection, struct sensor_mag *mag_da
  * @param ctx Context information, type processing_context_t
  * @param data magnetometer data to add, type struct sensor_mag
  */
-static void mag_handler(void *ctx, uint8_t *data) {
+static void mag_handler(void *ctx, void *data) {
     struct sensor_mag *mag_data = (struct sensor_mag *)data;
     processing_context_t *context = (processing_context_t *)ctx;
     add_mag_blk(&context->logging, mag_data);
     add_mag_blk(&context->transmit, mag_data);
 }
+#endif
 
-/**
- * Add an gyro block to the packet being assembled
+#ifdef CONFIG_SENSORS_LSM6DSO32
+/* Add an acceleration block to the packet being assembled
+ *
+ * @param collection Collection information where the block should be added
+ * @param node The packet currently being assembled
+ * @param accel_data The accel data to add
+ */
+static void add_accel_blk(collection_info_t *collection, struct sensor_accel *accel_data) {
+    uint8_t *block = add_or_new(collection, DATA_ACCEL_REL, us_to_ms(accel_data->timestamp));
+    if (block) {
+        accel_blk_init((struct accel_blk_t *)block_body(block), cm_per_sec_squared(accel_data->x),
+                       cm_per_sec_squared(accel_data->y), cm_per_sec_squared(accel_data->z));
+    }
+}
+
+/* A uorb_data_callback_t function - adds acceleration data to the required packets
+ *
+ * @param ctx Context information, type processing_context_t
+ * @param data Acceleration data to add, type struct sensor_accel
+ */
+static void accel_handler(void *ctx, void *data) {
+    struct sensor_accel *accel_data = (struct sensor_accel *)data;
+    processing_context_t *context = (processing_context_t *)ctx;
+    add_accel_blk(&context->logging, accel_data);
+    add_accel_blk(&context->transmit, accel_data);
+}
+
+/* Add an gyro block to the packet being assembled
  *
  * @param collection Collection information where the block should be added
  * @param node The packet currently being assembled
@@ -545,18 +571,18 @@ static void add_gyro_blk(collection_info_t *collection, struct sensor_gyro *gyro
     }
 }
 
-/**
- * A uorb_data_callback_t function - adds gyro data to the required packets
+/* A uorb_data_callback_t function - adds gyro data to the required packets
  *
  * @param ctx Context information, type processing_context_t
  * @param data Acceleration data to add, type struct sensor_gyro
  */
-static void gyro_handler(void *ctx, uint8_t *data) {
+static void gyro_handler(void *ctx, void *data) {
     struct sensor_gyro *gyro_data = (struct sensor_gyro *)data;
     processing_context_t *context = (processing_context_t *)ctx;
     add_gyro_blk(&context->logging, gyro_data);
     add_gyro_blk(&context->transmit, gyro_data);
 }
+#endif
 
 #ifdef CONFIG_SENSORS_L86XXX
 /**
@@ -612,7 +638,7 @@ static void add_msl_block(collection_info_t *collection, struct fusion_altitude 
  * @param ctx Context information, type processing_context_t
  * @param data GNSS data to add, type struct sensor_gnss
  */
-static void gnss_handler(void *ctx, uint8_t *data) {
+static void gnss_handler(void *ctx, void *data) {
     struct sensor_gnss *gnss_data = (struct sensor_gnss *)data;
     processing_context_t *context = (processing_context_t *)ctx;
     if (gnss_data->latitude == (int)NULL && gnss_data->longitude == (int)NULL)
@@ -626,13 +652,12 @@ static void gnss_handler(void *ctx, uint8_t *data) {
 }
 #endif
 
-/**
- * A uorb_data_callback_t function - adds altitude data to the required packets
+/* A uorb_data_callback_t function - adds altitude data to the required packets
  *
  * @param ctx Context information, type processing_context_t
  * @param data Altitude data to add, type struct fusion_altitude
  */
-static void alt_handler(void *ctx, uint8_t *data) {
+static void alt_handler(void *ctx, void *data) {
     struct fusion_altitude *alt_data = (struct fusion_altitude *)data;
     processing_context_t *context = (processing_context_t *)ctx;
     add_msl_block(&context->logging, alt_data);
