@@ -5,5 +5,7 @@
 
 #include <nuttx/timers/pwm.h>
 
-int pwm_send_signal(int pwm_fd, float freq);
+static int set_pwm_freq(int pwm_fd, float freq);
+static int pwm_turn_off(int pwm_fd);
+static int play_olg_jingle(int pwm_fd);
 void *startup_sound_main(void *arg);
