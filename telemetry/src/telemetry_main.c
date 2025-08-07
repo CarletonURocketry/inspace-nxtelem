@@ -22,13 +22,12 @@ static pthread_t transmit_thread;
 static pthread_t log_thread;
 static pthread_t collect_thread;
 static pthread_t fusion_thread;
+static pthread_t startup_sound_thread;
 
 static rocket_state_t state; /* The shared rocket state. */
 
 int main(int argc, char **argv) {
     int err;
-
-    /* Thread handles. */
 
     ininfo("You are running the Carleton University InSpace telemetry system.");
 
