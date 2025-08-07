@@ -2,9 +2,9 @@
 #include <nuttx/sensors/sensor.h>
 #include <pthread.h>
 #include <sys/ioctl.h>
+#include <poll.h>
 
 #include "../rocket-state/rocket-state.h"
-#include "../sensors/sensors.h"
 #include "../syslogging.h"
 #include "detector.h"
 #include "fusion.h"

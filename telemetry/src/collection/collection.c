@@ -4,6 +4,7 @@
  */
 
 #include <math.h>
+#include <poll.h>
 #include <pthread.h>
 #include <sys/ioctl.h>
 
@@ -133,20 +134,35 @@ static struct pollfd uorb_fds[] = {
 
 /* uORB sensor metadatas */
 
-static struct orb_metadata const *uorb_metas[] = {
 #ifdef CONFIG_SENSORS_LSM6DSO32
-    [SENSOR_ACCEL] = NULL, [SENSOR_GYRO] = NULL,
+ORB_DECLARE(sensor_accel);
+ORB_DECLARE(sensor_gyro);
 #endif
 #ifdef CONFIG_SENSORS_MS56XX
-    [SENSOR_BARO] = NULL,
+ORB_DECLARE(sensor_baro);
 #endif
 #ifdef CONFIG_SENSORS_LIS2MDL
-    [SENSOR_MAG] = NULL,
+ORB_DECLARE(sensor_mag);
 #endif
 #ifdef CONFIG_SENSORS_L86XXX
-    [SENSOR_GNSS] = NULL,
+ORB_DECLARE(sensor_gnss);
 #endif
-    [SENSOR_ALT] = NULL,
+ORB_DECLARE(fusion_altitude);
+
+static struct orb_metadata const *uorb_metas[] = {
+#ifdef CONFIG_SENSORS_LSM6DSO32
+    [SENSOR_ACCEL] = ORB_ID(sensor_accel), [SENSOR_GYRO] = ORB_ID(sensor_gyro),
+#endif
+#ifdef CONFIG_SENSORS_MS56XX
+    [SENSOR_BARO] = ORB_ID(sensor_baro),
+#endif
+#ifdef CONFIG_SENSORS_LIS2MDL
+    [SENSOR_MAG] = ORB_ID(sensor_mag),
+#endif
+#ifdef CONFIG_SENSORS_L86XXX
+    [SENSOR_GNSS] = ORB_ID(sensor_gnss),
+#endif
+    [SENSOR_ALT] = ORB_ID(fusion_altitude),
 };
 
 /* Sensor desired sampling rates in Hz*/
@@ -219,43 +235,6 @@ void *collection_main(void *arg) {
     if (err < 0) {
         inerr("Could not get an initial empty packet for collection\n");
         pthread_exit(err_to_ptr(err));
-    }
-
-    /* Get metadata of all sensors */
-
-    ininfo("Getting sensor metadatas.\n");
-
-#ifdef CONFIG_SENSORS_MS56XX
-    uorb_metas[SENSOR_BARO] = orb_get_meta("sensor_baro");
-    if (uorb_metas[SENSOR_BARO] == NULL) {
-        inerr("Couldn't get metadata for sensor_baro: %d\n", errno);
-    }
-#endif
-#ifdef CONFIG_SENSORS_LSM6DSO32
-    uorb_metas[SENSOR_ACCEL] = orb_get_meta("sensor_accel");
-    if (uorb_metas[SENSOR_ACCEL] == NULL) {
-        inerr("Couldn't get metadata for sensor_accel: %d\n", errno);
-    }
-    uorb_metas[SENSOR_GYRO] = orb_get_meta("sensor_gyro");
-    if (uorb_metas[SENSOR_GYRO] == NULL) {
-        inerr("Couldn't get metadata for sensor_gyro: %d\n", errno);
-    }
-#endif
-#ifdef CONFIG_SENSORS_LIS2MDL
-    uorb_metas[SENSOR_MAG] = orb_get_meta("sensor_mag");
-    if (uorb_metas[SENSOR_MAG] == NULL) {
-        inerr("Couldn't get metadata for sensor_mag: %d\n", errno);
-    }
-#endif
-#ifdef CONFIG_SENSORS_L86_XXX
-    uorb_metas[SENSOR_GPS] = orb_get_meta("sensor_gnss");
-    if (uorb_metas[SENSOR_GPS] == NULL) {
-        inerr("Couldn't get metadata for sensor_gnss: %d\n", errno);
-    }
-#endif
-    uorb_metas[SENSOR_ALT] = orb_get_meta("fusion_altitude");
-    if (uorb_metas[SENSOR_ALT] == NULL) {
-        inerr("Couldn't get metadata for fusion_altitude: %d\n", errno);
     }
 
     /* Subscribe to all sensors */

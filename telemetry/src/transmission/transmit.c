@@ -9,10 +9,8 @@
 #include <nuttx/wireless/lpwan/rn2xx3.h>
 #endif
 
-#include "../fusion/fusion.h"
 #include "../packets/packets.h"
 #include "../rocket-state/rocket-state.h"
-#include "../sensors/sensors.h"
 #include "../syslogging.h"
 #include "transmit.h"
 
