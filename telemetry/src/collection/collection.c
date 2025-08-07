@@ -51,7 +51,7 @@
 #define HAS_MAG
 #endif
 
-#if defined(CONFIG_INSPACE_FAKE_GNSS) || defined(CONFIG_SENSORS_L86XXX)
+#if defined(CONFIG_INSPACE_FAKE_GNSS) || defined(CONFIG_SENSORS_L86_XXX)
 #define HAS_GNSS
 #endif
 
