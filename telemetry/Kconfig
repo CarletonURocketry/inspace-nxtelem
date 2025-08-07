@@ -136,7 +136,13 @@ config INSPACE_TELEMETRY_EJECTLED
     string "Eject LED"
     default "/dev/gpio0"
     ---help---
-        The path identifier of the GPIO which control the EJECT LED.
+        The path identifier of the GPIO which controls the EJECT LED.
+
+config INSPACE_TELEMETRY_PWM
+    string "PWM device"
+    default "/dev/pwm0"
+    ---help---
+        The path identifier of the PWM buzzer.
 
 comment "Sampling options"
 
