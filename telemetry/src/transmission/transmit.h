@@ -1,10 +1,11 @@
 #ifndef _INSPACE_TRANSMIT_H_
 #define _INSPACE_TRANSMIT_H_
 
-#include "../rocket-state/rocket-state.h"
 #include "../packets/buffering.h"
+#include "../rocket-state/rocket-state.h"
 
 struct transmit_args {
+    struct radio_options config;
     rocket_state_t *state;
     packet_buffer_t *buffer;
 };

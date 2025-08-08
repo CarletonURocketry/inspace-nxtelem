@@ -27,6 +27,7 @@ static pthread_t shell_thread;
 static pthread_t startup_sound_thread;
 
 static rocket_state_t state; /* The shared rocket state. */
+static struct config_options config;
 
 int main(int argc, char **argv) {
     int err;
@@ -46,6 +47,14 @@ int main(int argc, char **argv) {
         if (err) {
             inerr("Could not set flight substate, continuing anyways: %d\n", err);
         }
+    }
+
+    /* Grab configuration parameters from EEPROM */
+
+    err = config_get(&config);
+    if (err) {
+        inerr("Couldn't read EEPROM contents: %d\n", err);
+        // TODO maybe some sensible defaults?
     }
 
     // Allow apogee to be detected again (in case we happen to actually be in liftoff when loaded)
@@ -76,7 +85,11 @@ int main(int argc, char **argv) {
         exit(EXIT_FAILURE);
     }
 
-    struct transmit_args transmit_thread_args = {.state = &state, .buffer = &transmit_buffer};
+    struct transmit_args transmit_thread_args = {
+        .state = &state,
+        .buffer = &transmit_buffer,
+        .config = config.radio,
+    };
     err = pthread_create(&transmit_thread, NULL, transmit_main, &transmit_thread_args);
     if (err) {
         inerr("Problem starting transmission thread: %d\n", err);
