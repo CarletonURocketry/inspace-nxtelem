@@ -53,6 +53,15 @@ static int detector_accel_valid(struct detector *detector) {
 }
 
 /**
+ * Reset the apogee variables, so that apogee can be detected again
+ *
+ * @param detector The detector to use
+ */
+static void detector_reset_apogee(struct detector *detector) {
+    detector->apogee = -FLT_MAX;
+    detector->apogee_time = detector->current_time;
+}
+/**
  * Check if the conditions for being airborne are satisfied
  *
  * @param detector The detector to use
@@ -127,8 +136,7 @@ void detector_init(struct detector *detector, uint64_t time) {
     detector->current_alt = 0.0f;
     detector->current_accel = 0.0f;
 
-    detector->apogee = -FLT_MAX;
-    detector->apogee_time = 0;
+    detector_reset_apogee(detector);
 
     /* This can be set manually, or will be set by the detector automatically */
     detector->elevation_set = 0;
@@ -268,6 +276,9 @@ enum detector_event detector_detect(struct detector *detector) {
  * @param substate The flight substate of the rocket
  */
 void detector_set_state(struct detector *detector, enum flight_state_e state, enum flight_substate_e substate) {
+    if (state == STATE_LANDED) {
+        detector_reset_apogee(detector);
+    }
     detector->state = state;
     detector->substate = substate;
 }

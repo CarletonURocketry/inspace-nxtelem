@@ -27,7 +27,7 @@ comment "Mounting options"
 config INSPACE_MOCKING_ROMFS
 	bool "Use ROMFS file system"
 	depends on BOARDCTL_ROMDISK
-	depends on FS_ROMDISK
+	depends on FS_ROMFS
 	default y
 	---help---
 		Use the ROMFS file system to mount the CSV data for fake sensors.

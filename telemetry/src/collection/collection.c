@@ -330,7 +330,7 @@ void *collection_main(void *arg) {
     }
 #endif
 
-#ifdef HAS_ACCEL
+#ifdef HAS_GYRO
     ininfo("Configuring gyro FSR to +/-2000dps.\n");
     err = orb_ioctl(uorb_fds[SENSOR_GYRO].fd, SNIOC_SETFULLSCALE, 2000);
     if (err < 0) {

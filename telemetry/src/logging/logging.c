@@ -472,11 +472,15 @@ static int ejectled_set(bool on) {
         return errno;
     }
 
+// Need to check if the simulator has a way to mock the gpio driver
+#ifndef CONFIG_ARCH_SIM
     err = ioctl(fd, GPIOC_WRITE, on);
     if (err < 0) {
         inerr("Could not turn on eject LED: %d\n", errno);
         return errno;
     }
+#endif
+
     indebug("Eject LED %s.", on ? "on" : "off");
 
     err = close(fd);
