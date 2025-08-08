@@ -9,9 +9,9 @@
 #include "fusion/fusion.h"
 #include "logging/logging.h"
 #include "packets/buffering.h"
+#include "pwm/pwm_olg.h"
 #include "syslogging.h"
 #include "transmission/transmit.h"
-#include "pwm/pwm_olg.h"
 
 /* Buffers for sharing sensor data between threads */
 
