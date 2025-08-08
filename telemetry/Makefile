@@ -19,5 +19,6 @@ CSRCS += $(wildcard src/packets/*.c)
 CSRCS += $(wildcard src/pwm/*.c)
 CSRCS += $(wildcard src/fusion/*.c)
 CSRCS += $(wildcard src/sensors/*.c)
+CSRCS += $(wildcard src/shell/*.c)
 
 include $(APPDIR)/Application.mk
