@@ -40,6 +40,16 @@ int main(int argc, char **argv) {
         if (err) {
             inerr("Could not set flight state properly either, continuing anyways: %d\n", err);
         }
+        err = state_set_flightsubstate(&state, SUBSTATE_UNKNOWN);
+        if (err) {
+            inerr("Could not set flight substate, continuing anyways: %d\n", err);
+        }
+    }
+
+    // Allow apogee to be detected again (in case we happen to actually be in liftoff when loaded)
+    if (state.state == STATE_AIRBORNE && state.substate == SUBSTATE_DESCENT) {
+        ininfo("Loaded the descent substate, but setting to unknown to trigger apogee again");
+        state_set_flightsubstate(&state, SUBSTATE_UNKNOWN);
     }
 
     err = packet_buffer_init(&transmit_buffer);
