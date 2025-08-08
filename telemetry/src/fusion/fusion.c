@@ -93,6 +93,7 @@ void *fusion_main(void *arg) {
 
     /* Output sensors */
 
+    unsigned int iter = 0;
     for (;;) {
 
         /* Wait for new data */
@@ -116,6 +117,15 @@ void *fusion_main(void *arg) {
                 calculated_accel_mag = calculate_accel_magnitude(&accel_data[i]);
                 detector_add_accel(&detector, (struct accel_sample *)&calculated_accel_mag);
             }
+        }
+
+        /* Periodic flight state updates for the detector */
+
+        if ((++iter & 0xFF) == 0) {
+            state_get_flightstate(state, &flight_state);
+            state_get_flightsubstate(state, &flight_substate);
+            // This is how the detector gets set into the IDLE state by the logging thread
+            detector_set_state(&detector, flight_state, flight_substate);
         }
 
         /* Run detection. Potentially run periodically instead of every update */
@@ -153,7 +163,7 @@ void *fusion_main(void *arg) {
             state_set_flightstate(state, STATE_LANDED);
             // Set the detector back to the landed state right away - airborne events will only cause a state transition
             // once the system is back in the idle state
-            detector_set_state(&detector, STATE_IDLE, SUBSTATE_UNKNOWN);
+            detector_set_state(&detector, STATE_LANDED, SUBSTATE_UNKNOWN);
         } break;
 
         default:
