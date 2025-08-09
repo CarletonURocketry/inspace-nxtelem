@@ -11,11 +11,14 @@ struct logging_args {
 };
 
 /* Exposed functions for testing */
+
 int should_swap(struct timespec *last_swap, struct timespec *now);
 int swap_files(FILE **active_file, FILE **standby_file);
-int choose_flight_number(const char *dir, const char *format);
-int open_log_file(FILE **opened_file, const char *format, int flight_number, int serial_number, const char *mode);
-int copy_out(FILE *active_file, FILE *extract_file);
+unsigned int choose_mission_number(const char *flight_dir, const char *flight_fmt, const char *extr_dir, const char *extr_fmt);
+int open_log_file(FILE **opened_file, const char *format, int mission_num, int serial_number, const char *mode);
+int copy_file(const char *from, const char *to);
+int sync_files(const char *flight_dir, const char *flight_fmt, const char *extr_path_fmt);
+int clean_dir(const char *dir, const char *fname_fmt);
 
 void *logging_main(void *arg);
 

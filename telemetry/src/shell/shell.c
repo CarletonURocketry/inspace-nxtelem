@@ -18,10 +18,6 @@
 #include "helptext.h"
 #include "shell.h"
 
-#ifndef CONFIG_CDCACM
-#error "CONFIG_CDCACM must be enabled, as it is required for USB configuration"
-#endif
-
 /* Cast an error to a void pointer */
 
 #define err_to_ptr(err) ((void *)((err)))
@@ -49,8 +45,9 @@ void *shell_main(void *arg) {
     struct config_options modified;
     struct config_options disk;
     char command_in[COMMAND_IN_SIZE];
-
     (void)(arg);
+
+    ininfo("Shell thread started.\n");
 
     /* Set up the USB device */
 

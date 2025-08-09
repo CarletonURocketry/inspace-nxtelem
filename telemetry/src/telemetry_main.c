@@ -3,16 +3,18 @@
 #include <stdatomic.h>
 #include <stdlib.h>
 
-#include "rocket-state/rocket-state.h"
-
 #include "collection/collection.h"
 #include "fusion/fusion.h"
 #include "logging/logging.h"
 #include "packets/buffering.h"
 #include "pwm/pwm_olg.h"
-#include "shell/shell.h"
+#include "rocket-state/rocket-state.h"
 #include "syslogging.h"
 #include "transmission/transmit.h"
+
+#ifdef CONFIG_INSPACE_TELEMETRY_USBSH
+#include "shell/shell.h"
+#endif
 
 /* Buffers for sharing sensor data between threads */
 
@@ -23,8 +25,10 @@ static pthread_t transmit_thread;
 static pthread_t log_thread;
 static pthread_t collect_thread;
 static pthread_t fusion_thread;
-static pthread_t shell_thread;
 static pthread_t startup_sound_thread;
+#ifdef CONFIG_INSPACE_TELEMETRY_USBSH
+static pthread_t shell_thread;
+#endif
 
 static rocket_state_t state; /* The shared rocket state. */
 static struct config_options config;
@@ -110,12 +114,16 @@ int main(int argc, char **argv) {
         exit(EXIT_FAILURE);
     }
 
+#ifdef CONFIG_INSPACE_TELEMETRY_USBSH
     struct shell_args shell_args;
     err = pthread_create(&shell_thread, NULL, shell_main, &shell_args);
     if (err) {
         inerr("Problem starting shell thread: %d\n", err);
         exit(EXIT_FAILURE);
     }
+#else
+#warning "Telemetry application is being compiled without configuration shell."
+#endif
 
     /* No args needed for startup sound thread */
     err = pthread_create(&startup_sound_thread, NULL, startup_sound_main, NULL);
@@ -130,7 +138,9 @@ int main(int argc, char **argv) {
     err = pthread_join(transmit_thread, NULL);
     err = pthread_join(log_thread, NULL);
     err = pthread_join(fusion_thread, NULL);
+#ifdef CONFIG_INSPACE_TELEMETRY_USBSH
     err = pthread_join(shell_thread, NULL);
+#endif
 
     return err;
 }
