@@ -710,11 +710,11 @@ static void gnss_handler(void *ctx, void *data) {
     if (gnss_data->latitude == (int)NULL && gnss_data->longitude == (int)NULL)
         return; // Don't send packets with no sat fix
 
-    &context->logging.last_lat = gnss_data->latitude
-    &context->logging.last_long = gnss_data->longitude
     add_gnss_block(&context->logging, gnss_data);
     add_gnss_msl_block(&context->logging, gnss_data);
-
+        
+    context->transmit.last_lat = gnss_data->latitude;
+    context->transmit.last_long = gnss_data->longitude;
     add_gnss_block(&context->transmit, gnss_data);
     add_gnss_msl_block(&context->transmit, gnss_data);
 }
