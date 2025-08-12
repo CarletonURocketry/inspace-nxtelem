@@ -31,6 +31,16 @@ config INSPACE_TELEMETRY_STACKSIZE
     int "Telemetry system stack size"
     default DEFAULT_TASK_STACKSIZE
 
+config INSPACE_TELEMETRY_USBSH
+	bool "USB shell thread"
+	default y
+	depends on CDCACM 
+	depends on BOARDCTL_USBDEVCTRL
+	depends on !ARCH_SIM
+	---help---
+		If the USB shell thread should be started, which allows access to the system
+		while the application is running.
+
 comment "Syslog output options"
 
 config INSPACE_SYSLOG_OUTPUT
@@ -87,6 +97,13 @@ config INSPACE_TELEMETRY_BUFFER_N_PACKETS
 	range 0 128
 	---help---
 		The number of packets to buffer at a time in the packet queues.
+
+config INSPACE_TELEMETRY_FS_SYNC_FREQ
+	int "Flight filesystem sync frequency"
+	default 3
+	range 0 500
+	---help---
+		How many packets to write before syncing to the flight filesystem.
 
 config INSPACE_TELEMETRY_FLIGHT_FS
     string "Flight logging filesystem"
