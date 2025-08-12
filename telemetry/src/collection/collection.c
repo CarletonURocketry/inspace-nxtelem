@@ -497,17 +497,20 @@ static uint8_t *add_or_new(collection_info_t *collection, enum block_type_e type
 
         collection->current->end = pkt_init(collection->current->packet, 0, mission_time);
     
-        /* Always make first block of packet a coords block with most recent coordinates */
-        next_block = pkt_create_blk(collection->current->packet, collection->current->end, DATA_LAT_LONG, mission_time);
-        coord_blk_init((struct coord_blk_t *)block_body(next_block), point_one_microdegrees(collection->last_lat),
-                       point_one_microdegrees(collection->last_long));
+        /* Always make first block of packet a coords block with most recent coordinates if we have them */
+        if (collection->last_lat == NAN && collection->last_long == NAN) {
+            inwarn("No coordinates data in packet\n");
+        } else {
+            next_block = pkt_create_blk(collection->current->packet, collection->current->end, DATA_LAT_LONG, mission_time);
+            coord_blk_init((struct coord_blk_t *)block_body(next_block), point_one_microdegrees(collection->last_lat),
+                           point_one_microdegrees(collection->last_long));
+            if (next_block == NULL) {
+                inerr("Couldn't add a block to a new packet\n");
+                return NULL;
+            }
+        }
         next_block = pkt_create_blk(collection->current->packet, collection->current->end, type, mission_time);
         
-        if (collection->last_lat == NAN && collection->last_long == NAN) {
-            inerr("No GPS fix in packet\n");
-            return NULL;
-        }
-
         if (next_block == NULL) {
             inerr("Couldn't add a block to a new packet\n");
             return NULL;
