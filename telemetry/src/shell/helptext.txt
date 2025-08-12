@@ -1,0 +1,24 @@
+CU InSpace Josh
+2025
+
+GENERAL COMMANDS:
+    
+    help        Displays this help menu.
+    reboot      Reboots the board for changes to take effect.
+    load        Loads the current configuration from EEPROM so it can be
+                modified. Overwrites unsaved modifications.
+    save        Saves the modified configuration to EEPROM.
+    disk        Shows the configuration currently saved on disk.
+    current     Shows the currently modified configuration in RAM.
+
+RADIO PARAMETERS:
+
+    frequency   Sets frequency in Hz.
+    bandwidth   Sets bandwidth in kHz. Can be 125, 250 or 500.
+    preamble    Sets preamble length.
+    spread      Sets spread factor.
+    txpwr       Sets transmit power in dBm.
+    sync        Sets sync word, provided in hexadecimal.
+    crc         Enable/disable cyclic redundancy check. Provide 0 or 1.
+    iqi         Enable/disable IQI. Provide 0 or 1.
+    coder       Set the coding rate, expressed as a fraction (i.e 4/5).

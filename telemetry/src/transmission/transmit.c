@@ -13,20 +13,6 @@
 #include "../syslogging.h"
 #include "transmit.h"
 
-/* InSpace chosen radio settings - data types are as expected by radio driver */
-
-#if defined(CONFIG_LPWAN_RN2XX3)
-#define RN2483_FREQ (uint32_t)433050000
-#define RN2483_TXPWR (int32_t)15
-#define RN2483_SPREAD_FACTOR (uint8_t)7
-#define RN2483_CODING_RATE (enum rn2xx3_cr_e) RN2XX3_CR_4_5
-#define RN2483_BANDWIDTH (uint32_t)125
-#define RN2483_CRC 1
-#define RN2483_IQI 0
-#define RN2483_SYNC (uint64_t)67
-#define RN2483_PREAMBLE (uint16_t)6
-#endif /* defined(CONFIG_LPWAN_RN2XX3) */
-
 /* If there was an error in configuration, display which line and return the
  * error */
 
@@ -42,7 +28,7 @@
 #define err_to_ptr(err) ((void *)((err)))
 
 static ssize_t transmit(int radio, uint8_t *packet, size_t packet_size);
-static int configure_radio(int fd);
+static int configure_radio(int fd, struct radio_options const *config);
 
 /* Main thread for data transmission over radio. */
 void *transmit_main(void *arg) {
@@ -62,7 +48,7 @@ void *transmit_main(void *arg) {
         pthread_exit(err_to_ptr(err)); // TODO: handle more gracefully
     }
 
-    err = configure_radio(radio);
+    err = configure_radio(radio, &unpacked_args->config);
     if (err) {
         /* Error will have been reported in configure_rn2483 where we can say which
          * config failed in particular */
@@ -103,30 +89,30 @@ static ssize_t transmit(int radio, uint8_t *packet, size_t packet_size) {
     return written;
 }
 
-static int configure_radio(int fd) {
+static int configure_radio(int fd, struct radio_options const *config) {
     int err = 0;
 
 #if defined(CONFIG_LPWAN_RN2XX3)
-    int32_t txpwr = RN2483_TXPWR * 100;
-    uint64_t sync = RN2483_SYNC;
+    int32_t txpwr = config->txpwr * 100;
+    uint64_t sync = config->sync;
 
-    err = ioctl(fd, WLIOC_SETRADIOFREQ, RN2483_FREQ);
+    err = ioctl(fd, WLIOC_SETRADIOFREQ, config->freq);
     config_error(err);
     err = ioctl(fd, WLIOC_SETTXPOWERF, &txpwr);
     config_error(err);
-    err = ioctl(fd, WLIOC_SETSPREAD, RN2483_SPREAD_FACTOR);
+    err = ioctl(fd, WLIOC_SETSPREAD, config->spread);
     config_error(err);
-    err = ioctl(fd, WLIOC_SETCODERATE, RN2483_CODING_RATE);
+    err = ioctl(fd, WLIOC_SETCODERATE, config->cr);
     config_error(err);
-    err = ioctl(fd, WLIOC_SETBANDWIDTH, RN2483_BANDWIDTH);
+    err = ioctl(fd, WLIOC_SETBANDWIDTH, config->bw);
     config_error(err);
-    err = ioctl(fd, WLIOC_CRCEN, RN2483_CRC);
+    err = ioctl(fd, WLIOC_CRCEN, config->crc);
     config_error(err);
-    err = ioctl(fd, WLIOC_IQIEN, RN2483_IQI);
+    err = ioctl(fd, WLIOC_IQIEN, config->iqi);
     config_error(err);
     err = ioctl(fd, WLIOC_SETSYNC, &sync);
     config_error(err);
-    err = ioctl(fd, WLIOC_SETPRLEN, RN2483_PREAMBLE);
+    err = ioctl(fd, WLIOC_SETPRLEN, config->preamble);
     config_error(err);
 #endif /* defined(CONFIG_LPWAN_RN2XX3) */
 
