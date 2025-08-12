@@ -51,7 +51,7 @@
 #define HAS_MAG
 #endif
 
-#if defined(CONFIG_INSPACE_FAKE_GNSS) || defined(CONFIG_SENSORS_L86XXX)
+#if defined(CONFIG_INSPACE_FAKE_GNSS) || defined(CONFIG_SENSORS_L86_XXX)
 #define HAS_GNSS
 #endif
 
@@ -74,8 +74,8 @@
 typedef struct {
     packet_buffer_t *buffer;
     packet_node_t *current;
-    int32_t last_lat;
-    int32_t last_long;
+    float last_lat;
+    float last_long;
     int block_count[DATA_RES_ABOVE];
 } collection_info_t;
 
@@ -496,9 +496,14 @@ static uint8_t *add_or_new(collection_info_t *collection, enum block_type_e type
         /* Leave seq num up to the logger/transmitter (don't know if or in what order packets get transmitted) */
 
         collection->current->end = pkt_init(collection->current->packet, 0, mission_time);
-        // add stored gps
+    
+        /* Always make first block of packet a coords block with most recent coordinates */
         next_block = pkt_create_blk(collection->current->packet, collection->current->end, type, mission_time);
-
+        coord_blk_init((struct coord_blk_t *)block_body(next_block), point_one_microdegrees(collection->last_lat),
+                       point_one_microdegrees(collection->last_long));
+        
+                       next_block = pkt_create_blk(collection->current->packet, collection->current->end, type, mission_time);
+        
         if (collection->last_lat == NAN && collection->last_long == NAN) {
             inerr("No GPS fix in packet\n");
             return NULL;
@@ -654,8 +659,8 @@ static void gyro_handler(void *ctx, void *data) {
  * @param gnss_data The gnss data to add
  */
 static void add_gnss_block(collection_info_t *collection, struct sensor_gnss *gnss_data) {
-    collection->last_lat = gnss->data.latitude;
-    collection->last_long = gnss->data.longitude;
+    collection->last_lat = gnss_data->latitude;
+    collection->last_long = gnss_data->longitude;
     uint8_t *block = add_or_new(collection, DATA_LAT_LONG, us_to_ms(gnss_data->timestamp));
     if (block) {
         coord_blk_init((struct coord_blk_t *)block_body(block), point_one_microdegrees(gnss_data->latitude),
