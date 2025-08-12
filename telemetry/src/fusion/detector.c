@@ -5,55 +5,33 @@
 #include "../syslogging.h"
 #include "detector.h"
 
-/* The that measurements should be valid for */
-#define STALE_MEASUREMENT_TIME 1000000 /* 1 second in microseconds */
+#define LANDED_ALT_WINDOW_SIZE ((float)(CONFIG_INSPACE_TELEMETRY_LANDED_ALT_WINDOW / 10))
+#define AIRBORNE_ACCEL_THRESHOLD ((float)(CONFIG_INSPACE_TELEMETRY_AIRBORNE_ACCEL_THRESH / 10))
+#define AIRBORNE_ALT_THRESHOLD ((float)(CONFIG_INSPACE_TELEMETRY_AIRBORNE_ALT_THRESH / 10))
+#define APOGEE_ALT_THRESHOLD ((float)(CONFIG_INSPACE_TELEMETRY_APOGEE_ALT_THRESH) / 10)
+#define APOGEE_ACCEL_THRESHOLD ((float)(CONFIG_INSPACE_TELEMETRY_APOGEE_ACCEL_THRESH) / 10)
 
-/* The maximum amount the altitude can change by in meters to consider us landed */
-#define LANDED_ALT_WINDOW_SIZE 5.0f
-
-/* The time in microseconds that altitude variation must be within LANDED_ALT_WINDOW_SIZE */
-#define LANDED_ALT_WINDOW_DURATION 10000000 /* 10 seconds in microseconds */
-
-/* The change in altitude when idle to enter the airborne state in meters */
-#define AIRBORNE_ALT_THRESHOLD 20.0f
-
-/* The acceleration above which we consider the rocket to be flying in m/s^2 */
-#define AIRBORNE_ACCEL_THRESHOLD 15.0f
-
-/* The altitude below our maximum altitude while airborne we consider apogee to have been reached in meters */
-#define APOGEE_ALT_THRESHOLD 20.0f
-
-/* The accel above which we will not detect an apogee event in m/s^2 */
-#define APOGEE_ACCEL_THRESHOLD 15.0f
-
-/* The time on after initialization to take an altitude reading and use as the maximum landing altitude, in microseconds
- */
-#define INIT_ELEVATION_DELAY 100000 /* 0.1 seconds in microseconds */
-
-/**
- * Check if the current altitude is valid and can be used for detection purposes
+/* Check if the current altitude is valid and can be used for detection purposes
  *
  * @param detector The detector to use
  * @return 1 if the detector's current altitude measurement can be used in detection
  */
 static int detector_alt_valid(struct detector *detector) {
     /* Currently, only check if the measurement as generated too long ago. Could also so sanity checks on its value */
-    return detector->current_time - detector->last_alt_update < STALE_MEASUREMENT_TIME;
+    return detector->current_time - detector->last_alt_update < CONFIG_INSPACE_TELEMETRY_STALETIME;
 }
 
-/**
- * Check if the current acceleration is valid and can be used for detection purposes
+/* Check if the current acceleration is valid and can be used for detection purposes
  *
  * @param detector The detector to use
  * @return 1 if the detector's current acceleration measurement can be used in detection
  */
 static int detector_accel_valid(struct detector *detector) {
     /* Only check if the measurement is too old */
-    return detector->current_time - detector->last_accel_update < STALE_MEASUREMENT_TIME;
+    return detector->current_time - detector->last_accel_update < CONFIG_INSPACE_TELEMETRY_STALETIME;
 }
 
-/**
- * Reset the apogee variables, so that apogee can be detected again
+/* Reset the apogee variables, so that apogee can be detected again
  *
  * @param detector The detector to use
  */
@@ -91,7 +69,7 @@ static int detector_is_airborne(struct detector *detector) {
 static int detector_is_landed(struct detector *detector) {
     /* Use an altitude window to make sure there isn't too much variation in the altitude
      * and then check that acceleration is below launch levels. Acceleration check is necessary in case
-     * the barometer's readings are unreliable when airborne
+     * the barometer's readings are unreliable when airborne.
      */
     return detector_alt_valid(detector) && window_criteria_satisfied(&detector->alt_window) &&
            detector_accel_valid(detector) && detector_get_accel(detector) < AIRBORNE_ACCEL_THRESHOLD;
@@ -121,13 +99,15 @@ static int detector_is_apogee(struct detector *detector) {
 void detector_init(struct detector *detector, uint64_t time) {
     median_filter_init(&detector->alts.median, detector->alts.median_backing_sorted,
                        detector->alts.median_backing_time_ordered, sizeof(detector->alts.median_backing_sorted));
-    average_filter_init(&detector->alts.average, detector->alts.average_backing, sizeof(detector->alts.average_backing));
+    average_filter_init(&detector->alts.average, detector->alts.average_backing,
+                        sizeof(detector->alts.average_backing));
 
     median_filter_init(&detector->accels.median, detector->accels.median_backing_sorted,
                        detector->accels.median_backing_time_ordered, sizeof(detector->accels.median_backing_sorted));
-    average_filter_init(&detector->accels.average, detector->accels.average_backing, sizeof(detector->accels.average_backing));
+    average_filter_init(&detector->accels.average, detector->accels.average_backing,
+                        sizeof(detector->accels.average_backing));
 
-    window_criteria_init(&detector->alt_window, LANDED_ALT_WINDOW_SIZE, LANDED_ALT_WINDOW_DURATION);
+    window_criteria_init(&detector->alt_window, LANDED_ALT_WINDOW_SIZE, CONFIG_INSPACE_TELEMETRY_LANDED_ALT_DURATION);
 
     detector->init_time = time;
     detector->current_time = time;
@@ -174,7 +154,7 @@ void detector_add_alt(struct detector *detector, struct altitude_sample *sample)
 
     /* If we just powered on and elevation hasn't been set */
     if (!detector->elevation_set) {
-        if (detector->current_time - detector->init_time > INIT_ELEVATION_DELAY) {
+        if (detector->current_time - detector->init_time > CONFIG_INSPACE_TELEMETRY_ELEV_DELAY) {
             /* Hopefully, the filters should be full and this should be a very sensible value */
             detector->elevation = detector->current_alt;
             detector->elevation_set = 1;
@@ -225,32 +205,36 @@ float detector_get_accel(struct detector *detector) { return detector->current_a
  * @return The detected event, or DETECTOR_NO_EVENT if none were detected
  */
 enum detector_event detector_detect(struct detector *detector) {
+
     /* We are doing detection events based on state because the checks we perform otherwise
-     * might not make sense
+     * might not make sense.
      */
+    ininfo("Accel: %.2f, alt %.2f\n", detector->current_accel, detector->current_alt);
+
     switch (detector->state) {
+
     case STATE_IDLE: {
         if (detector_is_airborne(detector)) {
             ininfo("Detected airborne event from the idle state\n");
             return DETECTOR_AIRBORNE_EVENT;
         }
     } break;
+
     case STATE_AIRBORNE: {
         switch (detector->substate) {
+
         case SUBSTATE_UNKNOWN:
-            /* If we aren't sure what state we're really in, make sure we haven't landed */
-            if (detector_is_landed(detector)) {
-                ininfo("Detected a landing event from the airborne state, unknown substate\n");
-                detector_set_elevation(detector, detector_get_alt(detector));
-                return DETECTOR_LANDING_EVENT;
-            }
-            /* Fall through */
         case SUBSTATE_ASCENT:
             if (detector_is_apogee(detector)) {
                 ininfo("Detected apogee from the airborne state\n");
                 return DETECTOR_APOGEE_EVENT;
+            } else if (detector_is_landed(detector)) {
+                ininfo("Detected landing from the airborne state\n");
+                detector_set_elevation(detector, detector_get_alt(detector));
+                return DETECTOR_LANDING_EVENT;
             }
             break;
+
         case SUBSTATE_DESCENT:
             if (detector_is_landed(detector)) {
                 ininfo("Detected a landing event from the descent state\n");
@@ -259,11 +243,14 @@ enum detector_event detector_detect(struct detector *detector) {
             }
             break;
         }
+
     } break;
+
     default:
         /* Ignore states like landing */
         break;
     }
+
     return DETECTOR_NO_EVENT;
 }
 

@@ -59,11 +59,13 @@ void *fusion_main(void *arg) {
     };
     const struct orb_metadata *barometa;
     const struct orb_metadata *accelmeta;
+    int altitude_fd;
 
     ininfo("Fusion thread started.");
 
     state_get_flightstate(state, &flight_state);
     state_get_flightsubstate(state, &flight_substate);
+    ininfo("Detector initialized with flight state: %d, %d", flight_state, flight_substate);
 
     /* Input sensors, may want to directly read instead */
 
@@ -80,11 +82,8 @@ void *fusion_main(void *arg) {
     detector_set_state(&detector, flight_state, flight_substate);
 
     /* Set the elevation, which will either be a remembered value or a sensible default (and convert to meters) */
-    // detector_set_elevation(&detector, init_elevation / 1000);
 
-    /* Currently publishing blank data to start, might be better to try and advertise only on first fusioned data */
-
-    int altitude_fd = orb_advertise_multi_queue(ORB_ID(fusion_altitude), NULL, NULL, ALT_FUSION_BUFFER);
+    altitude_fd = orb_advertise_multi_queue(ORB_ID(fusion_altitude), NULL, NULL, ALT_FUSION_BUFFER);
     if (altitude_fd < 0) {
         inerr("Fusion could not advertise altitude topic: %d\n", altitude_fd);
     }
@@ -94,13 +93,13 @@ void *fusion_main(void *arg) {
     /* Output sensors */
 
     unsigned int iter = 0;
+    int len;
     for (;;) {
 
         /* Wait for new data */
 
         poll(fds, sizeof(fds) / sizeof(fds[0]), -1);
-
-        int len = get_sensor_data(&fds[0], baro_data, sizeof(baro_data));
+        len = get_sensor_data(&fds[0], baro_data, sizeof(baro_data));
 
         if (len > 0) {
             for (int i = 0; i < (len / sizeof(struct sensor_baro)); i++) {
@@ -124,7 +123,9 @@ void *fusion_main(void *arg) {
         if ((++iter & 0xFF) == 0) {
             state_get_flightstate(state, &flight_state);
             state_get_flightsubstate(state, &flight_substate);
-            // This is how the detector gets set into the IDLE state by the logging thread
+
+            /* NOTE: This is how the detector gets set into the IDLE state by the logging thread */
+
             detector_set_state(&detector, flight_state, flight_substate);
         }
 
@@ -133,9 +134,10 @@ void *fusion_main(void *arg) {
         switch (detector_detect(&detector)) {
         case DETECTOR_AIRBORNE_EVENT: {
             /* Make sure we're in the idle state when going to airborne */
+
             state_get_flightstate(state, &flight_state);
             if (flight_state == STATE_IDLE) {
-                ininfo("Changing the flight state, altitude is %f and acceleration is %f\n",
+                ininfo("Changing to SUBSTATE_ASCENT, altitude is %f and acceleration is %f\n",
                        detector_get_alt(&detector), detector_get_accel(&detector));
                 state_set_flightstate(state, STATE_AIRBORNE);
                 state_set_flightsubstate(state, SUBSTATE_ASCENT);
@@ -145,9 +147,10 @@ void *fusion_main(void *arg) {
 
         case DETECTOR_APOGEE_EVENT: {
             /* Make sure we're airborne already before setting to descent */
+
             state_get_flightstate(state, &flight_state);
             if (flight_state == STATE_AIRBORNE) {
-                ininfo("Changing the flight state, altitude is %f and acceleration is %f\n",
+                ininfo("Changing to SUBSTATE_DESCENT, altitude is %f and acceleration is %f\n",
                        detector_get_alt(&detector), detector_get_accel(&detector));
                 state_set_flightsubstate(state, SUBSTATE_DESCENT);
                 detector_set_state(&detector, STATE_AIRBORNE, SUBSTATE_DESCENT);
@@ -158,49 +161,51 @@ void *fusion_main(void *arg) {
 
         case DETECTOR_LANDING_EVENT: {
             /* We can set to landing from anywhere */
-            ininfo("Changing the flight state, altitude is %f and acceleration is %f\n", detector_get_alt(&detector),
+
+            ininfo("Changing to STATE_LANDED, altitude is %f and acceleration is %f\n", detector_get_alt(&detector),
                    detector_get_accel(&detector));
             state_set_flightstate(state, STATE_LANDED);
-            // Set the detector back to the landed state right away - airborne events will only cause a state transition
-            // once the system is back in the idle state
+
+            /* Set the detector back to the landed state right away - airborne events will only cause a state transition
+             * once the system is back in the idle state */
+
             detector_set_state(&detector, STATE_LANDED, SUBSTATE_UNKNOWN);
         } break;
 
         default:
             /* Includes DETECTOR_NO_EVENT
-             * The landed to idle state transition is done by the thread responsible for copying out the flight data
-             */
+             * The landed to idle state transition is done by the thread responsible for copying out the flight data */
             break;
         }
     }
 }
 
-/**
- * Calculates the current altitude above sea level using temperature adjusted barometer readings
+/*
+ * Calculates the current altitude above sea level using temperature adjusted barometer readings.
+ *
+ * NOTE: Function assumes barometric reading is temperature adjusted.
+ *
  * @param baro_data The barometer data to use for the calculation
  * @return The calculated altitude and the timestamp from baro_data
  */
 struct fusion_altitude calculate_altitude(struct sensor_baro *baro_data) {
-    struct fusion_altitude output;
-    output.timestamp = baro_data->timestamp;
-
-    /* Assume barometric reading is temperature adjusted */
-    output.altitude = -(GAS_CONSTANT * (KELVIN + baro_data->temperature)) / (MOLAR_MASS * GRAVITY) *
-                      log(baro_data->pressure / SEA_PRESSURE);
-    return output;
+    return (struct fusion_altitude){
+        .timestamp = baro_data->timestamp,
+        .altitude = -(GAS_CONSTANT * (KELVIN + baro_data->temperature)) / (MOLAR_MASS * GRAVITY) *
+                    log(baro_data->pressure / SEA_PRESSURE),
+    };
 }
 
-/**
- * Calculates the magnitude of an acceleration reading
+/* Calculates the magnitude of an acceleration reading.
+ *
  * @param accel_data The accelerometer data to use in the calculation
  * @return The calculated magnitude and the timestamp from accel_data
  */
 static struct accel_sample calculate_accel_magnitude(struct sensor_accel *accel_data) {
-    struct accel_sample output;
-    output.time = accel_data->timestamp;
-
-    output.acceleration = sqrtf(powf(accel_data->x, 2) + powf(accel_data->y, 2) + powf(accel_data->z, 2));
-    return output;
+    return (struct accel_sample){
+        .time = accel_data->timestamp,
+        .acceleration = sqrtf(powf(accel_data->x, 2) + powf(accel_data->y, 2) + powf(accel_data->z, 2)),
+    };
 }
 
 /* Gets data from the sensor if the POLLIN event has occured

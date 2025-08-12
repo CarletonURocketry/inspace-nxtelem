@@ -108,14 +108,15 @@ int packet_buffer_init(packet_buffer_t *buffer) {
 packet_node_t *packet_buffer_get_empty(packet_buffer_t *buffer) {
     packet_node_t *packet;
     packet = packet_queue_lpop(&buffer->empty_queue);
+
     if (!packet) {
         indebug("No empty packets to write into, getting a full packet to overwrite\n");
         packet = packet_queue_rpop(&buffer->full_queue);
     }
+
     if (packet) {
         packet->end = packet->packet;
     }
-    indebug("Got an packet from the buffer at address %p to write into\n", packet);
     return packet;
 }
 
@@ -126,7 +127,6 @@ packet_node_t *packet_buffer_get_empty(packet_buffer_t *buffer) {
  * @return A packet that has 0 or more bytes in it
  */
 packet_node_t *packet_buffer_get_full(packet_buffer_t *buffer) {
-    indebug("Getting a full packet from the buffer\n");
     return packet_queue_wait_lpop(&buffer->full_queue);
 }
 
@@ -147,11 +147,5 @@ void packet_buffer_put_empty(packet_buffer_t *buffer, packet_node_t *node) {
  * @param node The full packet that is ready to be used by other parts of the system
  */
 void packet_buffer_put_full(packet_buffer_t *buffer, packet_node_t *node) {
-    indebug("Putting a full packet back into the buffer: ");
-    if (node != NULL) {
-        indebug("packet of length %d\n", node->end - node->packet);
-    } else {
-        indebug("node is NULL\n");
-    }
     packet_queue_push(&buffer->full_queue, node);
 }

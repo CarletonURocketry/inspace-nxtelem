@@ -146,8 +146,7 @@ void window_criteria_init(struct window_criteria *window, float target_size, uin
     window->duration = 0;
 }
 
-/**
- * Update the window a new value, resetting it if necessary
+/* Update the window with a new value, resetting it if necessary.
  *
  * @param window The window to update
  * @param new_value The value to add to the window

@@ -12,17 +12,17 @@
 /* Enum representing the current flight state. */
 
 enum flight_state_e {
-    STATE_IDLE,     /* The rocket is idle on the pad. */
-    STATE_AIRBORNE, /* The rocket is in the air. */
-    STATE_LANDED,   /* The rocket is landed. */
+    STATE_IDLE = 0,     /* The rocket is idle on the pad. */
+    STATE_AIRBORNE = 1, /* The rocket is in the air. */
+    STATE_LANDED = 2,   /* The rocket is landed. */
 };
 
 /* Enum representing the substate of the current flight state, if applicable */
 
 enum flight_substate_e {
-    SUBSTATE_UNKNOWN, /* The flight substate is unknown. */
-    SUBSTATE_ASCENT,  /* The rocket is ascending. */
-    SUBSTATE_DESCENT, /* The rocket is descending. */
+    SUBSTATE_UNKNOWN = 0, /* The flight substate is unknown. */
+    SUBSTATE_ASCENT = 1,  /* The rocket is ascending. */
+    SUBSTATE_DESCENT = 2, /* The rocket is descending. */
 };
 
 /* State information about the rocket */
