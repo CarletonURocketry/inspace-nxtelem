@@ -7,6 +7,8 @@
 
 #if defined(CONFIG_LPWAN_RN2XX3)
 #include <nuttx/wireless/lpwan/rn2xx3.h>
+#else
+enum rn2xx3_cr_e { SIM_NO_CODE_RATE = 0x0 };
 #endif
 
 /* Enum representing the current flight state. */

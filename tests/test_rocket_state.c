@@ -19,7 +19,8 @@ static void write_to_state_file(uint8_t *data, size_t len) {
 
 /* Eeprom may not work like regular file - overwrite to delete data to be sure */
 static void clear_rocket_state(void) {
-    const char *empty = "\0\0\0\0\0\0\0\0\0\0\0";
+    static char empty[100];
+    memset(empty, 0, sizeof(empty));
     write_to_state_file((uint8_t *)empty, sizeof(empty));
 }
 
@@ -35,7 +36,8 @@ static void test_no_state__sent_to_airborne(void) {
 
 /* Test that an invalid flight state results in the idle state being loaded */
 static void test_invalid_state__sent_to_airborne(void) {
-    const char *garbage = "FFFFFFFF";
+    static char garbage[100];
+    memset(garbage, 'A', sizeof(garbage));
     write_to_state_file((uint8_t *)garbage, sizeof(garbage));
     rocket_state_t state;
     TEST_ASSERT_NOT_EQUAL(0, state_init(&state));
