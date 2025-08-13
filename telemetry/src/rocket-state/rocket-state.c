@@ -160,10 +160,17 @@ int state_init(rocket_state_t *state) {
     int err;
 
     err = flightstate_read(&contents);
-    if (err < 0) {
-        inerr("Couldn't read from nv storage, setting idle flightstate: %d\n", err);
+    if (err) {
+        inerr("Couldn't read from nv storage, setting airborne flightstate: %d\n", err);
         atomic_store(&state->state, STATE_AIRBORNE);
         atomic_store(&state->substate, SUBSTATE_UNKNOWN);
+
+        contents.flight_state = STATE_AIRBORNE;
+        contents.flight_substate = SUBSTATE_UNKNOWN;
+        int write_err = flightstate_write(&contents);
+        if (write_err) {
+            inerr("Couldn't write new flightstate to nv storage after read failure: %d\n", write_err);
+        }
     } else {
         atomic_store(&state->state, contents.flight_state);
         atomic_store(&state->substate, contents.flight_substate);
@@ -181,16 +188,15 @@ static int save_state(rocket_state_t *state) {
     int err;
 
     err = flightstate_read(&contents);
-    if (err < 0) {
+    if (err) {
         inerr("Couldn't load old EEPROM contents to overwrite state.\n");
-        return err;
     }
 
     contents.flight_state = atomic_load(&state->state);
     contents.flight_substate = atomic_load(&state->substate);
 
     err = flightstate_write(&contents);
-    if (err < 0) {
+    if (err) {
         inerr("Couldn't write flight state to nv storage, continuing anyways\n");
     }
     return err;

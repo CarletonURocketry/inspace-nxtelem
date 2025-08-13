@@ -237,12 +237,11 @@ static void test_open_log_file(void) {
     TEST_ASSERT_EQUAL(0, open_log_file(&file, test_format, 0, 1000, "w+"));
     TEST_ASSERT_EQUAL(0, fclose(file));
 
-    char long_pathname[] = TEST_OPEN_DIR "/very_very_very_very_very_very_very_very_long_name";
+    char long_pathname[] = TEST_OPEN_DIR "/very_very_very_very_very_very_long";
     TEST_ASSERT_GREATER_THAN_MESSAGE(NAME_MAX, sizeof(long_pathname),
                                      "Test name is not long enough to test MAX_NAME limit!");
-    TEST_ASSERT_EQUAL_MESSAGE(0, open_log_file(&file, long_pathname, 0, 1000, "w"),
-                              "Should still be able to open file with name that's too long");
-    TEST_ASSERT_EQUAL(0, fclose(file));
+    TEST_ASSERT_EQUAL_MESSAGE(-22, open_log_file(&file, long_pathname, 0, 1000, "w"),
+                              "Should not be able to open file with name that's too long");
 
     remove_test_dir(TEST_OPEN_DIR);
 }
