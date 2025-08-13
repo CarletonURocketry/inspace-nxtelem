@@ -712,9 +712,7 @@ static void gnss_handler(void *ctx, void *data) {
 
     add_gnss_block(&context->logging, gnss_data);
     add_gnss_msl_block(&context->logging, gnss_data);
-        
-    context->transmit.last_lat = gnss_data->latitude;
-    context->transmit.last_long = gnss_data->longitude;
+    
     add_gnss_block(&context->transmit, gnss_data);
     add_gnss_msl_block(&context->transmit, gnss_data);
 }
