@@ -217,6 +217,7 @@ static struct orb_metadata const *uorb_metas[] = {
     [SENSOR_ALT] = ORB_ID(fusion_altitude),
 };
 
+#ifndef CONFIG_INSPACE_MOCKING
 /* Sensor desired sampling rates in Hz*/
 
 static const uint32_t sample_freqs[] = {
@@ -237,6 +238,7 @@ static const uint32_t sample_freqs[] = {
 #endif
     [SENSOR_ALT] = CONFIG_INSPACE_TELEMETRY_ALT_SF,
 };
+#endif
 
 /* Data handlers for different sensors */
 
@@ -346,7 +348,14 @@ void *collection_main(void *arg) {
 
     ininfo("Sensors configured with specific settings.\n");
 
-    /* Set sample frequencies for all sensors */
+#ifndef CONFIG_INSPACE_MOCKING
+    /* Set sample frequencies for all sensors
+     *
+     * NOTE: setting frequencies when mocking will break some flight records
+     * since all measurements in the CSV are synced line to line, so if we set
+     * accel to be faster than barometer, the measurements will be out of sync
+     * chronologically. Hence, disable frequency configurations when mocking.
+     */
 
     ininfo("Setting sensor sample frequencies.\n");
 
@@ -366,6 +375,7 @@ void *collection_main(void *arg) {
     }
 
     ininfo("Sensor frequencies set.\n");
+#endif
 
     ininfo("Setting up ADC device.\n");
 
@@ -483,7 +493,6 @@ static uint8_t *add_or_new(collection_info_t *collection, enum block_type_e type
     next_block = add_block(collection, type, mission_time);
     if (next_block == NULL) {
         /* Can't add to this packet, it's full or we can just assume its done being assembled */
-        indebug("Completed a packet length %d\n", collection->current->end - collection->current->packet);
         packet_buffer_put_full(collection->buffer, collection->current);
         collection->current = packet_buffer_get_empty(collection->buffer);
         reset_block_count(collection);

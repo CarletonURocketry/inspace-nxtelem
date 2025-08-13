@@ -211,6 +211,7 @@ static int usb_init(void) {
 
     do {
         usbfd = open(USB_PATH, O_RDWR);
+        usleep(100);
 
         /* If we get anything besides an indication that the USB is not yet connected, that's a failure */
 

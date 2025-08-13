@@ -64,7 +64,7 @@ void *logging_main(void *arg) {
     FILE *standby_file = NULL;
     struct timespec last_swap;
 
-    indebug("Logging thread started.\n");
+    ininfo("Logging thread started.\n");
 
     ejectled_set(false); /* Turn off LED on start */
 
@@ -143,7 +143,9 @@ void *logging_main(void *arg) {
 
             // Have to flush and sync on the power safe file system to commit writes. Do this sparingly to save time
             if ((packet_seq_num % CONFIG_INSPACE_TELEMETRY_FS_SYNC_FREQ) == 0) {
+                indebug("Syncing littlefs...\n");
                 fsync(fileno(active_file));
+                indebug("littlefs synced!\n");
             }
 
         } break;
