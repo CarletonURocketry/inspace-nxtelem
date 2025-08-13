@@ -12,6 +12,7 @@
 #define AIRBORNE_ALT_THRESHOLD ((float)(CONFIG_INSPACE_TELEMETRY_AIRBORNE_ALT_THRESH / 10))
 #define APOGEE_ALT_THRESHOLD ((float)(CONFIG_INSPACE_TELEMETRY_APOGEE_ALT_THRESH) / 10)
 #define APOGEE_ACCEL_THRESHOLD ((float)(CONFIG_INSPACE_TELEMETRY_APOGEE_ACCEL_THRESH) / 10)
+#define LANDED_ACCEL_THRESHOLD_MIN (6.0f)
 
 /* The maximum speed with which our altitude could decrease at apogee, to differentiate mach lockout */
 
@@ -78,7 +79,8 @@ static bool detector_is_landed(struct detector *detector) {
      * the barometer's readings are unreliable when airborne.
      */
     return detector_alt_valid(detector) && window_criteria_satisfied(&detector->land_alt_window) &&
-           detector_accel_valid(detector) && detector_get_accel(detector) < AIRBORNE_ACCEL_THRESHOLD;
+           detector_accel_valid(detector) && detector_get_accel(detector) < AIRBORNE_ACCEL_THRESHOLD &&
+           detector_get_accel(detector) > LANDED_ACCEL_THRESHOLD_MIN;
 }
 
 /**
