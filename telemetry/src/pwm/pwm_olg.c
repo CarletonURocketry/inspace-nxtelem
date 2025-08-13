@@ -39,18 +39,13 @@ static int set_pwm_freq(int pwm_fd, float freq) {
 
     /* Get the configuration */
 
-    indebug("Got characteristics\n");
     err = ioctl(pwm_fd, PWMIOC_GETCHARACTERISTICS, &pwm_config);
     if (err < 0) {
         return errno;
     }
 
-    indebug("Freq: %lu\n", pwm_config.frequency);
-
     pwm_config.frequency = freq;
     pwm_config.duty = 32768;
-
-    indebug("Freq: %lu\n", pwm_config.frequency);
 
     /* Set the configuration */
 
@@ -58,7 +53,6 @@ static int set_pwm_freq(int pwm_fd, float freq) {
     if (err < 0) {
         return errno;
     }
-    indebug("Set characteristics\n");
 
     /* Turn on the PWM signal */
 
@@ -66,7 +60,6 @@ static int set_pwm_freq(int pwm_fd, float freq) {
     if (err < 0) {
         return errno;
     }
-    indebug("Set PWM frequency to %f\n", freq);
 
     return err;
 }
@@ -80,10 +73,10 @@ static int pwm_turn_off(int pwm_fd) {
     int err;
 
     err = ioctl(pwm_fd, PWMIOC_STOP, NULL);
+
     if (err < 0) {
         return errno;
     }
-    indebug("Stopped PWM\n");
 
     return err;
 }

@@ -74,6 +74,8 @@
 typedef struct {
     packet_buffer_t *buffer;
     packet_node_t *current;
+    float last_lat;
+    float last_long;
     int block_count[DATA_RES_ABOVE];
 } collection_info_t;
 
@@ -215,6 +217,7 @@ static struct orb_metadata const *uorb_metas[] = {
     [SENSOR_ALT] = ORB_ID(fusion_altitude),
 };
 
+#ifndef CONFIG_INSPACE_MOCKING
 /* Sensor desired sampling rates in Hz*/
 
 static const uint32_t sample_freqs[] = {
@@ -235,6 +238,7 @@ static const uint32_t sample_freqs[] = {
 #endif
     [SENSOR_ALT] = CONFIG_INSPACE_TELEMETRY_ALT_SF,
 };
+#endif
 
 /* Data handlers for different sensors */
 
@@ -344,7 +348,14 @@ void *collection_main(void *arg) {
 
     ininfo("Sensors configured with specific settings.\n");
 
-    /* Set sample frequencies for all sensors */
+#ifndef CONFIG_INSPACE_MOCKING
+    /* Set sample frequencies for all sensors
+     *
+     * NOTE: setting frequencies when mocking will break some flight records
+     * since all measurements in the CSV are synced line to line, so if we set
+     * accel to be faster than barometer, the measurements will be out of sync
+     * chronologically. Hence, disable frequency configurations when mocking.
+     */
 
     ininfo("Setting sensor sample frequencies.\n");
 
@@ -364,6 +375,7 @@ void *collection_main(void *arg) {
     }
 
     ininfo("Sensor frequencies set.\n");
+#endif
 
     ininfo("Setting up ADC device.\n");
 
@@ -429,6 +441,8 @@ void *collection_main(void *arg) {
 static int setup_collection(collection_info_t *collection, packet_buffer_t *packet_buffer) {
     collection->buffer = packet_buffer;
     collection->current = packet_buffer_get_empty(packet_buffer);
+    collection->last_lat = NAN;
+    collection->last_long = NAN;
     reset_block_count(collection);
     if (!collection->current) {
         return -1;
@@ -479,7 +493,6 @@ static uint8_t *add_or_new(collection_info_t *collection, enum block_type_e type
     next_block = add_block(collection, type, mission_time);
     if (next_block == NULL) {
         /* Can't add to this packet, it's full or we can just assume its done being assembled */
-        indebug("Completed a packet length %d\n", collection->current->end - collection->current->packet);
         packet_buffer_put_full(collection->buffer, collection->current);
         collection->current = packet_buffer_get_empty(collection->buffer);
         reset_block_count(collection);
@@ -492,8 +505,21 @@ static uint8_t *add_or_new(collection_info_t *collection, enum block_type_e type
         /* Leave seq num up to the logger/transmitter (don't know if or in what order packets get transmitted) */
 
         collection->current->end = pkt_init(collection->current->packet, 0, mission_time);
+    
+        /* Always make first block of packet a coords block with most recent coordinates if we have them */
+        if (collection->last_lat == NAN && collection->last_long == NAN) {
+            inwarn("No coordinates data in packet\n");
+        } else {
+            next_block = pkt_create_blk(collection->current->packet, collection->current->end, DATA_LAT_LONG, mission_time);
+            coord_blk_init((struct coord_blk_t *)block_body(next_block), point_one_microdegrees(collection->last_lat),
+                           point_one_microdegrees(collection->last_long));
+            if (next_block == NULL) {
+                inerr("Couldn't add a block to a new packet\n");
+                return NULL;
+            }
+        }
         next_block = pkt_create_blk(collection->current->packet, collection->current->end, type, mission_time);
-
+        
         if (next_block == NULL) {
             inerr("Couldn't add a block to a new packet\n");
             return NULL;
@@ -644,6 +670,8 @@ static void gyro_handler(void *ctx, void *data) {
  * @param gnss_data The gnss data to add
  */
 static void add_gnss_block(collection_info_t *collection, struct sensor_gnss *gnss_data) {
+    collection->last_lat = gnss_data->latitude;
+    collection->last_long = gnss_data->longitude;
     uint8_t *block = add_or_new(collection, DATA_LAT_LONG, us_to_ms(gnss_data->timestamp));
     if (block) {
         coord_blk_init((struct coord_blk_t *)block_body(block), point_one_microdegrees(gnss_data->latitude),
@@ -693,7 +721,7 @@ static void gnss_handler(void *ctx, void *data) {
 
     add_gnss_block(&context->logging, gnss_data);
     add_gnss_msl_block(&context->logging, gnss_data);
-
+    
     add_gnss_block(&context->transmit, gnss_data);
     add_gnss_msl_block(&context->transmit, gnss_data);
 }

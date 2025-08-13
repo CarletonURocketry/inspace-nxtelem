@@ -205,4 +205,99 @@ config INSPACE_TELEMETRY_ALT_SF
 	---help---
 		The sampling frequency for fusion altitude
 
+comment "Detection options"
+
+config INSPACE_TELEMETRY_STALETIME
+	int "Stale measurement time"
+	default 1000000
+	range 0 10000000
+	---help---
+		The time that measurements should be valid for when detecting flight
+		states.
+
+config INSPACE_TELEMETRY_ELEV_DELAY
+	int "Elevation delay"
+	default 100000
+	range 0 10000000
+	---help---
+		The time on after initialization to take an altitude reading and use as
+		the maximum landing altitude, in microseconds.
+
+config INSPACE_TELEMETRY_LANDED_ALT_DURATION
+	int "Landed altitude window duration"
+	default 10000000
+	range 0 100000000
+	---help---
+		The time in microseconds that altitude variation must be within the
+		fluctuation limit for landing detection.
+
+config INSPACE_TELEMETRY_APOGEE_ALT_THRESH
+	int "Apogee altitude threshold"
+	default 200
+	---help---
+		The altitude in centimeters below our maximum altitude while airborne we
+		consider apogee to have been reached.
+
+config INSPACE_TELEMETRY_APOGEE_ACCEL_THRESH
+	int "Apogee accelerometer threshold"
+	default 120
+	range 0 320
+	---help---
+		The acceleration (magnitude) in centimeters per second squared above
+		which we will not detect an apogee event. Should be around 0, since
+		rocket is weightless at apogee.
+
+config INSPACE_TELEMETRY_LANDED_ALT_WINDOW
+	int "Landed altitude window size"
+	default 50
+	range 0 5000
+	---help---
+		The maximum amount the altitude can change by in centimeters to consider
+		us landed.
+
+config INSPACE_TELEMETRY_AIRBORNE_ALT_THRESH
+	int "Airborne altitude threshold"
+	default 200
+	range 0 5000
+	---help---
+		The change in altitude when idle to enter the airborne state in
+		centimeters.
+
+config INSPACE_TELEMETRY_AIRBORNE_ACCEL_THRESH
+	int "Airborne acceleration threshold"
+	default 150
+	range 0 320
+	---help---
+		The acceleration above which we consider the rocket to be flying in
+		centimeters per second squared.
+
+config INSPACE_TELEMETRY_ALT_MED_FILT_SIZE
+	int "Altitude median filter size"
+	default 5
+	range 0 32
+	---help---
+		The number of samples the altitude median filter will use at a time.
+
+config INSPACE_TELEMETRY_ACCEL_MED_FILT_SIZE
+	int "Accleration median filter size"
+	default 5
+	range 0 32
+	---help---
+		The number of samples the acceleration median filter will use at a time.
+
+config INSPACE_TELEMETRY_ALT_AVG_FILT_SIZE
+	int "Altitude average filter size"
+	default 5
+	range 0 64
+	---help---
+		The number of samples the altitude average filter will use at a time.
+
+config INSPACE_TELEMETRY_ACCEL_AVG_FILT_SIZE
+	int "Accleration average filter size"
+	default 5
+	range 0 64
+	---help---
+		The number of samples the acceleration average filter will use at a
+		time.
+
 endif # INSPACE_TELEMETRY

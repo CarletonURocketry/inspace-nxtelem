@@ -4,14 +4,6 @@
 #include "../rocket-state/rocket-state.h"
 #include "filtering.h"
 
-/* The number of samples the median filter will use at a time */
-#define ALTITUDE_MEDIAN_FILTER_SIZE 5
-#define ACCEL_MEDIAN_FILTER_SIZE 5
-
-/* The number of samples the averaging filter will use at a time */
-#define ALTITUDE_AVERAGE_FILTER_SIZE 10
-#define ACCEL_AVERAGE_FILTER_SIZE 10
-
 /* Detection events */
 enum detector_event {
     DETECTOR_NO_EVENT,       /* No event has occured */
@@ -31,17 +23,17 @@ struct altitude_sample {
 };
 
 struct alt_filter {
-    float median_backing_sorted[ALTITUDE_MEDIAN_FILTER_SIZE];
-    float median_backing_time_ordered[ALTITUDE_MEDIAN_FILTER_SIZE];
-    float average_backing[ALTITUDE_AVERAGE_FILTER_SIZE];
+    float median_backing_sorted[CONFIG_INSPACE_TELEMETRY_ALT_MED_FILT_SIZE];
+    float median_backing_time_ordered[CONFIG_INSPACE_TELEMETRY_ALT_MED_FILT_SIZE];
+    float average_backing[CONFIG_INSPACE_TELEMETRY_ALT_AVG_FILT_SIZE];
     struct median_filter median;   /* Median filter for altitude */
     struct average_filter average; /* Average filter for altitude */
 };
 
 struct accel_filter {
-    float median_backing_sorted[ACCEL_MEDIAN_FILTER_SIZE];
-    float median_backing_time_ordered[ACCEL_MEDIAN_FILTER_SIZE];
-    float average_backing[ACCEL_AVERAGE_FILTER_SIZE];
+    float median_backing_sorted[CONFIG_INSPACE_TELEMETRY_ACCEL_MED_FILT_SIZE];
+    float median_backing_time_ordered[CONFIG_INSPACE_TELEMETRY_ACCEL_MED_FILT_SIZE];
+    float average_backing[CONFIG_INSPACE_TELEMETRY_ACCEL_AVG_FILT_SIZE];
     struct median_filter median;   /* Median filter for acceleration */
     struct average_filter average; /* Average filter for acceleration */
 };
