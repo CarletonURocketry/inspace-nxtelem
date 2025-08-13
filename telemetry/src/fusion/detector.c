@@ -23,6 +23,12 @@
 /* The altitude below our maximum altitude while airborne we consider apogee to have been reached in meters */
 #define APOGEE_ALT_THRESHOLD 20.0f
 
+/* The maximum amount the altitude can change by in meters to consider us as being at apogee in meters */
+#define APOGEE_ALT_WINDOW_SIZE 300.0f
+
+/* The time in microseconds that altitude variation must be within APOGEE_ALT_WINDOW_SIZE */
+#define APOGEE_ALT_WINDOW_DURATION 1000000
+
 /* The accel above which we will not detect an apogee event in m/s^2 */
 #define APOGEE_ACCEL_THRESHOLD 15.0f
 
@@ -93,7 +99,7 @@ static int detector_is_landed(struct detector *detector) {
      * and then check that acceleration is below launch levels. Acceleration check is necessary in case
      * the barometer's readings are unreliable when airborne
      */
-    return detector_alt_valid(detector) && window_criteria_satisfied(&detector->alt_window) &&
+    return detector_alt_valid(detector) && window_criteria_satisfied(&detector->land_alt_window) &&
            detector_accel_valid(detector) && detector_get_accel(detector) < AIRBORNE_ACCEL_THRESHOLD;
 }
 
@@ -109,7 +115,8 @@ static int detector_is_apogee(struct detector *detector) {
      * at non-transonic speeds enough to compare apogee against the current height directly
      */
     return detector_alt_valid(detector) && detector->apogee - detector_get_alt(detector) > APOGEE_ALT_THRESHOLD &&
-           detector_accel_valid(detector) && detector_get_accel(detector) < APOGEE_ACCEL_THRESHOLD;
+           detector_accel_valid(detector) && detector_get_accel(detector) < APOGEE_ACCEL_THRESHOLD &&
+           window_criteria_satisfied(&detector->apogee_alt_window);
 }
 
 /**
@@ -121,13 +128,13 @@ static int detector_is_apogee(struct detector *detector) {
 void detector_init(struct detector *detector, uint64_t time) {
     median_filter_init(&detector->alts.median, detector->alts.median_backing_sorted,
                        detector->alts.median_backing_time_ordered, sizeof(detector->alts.median_backing_sorted));
-    average_filter_init(&detector->alts.average, detector->alts.average_backing, sizeof(detector->alts.average_backing));
+    average_filter_init(&detector->alts.average, detector->alts.average_backing,
+                        sizeof(detector->alts.average_backing));
 
     median_filter_init(&detector->accels.median, detector->accels.median_backing_sorted,
                        detector->accels.median_backing_time_ordered, sizeof(detector->accels.median_backing_sorted));
-    average_filter_init(&detector->accels.average, detector->accels.average_backing, sizeof(detector->accels.average_backing));
-
-    window_criteria_init(&detector->alt_window, LANDED_ALT_WINDOW_SIZE, LANDED_ALT_WINDOW_DURATION);
+    average_filter_init(&detector->accels.average, detector->accels.average_backing,
+                        sizeof(detector->accels.average_backing));
 
     detector->init_time = time;
     detector->current_time = time;
@@ -143,8 +150,7 @@ void detector_init(struct detector *detector, uint64_t time) {
     detector->elevation = 0.0f;
 
     /* These should ideally be set manually before the detector is used, but these defaults may work */
-    detector->state = STATE_AIRBORNE;
-    detector->substate = SUBSTATE_UNKNOWN;
+    detector_set_state(detector, STATE_AIRBORNE, SUBSTATE_UNKNOWN);
 }
 
 /**
@@ -170,7 +176,8 @@ void detector_add_alt(struct detector *detector, struct altitude_sample *sample)
     }
 
     /* Could limit use of the altitude window to states that need it */
-    window_criteria_add(&detector->alt_window, detector->current_alt, sample->time - detector->last_alt_update);
+    window_criteria_add(&detector->land_alt_window, detector->current_alt, sample->time - detector->last_alt_update);
+    window_criteria_add(&detector->apogee_alt_window, detector->current_alt, sample->time - detector->last_alt_update);
 
     /* If we just powered on and elevation hasn't been set */
     if (!detector->elevation_set) {
@@ -276,6 +283,8 @@ enum detector_event detector_detect(struct detector *detector) {
  * @param substate The flight substate of the rocket
  */
 void detector_set_state(struct detector *detector, enum flight_state_e state, enum flight_substate_e substate) {
+    window_criteria_init(&detector->land_alt_window, LANDED_ALT_WINDOW_SIZE, LANDED_ALT_WINDOW_DURATION);
+    window_criteria_init(&detector->apogee_alt_window, APOGEE_ALT_WINDOW_SIZE, APOGEE_ALT_WINDOW_DURATION);
     if (state == STATE_LANDED) {
         detector_reset_apogee(detector);
     }

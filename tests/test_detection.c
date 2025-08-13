@@ -225,6 +225,29 @@ static void test_airborne_decreasing_alt__no_event(void) {
     }
 }
 
+static void test_impossible_alt_drop__no_event(void) {
+    struct detector detector;
+    detector_init(&detector, 0);
+    detector_set_state(&detector, STATE_AIRBORNE, SUBSTATE_ASCENT);
+
+    // As if we were getting close to mach
+    float params[] = {250, 1000};
+    struct generator alt_gen = {.params = params, .func = &linear_generator};
+    float accel = 0;
+    struct generator accel_gen = {.params = &accel, .func = &const_generator};
+
+    float start_duration = 10;
+    TEST_ASSERT(check_gen_event(&alt_gen, &accel_gen, start_duration, &detector, DETECTOR_NO_EVENT));
+
+    // Suddenly change the velocity to -400m/s and make sure the detector discounts this
+    float end_alt;
+    linear_generator(params, start_duration, &end_alt);
+    params[0] = -400;
+    params[1] = end_alt;
+
+    TEST_ASSERT(check_gen_event_full(&alt_gen, &accel_gen, start_duration, 0.5, &detector, DETECTOR_NO_EVENT));
+}
+
 static void test_idle_increasing_alt__airborne_event(void) {
     struct detector detector;
     detector_init(&detector, 0);
@@ -484,6 +507,7 @@ void test_detection(void) {
     RUN_TEST(test_airborne_increasing_alt__no_event);
     RUN_TEST(test_airborne_high_accel__no_event);
     RUN_TEST(test_airborne_decreasing_alt__no_event);
+    RUN_TEST(test_impossible_alt_drop__no_event);
 
     // Positives
     RUN_TEST(test_idle_increasing_alt__airborne_event);
