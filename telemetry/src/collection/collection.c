@@ -67,10 +67,6 @@
 
 #define DATA_BUF_MIN 5
 
-/* The default sampling rate for low-sample sensors or topics */
-
-#define LOW_SAMPLE_RATE_DEFAULT 10
-
 /* Maximum value that can be returned by the ADC */
 
 #define ADC_MAX_VAL ((1 << 16) - 1)
@@ -78,22 +74,6 @@
 /* Maximum value that can be measured by the ADC. Chosen as 4V2 since that is the maximum battery voltage */
 
 #define MAX_VOLTAGE_MV (4200)
-
-#if defined(CONFIG_SENSORS_LSM6DSO32) || defined(CONFIG_SENSORS_FAKESENSOR)
-#define USE_SENSOR_ACCEL_AND_GYRO
-#endif
-
-#if defined(CONFIG_SENSORS_MS56XX) || defined(CONFIG_SENSORS_FAKESENSOR)
-#define USE_SENSOR_BARO
-#endif
-
-#if defined(CONFIG_SENSORS_LIS2MDL) || defined(CONFIG_SENSORS_FAKESENSOR)
-#define USE_SENSOR_MAG
-#endif
-
-#if defined(CONFIG_SENSORS_L86XXX) || defined(CONFIG_SENSORS_FAKESENSOR)
-#define USE_SENSOR_GNSS
-#endif
 
 typedef struct {
     packet_buffer_t *buffer;
