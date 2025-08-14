@@ -173,6 +173,6 @@ struct volt_blk_t {
     uint8_t id;
 } TIGHTLY_PACKED;
 
-void volt_blk_init(struct volt_blk_t *b, const uint16_t id, const int16_t voltage);
+void volt_blk_init(struct volt_blk_t *b, const uint8_t id, const int16_t voltage);
 
 #endif // _INSPACE_TELEMETRY_PACKET_H_
