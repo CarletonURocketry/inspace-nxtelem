@@ -243,7 +243,7 @@ void mag_blk_init(struct mag_blk_t *b, const int16_t x_axis, const int16_t y_axi
  * @param id The ID of the channel that this voltage was measured on
  * @param voltage The voltage measured in millivolts
  */
-void volt_blk_init(struct volt_blk_t *b, const uint16_t id, const int16_t voltage) {
+void volt_blk_init(struct volt_blk_t *b, const uint8_t id, const int16_t voltage) {
     b->id = id;
     b->voltage = voltage;
 }

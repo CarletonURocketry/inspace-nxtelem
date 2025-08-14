@@ -169,13 +169,13 @@ void coord_blk_init(struct coord_blk_t *b, const int32_t lat, const int32_t lon)
 struct volt_blk_t {
     /* The offset from the absolute time in the header in milliseconds */
     int16_t time_offset;
-    /* Unique sensor ID. */
-    uint16_t id;
     /* Voltage in millivolts. */
     int16_t voltage;
+    /* Unique sensor ID. */
+    uint8_t id;
 } TIGHTLY_PACKED;
 
-void volt_blk_init(struct volt_blk_t *b, const uint16_t id, const int16_t voltage);
+void volt_blk_init(struct volt_blk_t *b, const uint8_t id, const int16_t voltage);
 
 /* A data block containing information about the rocket's current status */
 struct status_blk_t {

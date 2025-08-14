@@ -8,9 +8,14 @@
 #include "fusion/fusion.h"
 #include "logging/logging.h"
 #include "packets/buffering.h"
+#include "pwm/pwm_olg.h"
 #include "rocket-state/rocket-state.h"
 #include "syslogging.h"
 #include "transmission/transmit.h"
+
+#ifdef CONFIG_INSPACE_TELEMETRY_USBSH
+#include "shell/shell.h"
+#endif
 
 /* Buffers for sharing sensor data between threads */
 
@@ -21,13 +26,16 @@ static pthread_t transmit_thread;
 static pthread_t log_thread;
 static pthread_t collect_thread;
 static pthread_t fusion_thread;
+static pthread_t startup_sound_thread;
+#ifdef CONFIG_INSPACE_TELEMETRY_USBSH
+static pthread_t shell_thread;
+#endif
 
 static rocket_state_t state; /* The shared rocket state. */
+static struct config_options config;
 
 int main(int argc, char **argv) {
     int err;
-
-    /* Thread handles. */
 
     ininfo("You are running the Carleton University InSpace telemetry system.");
 
@@ -41,6 +49,24 @@ int main(int argc, char **argv) {
         if (err) {
             inwarn("Could not set flight state properly either, continuing anyways: %d\n", err);
         }
+        err = state_set_flightsubstate(&state, SUBSTATE_UNKNOWN);
+        if (err) {
+            inerr("Could not set flight substate, continuing anyways: %d\n", err);
+        }
+    }
+
+    /* Grab configuration parameters from EEPROM */
+
+    err = config_get(&config);
+    if (err) {
+        inerr("Couldn't read EEPROM contents: %d\n", err);
+        // TODO maybe some sensible defaults?
+    }
+
+    // Allow apogee to be detected again (in case we happen to actually be in liftoff when loaded)
+    if (state.state == STATE_AIRBORNE && state.substate == SUBSTATE_DESCENT) {
+        ininfo("Loaded the descent substate, but setting to unknown to trigger apogee again");
+        state_set_flightsubstate(&state, SUBSTATE_UNKNOWN);
     }
 
     err = packet_buffer_init(&transmit_buffer);
@@ -65,7 +91,11 @@ int main(int argc, char **argv) {
         goto exit_error;
     }
 
-    struct transmit_args transmit_thread_args = {.state = &state, .buffer = &transmit_buffer};
+    struct transmit_args transmit_thread_args = {
+        .state = &state,
+        .buffer = &transmit_buffer,
+        .config = config.radio,
+    };
     err = pthread_create(&transmit_thread, NULL, transmit_main, &transmit_thread_args);
     if (err) {
         inerr("Problem starting transmission thread: %d\n", err);
@@ -86,6 +116,24 @@ int main(int argc, char **argv) {
         goto exit_error;
     }
 
+#ifdef CONFIG_INSPACE_TELEMETRY_USBSH
+    struct shell_args shell_args;
+    err = pthread_create(&shell_thread, NULL, shell_main, &shell_args);
+    if (err) {
+        inerr("Problem starting shell thread: %d\n", err);
+        exit(EXIT_FAILURE);
+    }
+#else
+#warning "Telemetry application is being compiled without configuration shell."
+#endif
+
+    /* No args needed for startup sound thread */
+    err = pthread_create(&startup_sound_thread, NULL, startup_sound_main, NULL);
+    if (err) {
+        inerr("Problem starting startup thread: %d\n", err);
+        exit(EXIT_FAILURE);
+    }
+
     publish_status(STATUS_SYSTEMS_NOMINAL);
 
     /* Join on all threads: TODO handle errors */
@@ -94,6 +142,9 @@ int main(int argc, char **argv) {
     err = pthread_join(transmit_thread, NULL);
     err = pthread_join(log_thread, NULL);
     err = pthread_join(fusion_thread, NULL);
+#ifdef CONFIG_INSPACE_TELEMETRY_USBSH
+    err = pthread_join(shell_thread, NULL);
+#endif
 
     return err;
 
