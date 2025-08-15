@@ -27,7 +27,7 @@
 
 #define err_to_ptr(err) ((void *)((err)))
 
-static ssize_t transmit(int radio, uint8_t *packet, size_t packet_size);
+static int transmit(int radio, uint8_t *packet, size_t packet_size);
 static int configure_radio(int fd, struct radio_options const *config);
 
 /* Main thread for data transmission over radio. */
@@ -77,8 +77,8 @@ void *transmit_main(void *arg) {
  * @param packet_size The size of the packet to transmit
  * @return The number of bytes written or a negative error code
  */
-static ssize_t transmit(int radio, uint8_t *packet, size_t packet_size) {
-    ssize_t written = write(radio, packet, packet_size);
+static int transmit(int radio, uint8_t *packet, size_t packet_size) {
+    int written = write(radio, packet, packet_size);
     int err = 0;
     if (written == -1) {
         err = errno;
