@@ -127,9 +127,11 @@ void *fusion_main(void *arg) {
         if ((++iter & 0xFF) == 0) {
             state_get_flightstate(state, &flight_state);
             state_get_flightsubstate(state, &flight_substate);
-            // This is how the detector gets set into the IDLE state by the logging thread
-            detector_set_state(&detector, flight_state, flight_substate);
             publish_state_update(flight_state, flight_substate);
+
+            /* NOTE: This is how the detector gets set into the IDLE state by the logging thread */
+            detector_set_state(&detector, flight_state, flight_substate);
+            indebug("Acceleration - %.2f, Altitude - %.2f\n", detector_get_accel(&detector), detector_get_alt(&detector));
         }
 
         /* Run detection. Potentially run periodically instead of every update */

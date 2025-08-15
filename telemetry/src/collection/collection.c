@@ -480,11 +480,16 @@ static void reset_block_count(collection_info_t *collection) {
  * @return The location to write the block, or NULL if the block could not be added
  */
 static uint8_t *add_block(collection_info_t *collection, enum block_type_e type, uint32_t mission_time) {
-    uint8_t *block = pkt_create_blk(collection->current->packet, collection->current->end, type, mission_time);
-    if (block) {
+    uint8_t *block_end = pkt_create_blk(collection->current->packet, collection->current->end, type, mission_time);
+    uint8_t *block_start = collection->current->end;
+    /* Will be NULL if the block can't be added to this packet */
+    if (block_end) {
         collection->block_count[type]++;
+        collection->current->end = block_end;
+        return block_start;
     }
-    return block;
+
+    return NULL;
 }
 
 /**
@@ -496,14 +501,13 @@ static uint8_t *add_block(collection_info_t *collection, enum block_type_e type,
  * @return The location to write the requested type of block
  */
 static uint8_t *add_or_new(collection_info_t *collection, enum block_type_e type, uint32_t mission_time) {
-    uint8_t *next_block;
-    uint8_t *write_to;
+    uint8_t *block_start;
 
     /* The last byte of the packet will be where the block is allocated, but we need to know where it will end to update
      * (*node)->end */
 
-    next_block = add_block(collection, type, mission_time);
-    if (next_block == NULL) {
+    block_start = add_block(collection, type, mission_time);
+    if (block_start == NULL) {
         /* Can't add to this packet, it's full or we can just assume its done being assembled */
         packet_buffer_put_full(collection->buffer, collection->current);
         collection->current = packet_buffer_get_empty(collection->buffer);
@@ -518,30 +522,27 @@ static uint8_t *add_or_new(collection_info_t *collection, enum block_type_e type
 
         collection->current->end = pkt_init(collection->current->packet, 0, mission_time);
 
+
+#ifdef HAS_GNSS
         /* Always make first block of packet a coords block with most recent coordinates if we have them */
-        if (collection->last_lat == NAN && collection->last_long == NAN) {
+        if (isnanf(collection->last_lat) || isnanf(collection->last_long)) {
             inwarn("No coordinates data in packet\n");
         } else {
-            next_block =
-                pkt_create_blk(collection->current->packet, collection->current->end, DATA_LAT_LONG, mission_time);
-            coord_blk_init((struct coord_blk_t *)block_body(next_block), point_one_microdegrees(collection->last_lat),
-                           point_one_microdegrees(collection->last_long));
-            if (next_block == NULL) {
+            block_start = add_block(collection, DATA_LAT_LONG, mission_time);
+            if (block_start == NULL) {
                 inerr("Couldn't add a block to a new packet\n");
                 return NULL;
             }
+            coord_blk_init((struct coord_blk_t *)block_body(block_start), point_one_microdegrees(collection->last_lat),
+                           point_one_microdegrees(collection->last_long));
         }
-        next_block = pkt_create_blk(collection->current->packet, collection->current->end, type, mission_time);
-
-        if (next_block == NULL) {
+#endif
+        block_start = add_block(collection, type, mission_time);
+        if (block_start == NULL) {
             inerr("Couldn't add a block to a new packet\n");
-            return NULL;
         }
     }
-
-    write_to = collection->current->end;
-    collection->current->end = next_block;
-    return write_to;
+    return block_start;
 }
 
 #ifdef HAS_BARO
