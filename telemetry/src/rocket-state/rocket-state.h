@@ -11,6 +11,8 @@
 enum rn2xx3_cr_e { SIM_NO_CODE_RATE = 0x0 };
 #endif
 
+#include "../packets/packets.h"
+
 /* Enum representing the current flight state. */
 
 enum flight_state_e {
@@ -37,15 +39,16 @@ typedef struct {
 /* A struct that defines the configuration parameters for the radio */
 
 struct radio_options {
-    uint64_t sync;       /* Sync word */
-    uint32_t freq;       /* Frequency, Hz */
-    int32_t txpwr;       /* Transmit power, dBm */
-    uint32_t bw;         /* Bandwidth, kHz */
-    uint16_t preamble;   /* Preamble length */
-    uint8_t spread;      /* Spread factor */
-    enum rn2xx3_cr_e cr; /* Coding rate */
-    bool crc;            /* CRC enabled */
-    bool iqi;            /* IQI enabled */
+    char callsign[CALLSIGN_MAX_SIZE + 1]; /* Call-sign + null terminator */
+    uint64_t sync;                        /* Sync word */
+    uint32_t freq;                        /* Frequency, Hz */
+    int32_t txpwr;                        /* Transmit power, dBm */
+    uint32_t bw;                          /* Bandwidth, kHz */
+    uint16_t preamble;                    /* Preamble length */
+    uint8_t spread;                       /* Spread factor */
+    enum rn2xx3_cr_e cr;                  /* Coding rate */
+    bool crc;                             /* CRC enabled */
+    bool iqi;                             /* IQI enabled */
 };
 
 /* A struct that defines the configuration parameters for the flight computer */

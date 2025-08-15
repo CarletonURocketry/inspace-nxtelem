@@ -3,7 +3,15 @@
 
 #include <stdint.h>
 
+/* Global variable for call-sign to allow changing it from the shell program */
+
+extern char inspace_packetlib_callsign[];
+
 /* The CU InSpace packet specification version implemented here */
+
+/* The maximum call sign size in characters (bytes). */
+
+#define CALLSIGN_MAX_SIZE 9
 
 /* The maximum size a packet can be in bytes. */
 
@@ -35,7 +43,7 @@ enum block_type_e {
 /* Each radio packet will have a header in this format. */
 typedef struct {
     /* The HAM radio call sign with trailing null characters. */
-    char call_sign[9];
+    char call_sign[CALLSIGN_MAX_SIZE];
     /* The measurement time that blocks in this packet are offset from in
      * half-minutes
      */

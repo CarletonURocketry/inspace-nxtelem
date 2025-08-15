@@ -173,6 +173,10 @@ void *shell_main(void *arg) {
                 dprintf(usbfd, "Unknown coding rate: %s\n", firstarg);
             }
             print_config(usbfd, &modified);
+        } else if (strstr(command_in, "callsign")) {
+            memset(modified.radio.callsign, '\0', sizeof(modified.radio.callsign) - 1); /* 0 padded */
+            memcpy(modified.radio.callsign, get_first_arg(command_in), sizeof(modified.radio.callsign) - 1);
+            print_config(usbfd, &modified);
         }
 
         /* Default case */
@@ -261,6 +265,7 @@ static void print_radio_config(int usbfd, struct radio_options const *config) {
     char *coding_rate;
 
     dprintf(usbfd, "radio {\n");
+    dprintf(usbfd, "\tCallsign: %s\n", config->callsign);
     dprintf(usbfd, "\tFrequency: %lu Hz\n", config->freq);
     dprintf(usbfd, "\tTransmit power: %ld dBm\n", config->txpwr);
     dprintf(usbfd, "\tSync word: %016llX\n", config->sync);

@@ -3,6 +3,10 @@
 #include "../syslogging.h"
 #include "packets.h"
 
+/* Global variable for call-sign to allow changing it from the shell program */
+
+char inspace_packetlib_callsign[CALLSIGN_MAX_SIZE] = CONFIG_INSPACE_TELEMETRY_CALLSIGN;
+
 /* Get the absolute timestamp that should be used for a packet created
  * at the given mission time
  */
@@ -57,15 +61,9 @@ static int16_t *block_timestamp(uint8_t *block_body) { return (int16_t *)(block_
  * transmissions.
  */
 void pkt_hdr_init(pkt_hdr_t *p, uint8_t packet_number, uint32_t mission_time) {
-    // Don't include the null-terminator
-    int callsign_length = sizeof(CONFIG_INSPACE_TELEMETRY_CALLSIGN) - 1;
-    if (sizeof(CONFIG_INSPACE_TELEMETRY_CALLSIGN) - 1 < sizeof(p->call_sign)) {
-        memcpy(&p->call_sign, CONFIG_INSPACE_TELEMETRY_CALLSIGN, callsign_length);
-        memset(&p->call_sign[callsign_length], '0', sizeof(p->call_sign) - callsign_length);
-    } else {
-        memcpy(&p->call_sign, CONFIG_INSPACE_TELEMETRY_CALLSIGN, sizeof(p->call_sign));
-    }
+    /* Copy in the real call-sign, assume it is 0 padded. */
 
+    memcpy(&p->call_sign, inspace_packetlib_callsign, sizeof(p->call_sign));
     p->packet_num = packet_number;
     p->timestamp = calc_timestamp(mission_time);
     p->blocks = 0;

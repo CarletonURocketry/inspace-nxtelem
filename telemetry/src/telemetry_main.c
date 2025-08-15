@@ -7,6 +7,7 @@
 #include "fusion/fusion.h"
 #include "logging/logging.h"
 #include "packets/buffering.h"
+#include "packets/packets.h"
 #include "pwm/pwm_olg.h"
 #include "rocket-state/rocket-state.h"
 #include "syslogging.h"
@@ -60,6 +61,10 @@ int main(int argc, char **argv) {
         inerr("Couldn't read EEPROM contents: %d\n", err);
         // TODO maybe some sensible defaults?
     }
+
+    /* Set global call-sign */
+
+    memcpy(inspace_packetlib_callsign, config.radio.callsign, CALLSIGN_MAX_SIZE);
 
     // Allow apogee to be detected again (in case we happen to actually be in liftoff when loaded)
     if (state.state == STATE_AIRBORNE && state.substate == SUBSTATE_DESCENT) {
