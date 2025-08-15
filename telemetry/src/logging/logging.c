@@ -114,6 +114,12 @@ void *logging_main(void *arg) {
                 ininfo("Swapped logging files\n");
             }
 
+            if (!ejectled_on) {
+                if (!ejectled_set(true)) {
+                    ejectled_on = true;
+                }
+            }
+
         } /* Purposeful fall-through */
 
         case STATE_AIRBORNE: {

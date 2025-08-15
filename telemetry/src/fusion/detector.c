@@ -227,7 +227,6 @@ enum detector_event detector_detect(struct detector *detector) {
     /* We are doing detection events based on state because the checks we perform otherwise
      * might not make sense.
      */
-    ininfo("Accel: %.2f, alt %.2f\n", detector->current_accel, detector->current_alt);
 
     switch (detector->state) {
 
