@@ -10,6 +10,7 @@
 #endif
 
 #include "../packets/packets.h"
+#include "../collection/status-update.h"
 #include "../syslogging.h"
 #include "transmit.h"
 
@@ -34,7 +35,7 @@ static int configure_radio(int fd, struct radio_options const *config);
 void *transmit_main(void *arg) {
 
     int err;
-    int radio; /* Radio device file descriptor */
+    int radio = -1; /* Radio device file descriptor */
     struct transmit_args *unpacked_args = (struct transmit_args *)arg;
     packet_buffer_t *buffer = unpacked_args->buffer;
     uint32_t seq_num = 0;
@@ -45,14 +46,14 @@ void *transmit_main(void *arg) {
     if (radio < 0) {
         err = errno;
         inerr("Error getting radio handle: %d\n", err);
-        pthread_exit(err_to_ptr(err)); // TODO: handle more gracefully
+        goto err_cleanup;
     }
 
     err = configure_radio(radio, &unpacked_args->config);
     if (err) {
         /* Error will have been reported in configure_rn2483 where we can say which
          * config failed in particular */
-        pthread_exit(err_to_ptr(err));
+        goto err_cleanup;
     }
 
     /* Transmit forever, regardless of rocket flight state. */
@@ -64,9 +65,11 @@ void *transmit_main(void *arg) {
         packet_buffer_put_empty(buffer, next_packet);
     }
 
-    if (close(radio) < 0) {
+err_cleanup:
+    if (radio != -1 && close(radio) < 0) {
         inerr("Error closing radio handle: %d\n", err);
     }
+    publish_error(PROC_ID_TRANSMIT, ERROR_PROCESS_DEAD);
     pthread_exit(err_to_ptr(err));
 }
 

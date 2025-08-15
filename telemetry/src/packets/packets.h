@@ -2,6 +2,7 @@
 #define _INSPACE_TELEMETRY_PACKETS_H_
 
 #include <stdint.h>
+#include <stdlib.h>
 
 /* The CU InSpace packet specification version implemented here */
 
@@ -29,7 +30,9 @@ enum block_type_e {
     DATA_LAT_LONG = 0x7,    /* Latitude and longitude coordinates */
     DATA_VOLTAGE = 0x8,     /* Voltage in millivolts with a unique ID. */
     DATA_MAGNETIC = 0x9,    /* Magnetic field data */
-    DATA_RES_ABOVE = 0xA,   /* Types unused above this value */
+    DATA_STATUS = 0xA,      /* Status information */
+    DATA_ERROR = 0xB,       /* Error information */
+    DATA_RES_ABOVE = 0xC,   /* Types unused above this value */
 };
 
 /* Each radio packet will have a header in this format. */
@@ -174,5 +177,27 @@ struct volt_blk_t {
 } TIGHTLY_PACKED;
 
 void volt_blk_init(struct volt_blk_t *b, const uint8_t id, const int16_t voltage);
+
+/* A data block containing information about the rocket's current status */
+struct status_blk_t {
+    /* The offset from the absolute time in the header in milliseconds */
+    int16_t time_offset;
+    /* A status code, one of the values in status_blk_code_e */
+    uint8_t status_code;
+} TIGHTLY_PACKED;
+
+void status_blk_init(struct status_blk_t *b, const uint8_t status_code);
+
+/* A data block containing information about an error that occured */
+struct error_blk_t {
+    /* The offset from the absolute time in the header in milliseconds */
+    int16_t time_offset;
+    /* The originating process, must be a value less than 32, as top 3 bits are reserved */
+    uint8_t originating_process;
+    /* An error code, one of the values in error_blk_code_e */
+    uint8_t error_code;
+} TIGHTLY_PACKED;
+
+void error_blk_init(struct error_blk_t *b, const uint8_t proc_id, const uint8_t error_code);
 
 #endif // _INSPACE_TELEMETRY_PACKET_H_
