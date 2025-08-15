@@ -784,7 +784,7 @@ static void voltage_handler(void *ctx, void *data) {
 static void add_error_block(collection_info_t *collection, struct error_message *error) {
     uint8_t *block = add_or_new(collection, DATA_ERROR, us_to_ms(error->timestamp));
     if (block) {
-        error_blk_init((struct error_blk_t *)block, error->proc_id, error->error_code);
+        error_blk_init((struct error_blk_t *)block_body(block), error->proc_id, error->error_code);
     }
 }
 
@@ -810,7 +810,7 @@ static void error_handler(void *ctx, void *data) {
 static void add_status_block(collection_info_t *collection, struct status_message *status) {
     uint8_t *block = add_or_new(collection, DATA_STATUS, us_to_ms(status->timestamp));
     if (block) {
-        status_blk_init((struct status_blk_t *)block, status->status_code);
+        status_blk_init((struct status_blk_t *)block_body(block), status->status_code);
     }
 }
 

@@ -2,6 +2,7 @@
 #define _INSPACE_TELEMETRY_PACKETS_H_
 
 #include <stdint.h>
+#include <stdlib.h>
 
 /* The CU InSpace packet specification version implemented here */
 
@@ -179,22 +180,22 @@ void volt_blk_init(struct volt_blk_t *b, const uint8_t id, const int16_t voltage
 
 /* A data block containing information about the rocket's current status */
 struct status_blk_t {
-  /* The offset from the absolute time in the header in milliseconds */
-  int16_t time_offset;
-  /* A status code, one of the values in status_blk_code_e */
-  uint8_t status_code;
+    /* The offset from the absolute time in the header in milliseconds */
+    int16_t time_offset;
+    /* A status code, one of the values in status_blk_code_e */
+    uint8_t status_code;
 } TIGHTLY_PACKED;
 
 void status_blk_init(struct status_blk_t *b, const uint8_t status_code);
 
 /* A data block containing information about an error that occured */
 struct error_blk_t {
-  /* The offset from the absolute time in the header in milliseconds */
-  int16_t time_offset;
-  /* The originating process, must be a value less than 32, as top 3 bits are reserved */
-  uint8_t originating_process;
-  /* An error code, one of the values in error_blk_code_e */
-  uint8_t error_code;
+    /* The offset from the absolute time in the header in milliseconds */
+    int16_t time_offset;
+    /* The originating process, must be a value less than 32, as top 3 bits are reserved */
+    uint8_t originating_process;
+    /* An error code, one of the values in error_blk_code_e */
+    uint8_t error_code;
 } TIGHTLY_PACKED;
 
 void error_blk_init(struct error_blk_t *b, const uint8_t proc_id, const uint8_t error_code);

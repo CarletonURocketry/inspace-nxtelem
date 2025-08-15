@@ -253,9 +253,7 @@ void volt_blk_init(struct volt_blk_t *b, const uint8_t id, const int16_t voltage
  * @param b The status block to initialize
  * @param status_code The status code to use
  */
-void status_blk_init(struct status_blk_t *b, const uint8_t status_code) {
-    b->status_code = status_code;
-}
+void status_blk_init(struct status_blk_t *b, const uint8_t status_code) { b->status_code = status_code; }
 
 /*
  * Construct an error block
