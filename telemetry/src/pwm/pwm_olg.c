@@ -6,6 +6,7 @@
 
 #define F 698.46       /* PWM frequency for F key */
 #define G_SHARP 830.61 /* PWM frequency for G# key */
+#define BUZZ_FREQ 4000 /* PWM frequency for annoying buzz */
 
 #define array_len(arr) ((sizeof(arr)) / sizeof((arr)[0]))
 #define err_to_ptr(err) ((void *)((err)))
@@ -64,6 +65,7 @@ static int set_pwm_freq(int pwm_fd, float freq) {
     return err;
 }
 
+#if 0 /* Unused right now */
 /*
  * Turns a PWM device off
  * @param pwm_fd The file descriptor of the PWM device
@@ -80,6 +82,7 @@ static int pwm_turn_off(int pwm_fd) {
 
     return err;
 }
+#endif
 
 /*
  * Plays the OLG lottery winner jingle on a PWM device by setting the
@@ -111,16 +114,18 @@ void *startup_sound_main(void *arg) {
         pthread_exit(err_to_ptr(pwm_fd));
     }
 
-    for (int i = 0; i < 3; ++i) {
+    for (int i = 0; i < CONFIG_INSPACE_TELEMETRY_N_JINGLES; ++i) {
         play_olg_jingle(pwm_fd);
         set_pwm_freq(pwm_fd, 1);
         usleep(3000000);
     }
 
-    err = pwm_turn_off(pwm_fd);
+    err = set_pwm_freq(pwm_fd, BUZZ_FREQ);
     if (err < 0) {
+        close(pwm_fd);
         pthread_exit(err_to_ptr(err));
     }
 
+    close(pwm_fd);
     pthread_exit(0);
 }
