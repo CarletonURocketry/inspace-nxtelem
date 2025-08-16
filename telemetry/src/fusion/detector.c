@@ -127,6 +127,8 @@ void detector_init(struct detector *detector, uint64_t time) {
                        detector->accels.median_backing_time_ordered, sizeof(detector->accels.median_backing_sorted));
     average_filter_init(&detector->accels.average, detector->accels.average_backing,
                         sizeof(detector->accels.average_backing));
+    window_criteria_init(&detector->land_alt_window, LANDED_ALT_WINDOW_SIZE,
+                         CONFIG_INSPACE_TELEMETRY_LANDED_ALT_DURATION);
 
     detector->init_time = time;
     detector->current_time = time;
@@ -280,8 +282,6 @@ enum detector_event detector_detect(struct detector *detector) {
  * @param substate The flight substate of the rocket
  */
 void detector_set_state(struct detector *detector, enum flight_state_e state, enum flight_substate_e substate) {
-    window_criteria_init(&detector->land_alt_window, LANDED_ALT_WINDOW_SIZE,
-                         CONFIG_INSPACE_TELEMETRY_LANDED_ALT_DURATION);
     if (state == STATE_LANDED) {
         detector_reset_apogee(detector);
     }
