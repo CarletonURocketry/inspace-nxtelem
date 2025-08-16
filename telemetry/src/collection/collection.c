@@ -230,6 +230,10 @@ static struct orb_metadata const *uorb_metas[] = {
     [SENSOR_STATUS] = ORB_ID(status_message),
 };
 
+/* The default sampling rate for low-sample sensors or topics */
+
+#define LOW_SAMPLE_RATE_DEFAULT 10
+
 #ifndef CONFIG_INSPACE_MOCKING
 /* Sensor desired sampling rates in Hz*/
 
