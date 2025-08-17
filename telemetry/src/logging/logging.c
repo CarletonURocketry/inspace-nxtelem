@@ -411,7 +411,11 @@ static int ejectled_set(bool on) {
     int fd;
     int err;
 
-    fd = open(CONFIG_INSPACE_TELEMETRY_EJECTLED, O_RDONLY);
+    int oflags = O_RDONLY;
+#ifdef CONFIG_ARCH_SIM
+    oflags |= O_CREAT;
+#endif
+    fd = open(CONFIG_INSPACE_TELEMETRY_EJECTLED, oflags);
     if (fd < 0) {
         inerr("Could not open %s: %d\n", CONFIG_INSPACE_TELEMETRY_EJECTLED, errno);
         return errno;
