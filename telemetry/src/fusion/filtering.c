@@ -160,7 +160,7 @@ void window_criteria_add(struct window_criteria *window, float new_value, uint64
     }
 
     // If the window is too large, reset it
-    if (window->max - window->min > window->target_size) {
+    if ((window->max - window->min) > window->target_size) {
         window->max = new_value;
         window->min = new_value;
         window->duration = 0;

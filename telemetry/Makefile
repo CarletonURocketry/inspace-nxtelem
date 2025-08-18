@@ -11,6 +11,7 @@ MODULE = $(CONFIG_INSPACE_TELEMETRY)
 
 MAINSRC = src/telemetry_main.c
 
+CSRCS += src/syslogging.c
 CSRCS += $(wildcard src/collection/*.c)
 CSRCS += $(wildcard src/rocket-state/*.c)
 CSRCS += $(wildcard src/transmission/*.c)
