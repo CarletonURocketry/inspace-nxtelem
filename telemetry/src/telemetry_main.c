@@ -53,6 +53,10 @@ int main(int argc, char **argv) {
         if (err) {
             inerr("Could not set flight substate, continuing anyways: %d\n", err);
         }
+    } else {
+        enum flight_state_e flight_state;
+        state_get_flightstate(&state, &flight_state);
+        ininfo("Loaded state: %d from EEPROM\n", flight_state);
     }
 
     /* Grab configuration parameters from EEPROM */

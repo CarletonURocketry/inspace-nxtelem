@@ -249,7 +249,6 @@ enum detector_event detector_detect(struct detector *detector) {
                 return DETECTOR_APOGEE_EVENT;
             } else if (detector_is_landed(detector)) {
                 ininfo("Detected landing from the airborne state\n");
-                detector_set_elevation(detector, detector_get_alt(detector));
                 return DETECTOR_LANDING_EVENT;
             }
             break;
@@ -257,7 +256,6 @@ enum detector_event detector_detect(struct detector *detector) {
         case SUBSTATE_DESCENT:
             if (detector_is_landed(detector)) {
                 ininfo("Detected a landing event from the descent state\n");
-                detector_set_elevation(detector, detector_get_alt(detector));
                 return DETECTOR_LANDING_EVENT;
             }
             break;
@@ -282,8 +280,19 @@ enum detector_event detector_detect(struct detector *detector) {
  * @param substate The flight substate of the rocket
  */
 void detector_set_state(struct detector *detector, enum flight_state_e state, enum flight_substate_e substate) {
-    if (state == STATE_LANDED) {
-        detector_reset_apogee(detector);
+    if (state != detector->state) {
+        switch (state) {
+        case STATE_LANDED:
+            detector_set_elevation(detector, detector_get_alt(detector));
+            detector_reset_apogee(detector);
+            break;
+        case STATE_AIRBORNE:
+            window_criteria_init(&detector->land_alt_window, LANDED_ALT_WINDOW_SIZE,
+                                 CONFIG_INSPACE_TELEMETRY_LANDED_ALT_DURATION);
+            break;
+        default:
+            break;
+        }
     }
     detector->state = state;
     detector->substate = substate;
