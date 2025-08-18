@@ -41,6 +41,13 @@ config INSPACE_TELEMETRY_USBSH
 		If the USB shell thread should be started, which allows access to the system
 		while the application is running.
 
+config INSPACE_TELEMETRY_N_JINGLES
+	int "Startup jingle repititions"
+	default 5
+	range 0 100
+	---help---
+		How many times to play the startup jingle.
+
 comment "Syslog output options"
 
 config INSPACE_SYSLOG_OUTPUT
