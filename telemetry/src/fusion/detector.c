@@ -245,7 +245,7 @@ enum detector_event detector_detect(struct detector *detector) {
         case SUBSTATE_UNKNOWN:
         case SUBSTATE_ASCENT:
             if (detector_is_apogee(detector)) {
-                ininfo("Detected apogee from the airborne state\n");
+                ininfo("Detected apogee from the airborne state with an apogee of %f\n", detector->apogee);
                 return DETECTOR_APOGEE_EVENT;
             } else if (detector_is_landed(detector)) {
                 ininfo("Detected landing from the airborne state\n");

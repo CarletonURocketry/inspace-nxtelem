@@ -65,22 +65,22 @@ void *fusion_main(void *arg) {
     const struct orb_metadata *accelmeta;
     int altitude_fd;
 
-    ininfo("Fusion thread started.");
+    ininfo("Fusion thread started.\n");
 
     state_get_flightstate(state, &flight_state);
     state_get_flightsubstate(state, &flight_substate);
-    ininfo("Detector initialized with flight state: %d, %d", flight_state, flight_substate);
+    ininfo("Detector initialized with flight state: %d, %d\n", flight_state, flight_substate);
 
     /* Input sensors, may want to directly read instead */
 
-    // TODO make this way cleaner and handle errors
+    // TODO make this way cleaner and handle errors. Change to use ORB_ID
     barometa = orb_get_meta("sensor_baro");
     accelmeta = orb_get_meta("sensor_accel");
 
     fds[0].fd = orb_subscribe(barometa);
     fds[1].fd = orb_subscribe(accelmeta);
 
-    ininfo("Fusion topics subscribed.");
+    ininfo("Fusion topics subscribed.\n");
 
     detector_init(&detector, orb_absolute_time());
     detector_set_state(&detector, flight_state, flight_substate);
@@ -92,7 +92,7 @@ void *fusion_main(void *arg) {
         inerr("Fusion could not advertise altitude topic: %d\n", altitude_fd);
     }
 
-    ininfo("Altitude advertised.");
+    ininfo("Altitude advertised.\n");
 
     /* Output sensors */
 

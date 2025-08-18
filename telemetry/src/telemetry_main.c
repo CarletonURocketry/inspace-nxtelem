@@ -1,6 +1,7 @@
 #include <pthread.h>
 #include <sched.h>
 #include <stdatomic.h>
+#include <stdio.h>
 #include <stdlib.h>
 
 #include "collection/collection.h"
@@ -37,7 +38,11 @@ static struct config_options config;
 int main(int argc, char **argv) {
     int err;
 
-    ininfo("You are running the Carleton University InSpace telemetry system.");
+    /* Sets up the syslogging to a file. If this fails, stdout is still open */
+
+    if (setup_syslogging()) {
+        publish_error(PROC_ID_GENERAL, ERROR_SYSLOGGING_NOT_SAVING);
+    }
 
     /* Initialize shared state */
 

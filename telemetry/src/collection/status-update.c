@@ -23,7 +23,7 @@ ORB_DEFINE(status_message, struct status_message, 0);
  */
 int publish_status(enum status_code_e status_code) {
     struct status_message status = {.timestamp = orb_absolute_time(), .status_code = status_code};
-    ininfo("Publishing a status message with code %d", status_code);
+    ininfo("Publishing a status message with code %d\n", status_code);
     return orb_publish_auto(ORB_ID(status_message), NULL, &status, NULL);
 }
 
@@ -35,6 +35,6 @@ int publish_status(enum status_code_e status_code) {
  */
 int publish_error(enum process_id_e proc_id, enum error_code_e error_code) {
     struct error_message error = {.timestamp = orb_absolute_time(), .proc_id = proc_id, .error_code = error_code};
-    ininfo("Publishing an error message for process %d with code %d", proc_id, error_code);
+    ininfo("Publishing an error message for process %d with code %d\n", proc_id, error_code);
     return orb_publish_auto(ORB_ID(error_message), NULL, &error, NULL);
 }

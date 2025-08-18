@@ -36,7 +36,7 @@
 
 /* The number of times opening a log file will be attempted */
 
-#define NUM_TIMES_TRY_OPEN 3
+#define NUM_TIMES_TRY_OPEN 10
 
 /* The number of seconds of guaranteed data before liftoff */
 
@@ -291,6 +291,7 @@ static int try_open_file(FILE **file_pointer, const char *filename, const char *
             inerr("Error (Attempt %d) opening '%s' file: %d\n", i, filename, err);
             usleep(1 * 1000); // Sleep for 1 millisecond before trying again
         } else {
+            err = 0;
             indebug("Opened File: %s\n", filename);
             break;
         }
