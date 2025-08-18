@@ -59,9 +59,9 @@
 #define HAS_GNSS
 #endif
 
-/* How many readings of each type of lower-priority data to add to each packet */
+/* How many readings of each type of priority to add to each packet */
 
-#define TRANSMIT_NUM_LOW_PRIORITY_READINGS 2
+enum priority_data_limit { TRANSMIT_NUM_LOW_PRIORITY_READINGS = 1, TRANSMIT_NUM_MED_PRIORITY_READINGS = 3 };
 
 /* Minimum buffer size for copying multiple amounts of data at once */
 
@@ -526,7 +526,6 @@ static uint8_t *add_or_new(collection_info_t *collection, enum block_type_e type
 
         collection->current->end = pkt_init(collection->current->packet, 0, mission_time);
 
-
 #ifdef HAS_GNSS
         /* Always make first block of packet a coords block with most recent coordinates if we have them */
         if (isnanf(collection->last_lat) || isnanf(collection->last_long)) {
@@ -617,7 +616,9 @@ static void mag_handler(void *ctx, void *data) {
     struct sensor_mag *mag_data = (struct sensor_mag *)data;
     processing_context_t *context = (processing_context_t *)ctx;
     add_mag_blk(&context->logging, mag_data);
-    add_mag_blk(&context->transmit, mag_data);
+    if (context->transmit.block_count[DATA_MAGNETIC] < TRANSMIT_NUM_LOW_PRIORITY_READINGS) {
+        add_mag_blk(&context->transmit, mag_data);
+    }
 }
 #endif
 
@@ -645,7 +646,9 @@ static void accel_handler(void *ctx, void *data) {
     struct sensor_accel *accel_data = (struct sensor_accel *)data;
     processing_context_t *context = (processing_context_t *)ctx;
     add_accel_blk(&context->logging, accel_data);
-    add_accel_blk(&context->transmit, accel_data);
+    if (context->transmit.block_count[DATA_MAGNETIC] < TRANSMIT_NUM_MED_PRIORITY_READINGS) {
+        add_accel_blk(&context->transmit, accel_data);
+    }
 }
 #endif
 
@@ -672,7 +675,9 @@ static void gyro_handler(void *ctx, void *data) {
     struct sensor_gyro *gyro_data = (struct sensor_gyro *)data;
     processing_context_t *context = (processing_context_t *)ctx;
     add_gyro_blk(&context->logging, gyro_data);
-    add_gyro_blk(&context->transmit, gyro_data);
+    if (context->transmit.block_count[DATA_ANGULAR_VEL] < TRANSMIT_NUM_LOW_PRIORITY_READINGS) {
+        add_gyro_blk(&context->transmit, gyro_data);
+    }
 }
 #endif
 
