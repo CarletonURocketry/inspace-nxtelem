@@ -52,12 +52,19 @@ comment "Syslog output options"
 
 config INSPACE_SYSLOG_OUTPUT
 	bool "Enable syslog output"
-	depends on SYSLOG
 	default n
 	---help---
 		Enables options for syslog outputs.
 
 if INSPACE_SYSLOG_OUTPUT
+
+config INSPACE_SYSLOG_PATH
+	string "File path for redirected syslogging output"
+	depends on INSPACE_SYSLOG_OUTPUT
+	default "/mnt/pwrfs/syslog"
+	---help---
+		The path so save syslog output to, as well as printing to
+		stdout
 
 config INSPACE_SYSLOG_DEBUG
 	bool "Debug logs enabled"

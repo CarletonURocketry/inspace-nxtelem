@@ -56,7 +56,7 @@ void *shell_main(void *arg) {
         inerr("Couldn't initialize USB device: %d\n", err);
         return err_to_ptr(err);
     }
-    ininfo("USB device initialized.");
+    ininfo("USB device initialized.\n");
 
     /* Get access to the USB device */
 

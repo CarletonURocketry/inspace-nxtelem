@@ -2,40 +2,42 @@
 #define _INSPACE_SYSLOGGING_H_
 
 #include <nuttx/config.h>
-#include <syslog.h>
 
 #define __HLOGSTR(fstring) "%s::" fstring
 
 /* Debug output */
- 
+
 #ifdef CONFIG_INSPACE_SYSLOG_DEBUG
-#define indebug(fstring, ...) syslog(LOG_DEBUG | LOG_USER, __HLOGSTR(fstring), __FUNCTION__ __VA_OPT__(, ) __VA_ARGS__)
+#define indebug(fstring, ...) syslog_tee(__HLOGSTR(fstring), __FUNCTION__ __VA_OPT__(, ) __VA_ARGS__)
 #else
 #define indebug(fstring, ...)
 #endif
 
-/* Info output */ 
+/* Info output */
 
 #ifdef CONFIG_INSPACE_SYSLOG_INFO
-#define ininfo(fstring, ...) syslog(LOG_INFO | LOG_USER, __HLOGSTR(fstring), __FUNCTION__ __VA_OPT__(, ) __VA_ARGS__)
+#define ininfo(fstring, ...) syslog_tee(__HLOGSTR(fstring), __FUNCTION__ __VA_OPT__(, ) __VA_ARGS__)
 #else
 #define ininfo(fstring, ...)
 #endif
 
-/* Warning output */ 
+/* Warning output */
 
 #ifdef CONFIG_INSPACE_SYSLOG_WARN
-#define inwarn(fstring, ...) syslog(LOG_WARNING | LOG_USER, __HLOGSTR(fstring), __FUNCTION__ __VA_OPT__(, ) __VA_ARGS__)
+#define inwarn(fstring, ...) syslog_tee(__HLOGSTR(fstring), __FUNCTION__ __VA_OPT__(, ) __VA_ARGS__)
 #else
 #define inwarn(fstring, ...)
 #endif
 
-/* Error output */ 
+/* Error output */
 
 #ifdef CONFIG_INSPACE_SYSLOG_ERR
-#define inerr(fstring, ...) syslog(LOG_ERR | LOG_USER, __HLOGSTR(fstring), __FUNCTION__ __VA_OPT__(, ) __VA_ARGS__)
+#define inerr(fstring, ...) syslog_tee(__HLOGSTR(fstring), __FUNCTION__ __VA_OPT__(, ) __VA_ARGS__)
 #else
 #define inerr(fstring, ...)
 #endif
+
+int setup_syslogging(void);
+void syslog_tee(const char *fmt, ...);
 
 #endif // _INSPACE_SYSLOGGING_H_
