@@ -314,4 +314,36 @@ config INSPACE_TELEMETRY_ACCEL_AVG_FILT_SIZE
 		The number of samples the acceleration average filter will use at a
 		time.
 
+comment "Flight State Debug Options"
+
+config INSPACE_TELEMETRY_DEBUG_FLIGHT_STATES
+	bool "Force Josh into a Flight State"
+	default n
+	---help---
+		Forces the system into a specific flight state for testing purposes.
+
+if INSPACE_TELEMETRY_DEBUG_FLIGHT_STATES
+
+config INSPACE_TELEMETRY_DEBUG_FLIGHT_STATE
+	int "Flight State"
+	default 0
+	range 0 2
+	---help---
+		The flight state to force the system into.
+		0: Idle
+		1: Airborne
+		2: Unknown
+
+config INSPACE_TELEMETRY_DEBUG_FLIGHT_SUB_STATE
+	int "Flight Sub-State"
+	default 0
+	range 0 2
+	---help---
+		The flight sub-state to force the system into.
+		0: Unknown
+		1: Ascent
+		2: Descent
+endif # INSPACE_DEBUG_FLIGHT_STATES
+
+
 endif # INSPACE_TELEMETRY
