@@ -646,7 +646,7 @@ static void accel_handler(void *ctx, void *data) {
     struct sensor_accel *accel_data = (struct sensor_accel *)data;
     processing_context_t *context = (processing_context_t *)ctx;
     add_accel_blk(&context->logging, accel_data);
-    if (context->transmit.block_count[DATA_MAGNETIC] < TRANSMIT_NUM_MED_PRIORITY_READINGS) {
+    if (context->transmit.block_count[DATA_ACCEL_REL] < TRANSMIT_NUM_MED_PRIORITY_READINGS) {
         add_accel_blk(&context->transmit, accel_data);
     }
 }
