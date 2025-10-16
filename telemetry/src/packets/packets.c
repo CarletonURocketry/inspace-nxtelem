@@ -61,7 +61,7 @@ void pkt_hdr_init(pkt_hdr_t *p, uint8_t packet_number, uint32_t mission_time) {
     int callsign_length = sizeof(CONFIG_INSPACE_TELEMETRY_CALLSIGN) - 1;
     if (sizeof(CONFIG_INSPACE_TELEMETRY_CALLSIGN) - 1 < sizeof(p->call_sign)) {
         memcpy(&p->call_sign, CONFIG_INSPACE_TELEMETRY_CALLSIGN, callsign_length);
-        memset(&p->call_sign[callsign_length], '0', sizeof(p->call_sign) - callsign_length);
+        memset(&p->call_sign[callsign_length], '\0', sizeof(p->call_sign) - callsign_length);
     } else {
         memcpy(&p->call_sign, CONFIG_INSPACE_TELEMETRY_CALLSIGN, sizeof(p->call_sign));
     }
