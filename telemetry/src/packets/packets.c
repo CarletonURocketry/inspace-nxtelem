@@ -76,7 +76,7 @@ void pkt_hdr_init(pkt_hdr_t *p, uint8_t packet_number, uint32_t mission_time) {
  * @param type The block type of the block this header will be associated with.
  * @param subtype The sub-type of the block this header will be associated with.
  */
-void blk_hdr_init(blk_hdr_t *b, const enum block_type_e type) { b->type = type; }
+void blk_hdr_init(blk_hdr_t *b, const enum block_type_e type, const uint8_t count) { b->type = type; b->count = count; }
 
 /* Return the length of a block of this type's body
  * @param type The type of block to get the length of
@@ -161,7 +161,7 @@ uint8_t *pkt_create_blk(uint8_t *packet, uint8_t *block, enum block_type_e type,
         }
     }
     header->blocks++;
-    blk_hdr_init((blk_hdr_t *)block, type);
+    blk_hdr_init((blk_hdr_t *)block, type, 0);
     return block + block_size;
 }
 

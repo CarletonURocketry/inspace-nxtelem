@@ -299,6 +299,7 @@ void *collection_main(void *arg) {
     struct adc_msg_s adcdata;
     struct collection_args *unpacked_args = (struct collection_args *)(arg);
     processing_context_t context;
+    radio_telem_t *radio_telem = unpacked_args->radio_telem;
 
     ininfo("Collection thread started.\n");
 
@@ -440,7 +441,75 @@ void *collection_main(void *arg) {
             /* Add all the data to a packet */
 
             for (int j = 0; j < (err / uorb_metas[i]->o_size); j++) {
-                uorb_handlers[i](&context, &data_buf);
+                pthread_mutex_lock(&radio_telem->empty_mux);
+
+                switch (i) {
+                    case SENSOR_ACCEL:
+                        if (radio_telem->empty->accel_n < 200) {
+                            struct sensor_accel *accel = (struct sensor_accel *)data_buf;
+
+                            struct accel_blk_t accel_blk = {
+                                .time_offset = us_to_ms(accel->timestamp),
+                                .x = accel->x,
+                                .y = accel->y,
+                                .z = accel->z,
+                            };
+
+                            radio_telem->empty->accel[radio_telem->empty->accel_n++] = accel_blk;
+                        }
+                        break;
+                    case SENSOR_GYRO:
+                        if (radio_telem->empty->ang_vel_n < 200) {  
+                            struct sensor_gyro *gyro = (struct sensor_gyro *)data_buf;
+                            struct ang_vel_blk_t ang_vel_blk = {
+                                .time_offset = us_to_ms(gyro->timestamp),
+                                .x = gyro->x,
+                                .y = gyro->y,
+                                .z = gyro->z,
+                            };
+
+                            radio_telem->empty->ang_vel[radio_telem->empty->ang_vel_n++] = ang_vel_blk;
+                        }
+                        break;
+                    case SENSOR_MAG:
+                        if (radio_telem->empty->mag_n < 200) {
+                            struct sensor_mag *mag = (struct sensor_mag *)data_buf;
+                            struct mag_blk_t mag_blk = {
+                                .time_offset = us_to_ms(mag->timestamp),
+                                .x = mag->x,
+                                .y = mag->y,
+                                .z = mag->z,
+                            };
+
+                            radio_telem->empty->mag[radio_telem->empty->mag_n++] = mag_blk;
+                        }
+                        break;
+                    case SENSOR_GNSS:
+                        if (radio_telem->empty->gnss_n < 200) {
+                            struct sensor_gnss *gnss = (struct sensor_gnss *)data_buf;
+                            struct coord_blk_t coord_blk = {
+                                .time_offset = us_to_ms(gnss->timestamp),
+                                .latitude = gnss->latitude,
+                                .longitude = gnss->longitude,
+                            };
+
+                            radio_telem->empty->gnss[radio_telem->empty->gnss_n++] = coord_blk;
+                        }
+                        break;
+                    case SENSOR_ALT:
+                        if (radio_telem->empty->alt_n < 200) {
+                            struct fusion_altitude *alt = (struct fusion_altitude *)data_buf;
+                            struct alt_blk_t alt_blk = {
+                                .time_offset = us_to_ms(alt->timestamp),
+                                .altitude = alt->altitude,
+                            };
+
+                            radio_telem->empty->alt[radio_telem->empty->alt_n++] = alt_blk;
+                        }
+                        break;
+                }
+
+                pthread_mutex_unlock(&radio_telem->empty_mux);
             }
         }
     }

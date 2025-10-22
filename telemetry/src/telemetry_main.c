@@ -3,6 +3,7 @@
 #include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "collection/collection.h"
 #include "collection/status-update.h"
@@ -34,6 +35,11 @@ static pthread_t shell_thread;
 
 static rocket_state_t state; /* The shared rocket state. */
 static struct config_options config;
+
+/* Radio telemetry double-buffer storage */
+static radio_raw_data radio_buf1;
+static radio_raw_data radio_buf2;
+static radio_telem_t radio_telem;
 
 int main(int argc, char **argv) {
     int err;
@@ -89,10 +95,20 @@ int main(int argc, char **argv) {
         inerr("Could not initialize logging buffer: %d\n", err);
         goto exit_error;
     }
+
+    radio_telem.full = &radio_buf1;
+    radio_telem.empty = &radio_buf2;
+
+    memset(&radio_buf1, 0, sizeof(radio_buf1));
+    memset(&radio_buf2, 0, sizeof(radio_buf2));
+
+    pthread_mutex_init(&(radio_telem.full_mux), NULL);
+    pthread_mutex_init(&(radio_telem.empty_mux), NULL);
+
     /* Start all threads */
 
     struct collection_args collect_thread_args = {
-        .state = &state, .transmit_buffer = &transmit_buffer, .logging_buffer = &logging_buffer};
+        .state = &state, .transmit_buffer = &transmit_buffer, .logging_buffer = &logging_buffer, .radio_telem = &radio_telem};
     err = pthread_create(&collect_thread, NULL, collection_main, &collect_thread_args);
     // TODO: handle thread creation errors better
     if (err) {
@@ -104,6 +120,7 @@ int main(int argc, char **argv) {
         .state = &state,
         .buffer = &transmit_buffer,
         .config = config.radio,
+        .radio_telem = &radio_telem,
     };
     err = pthread_create(&transmit_thread, NULL, transmit_main, &transmit_thread_args);
     if (err) {

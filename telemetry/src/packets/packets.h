@@ -55,9 +55,10 @@ void pkt_hdr_init(pkt_hdr_t *p, uint8_t packet_number, uint32_t mission_time);
 typedef struct {
     /* The type of this block. */
     uint8_t type;
+    uint8_t count;
 } TIGHTLY_PACKED blk_hdr_t;
 
-void blk_hdr_init(blk_hdr_t *b, const enum block_type_e type);
+void blk_hdr_init(blk_hdr_t *b, const enum block_type_e type, const uint8_t count);
 
 size_t blk_body_len(enum block_type_e type);
 
