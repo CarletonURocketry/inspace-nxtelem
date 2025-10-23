@@ -32,8 +32,8 @@
 #define pascals(millibar) (millibar * 100)
 #define millimeters(meters) (meters * 1000)
 #define point_one_microdegrees(degrees) (1E7f * degrees)
-#define tenth_degree(radian) (radian * 18 / M_PI)
-#define tenth_microtesla(microtesla) (microtesla * 1000)
+#define tenth_degree(radian) (radian * 1800 / M_PI)
+#define tenth_microtesla(microtesla) (microtesla * 10)
 #define cm_per_sec_squared(meters_per_sec_squared) (meters_per_sec_squared * 100)
 #define millidegrees(celsius) (celsius * 1000)
 
