@@ -59,9 +59,17 @@ int main(int argc, char **argv) {
             inerr("Could not set flight substate, continuing anyways: %d\n", err);
         }
     } else {
+#ifndef CONFIG_INSPACE_TELEMETRY_DEBUG_FLIGHT_STATES
         enum flight_state_e flight_state;
         state_get_flightstate(&state, &flight_state);
         ininfo("Loaded state: %d from EEPROM\n", flight_state);
+#else
+        enum flight_state_e flight_state = CONFIG_INSPACE_TELEMETRY_DEBUG_FLIGHT_STATE;
+        enum flight_substate_e flight_substate = CONFIG_INSPACE_TELEMETRY_DEBUG_FLIGHT_SUB_STATE;
+        state_set_flightstate(&state, flight_state);
+        state_set_flightsubstate(&state, flight_substate);
+        ininfo("Overrided loaded state to: %d, %d\n", flight_state, flight_substate);
+#endif
     }
 
     /* Grab configuration parameters from EEPROM */
@@ -118,12 +126,14 @@ int main(int argc, char **argv) {
         goto exit_error;
     }
 
+#ifndef CONFIG_INSPACE_TELEMETRY_DEBUG_FLIGHT_STATES
     struct fusion_args fusion_thread_args = {.state = &state};
     err = pthread_create(&fusion_thread, NULL, fusion_main, &fusion_thread_args);
     if (err) {
         inerr("Problem starting fusion thread: %d\n", err);
         goto exit_error;
     }
+#endif
 
 #ifdef CONFIG_INSPACE_TELEMETRY_USBSH
     struct shell_args shell_args;
