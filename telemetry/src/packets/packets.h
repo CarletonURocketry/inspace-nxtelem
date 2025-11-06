@@ -43,8 +43,8 @@ typedef struct {
      * half-minutes
      */
     uint16_t timestamp;
-    /* The number of blocks in this packet*/
-    uint8_t blocks;
+    /* The number of blocks types in this packet*/
+    uint8_t type_count;
     /* Which number this packet is in the stream of sent packets. */
     uint8_t packet_num;
 } TIGHTLY_PACKED pkt_hdr_t;
@@ -200,5 +200,6 @@ struct error_blk_t {
 } TIGHTLY_PACKED;
 
 void error_blk_init(struct error_blk_t *b, const uint8_t proc_id, const uint8_t error_code);
+int pkt_blk_calc_time(uint32_t mission_time, uint16_t abs_timestamp, int16_t *result);
 
 #endif // _INSPACE_TELEMETRY_PACKET_H_

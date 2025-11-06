@@ -14,6 +14,7 @@
 #include "../collection/status-update.h"
 #include "../syslogging.h"
 #include "transmit.h"
+#include "../packets/packets.h"
 
 /* If there was an error in configuration, display which line and return the
  * error */
@@ -69,17 +70,15 @@ void *transmit_main(void *arg) {
         radio_telem->empty = radio_telem->full;
         radio_telem->full = temp;
 
-        printf("Accel in packet: %d\n", radio_telem->full->accel_n);
-
         /* Reset the new empty buffer's counters */
-        radio_telem->empty->gnss_n = 0;
-        radio_telem->empty->alt_n = 0;
-        radio_telem->empty->mag_n = 0;
-        radio_telem->empty->accel_n = 0;
-        radio_telem->empty->ang_vel_n = 0;
+        radio_telem->empty->gnss_n = -1;
+        radio_telem->empty->alt_n = -1;
+        radio_telem->empty->mag_n = -1;
+        radio_telem->empty->accel_n = -1;
+        radio_telem->empty->ang_vel_n = -1;
 
+        /* release the empty mutex, collector can lock it and start collecting again */
         pthread_mutex_unlock(&radio_telem->empty_mux);
-
 
         /* create a new packet buffer */
         uint8_t packet_buffer[PACKET_MAX_SIZE];
@@ -88,77 +87,130 @@ void *transmit_main(void *arg) {
         /* use mission time as current time for now */
         struct timespec current_time;
         clock_gettime(CLOCK_REALTIME, &current_time);
-        pkt_hdr_init((pkt_hdr_t *)packet_ptr, 0, current_time.tv_sec);
+        pkt_hdr_init((pkt_hdr_t *)packet_ptr, seq_num, current_time.tv_sec);
+        pkt_hdr_t *header = (pkt_hdr_t *)packet_ptr;
         packet_ptr = pkt_init(packet_ptr, 0, current_time.tv_sec);
 
-        /* downsample the data to get ~3hz from each sensor */
-        int accel_skip = (radio_telem->full->accel_n > 7) ? (radio_telem->full->accel_n / 7) : 1;
-        int gyro_skip = (radio_telem->full->ang_vel_n > 7) ? (radio_telem->full->ang_vel_n / 7) : 1;
-        int mag_skip = (radio_telem->full->mag_n > 7) ? (radio_telem->full->mag_n / 7) : 1;
-        int alt_skip = (radio_telem->full->alt_n > 7) ? (radio_telem->full->alt_n / 7) : 1;
-        int gnss_skip = (radio_telem->full->gnss_n > 7) ? (radio_telem->full->gnss_n / 7) : 1;
-
-        /* Add GNSS coordinate blocks */
-        if (radio_telem->full->gnss_n > 0) {
-            uint8_t num_blocks = (uint8_t)(radio_telem->full->gnss_n / gnss_skip);
-            blk_hdr_init((blk_hdr_t *)packet_ptr, DATA_LAT_LONG, num_blocks);
-            packet_ptr += sizeof(blk_hdr_t);
-            for(int i = 0; i < radio_telem->full->gnss_n; i += gnss_skip) {
-                memcpy(packet_ptr, &radio_telem->full->gnss[i], sizeof(struct coord_blk_t));
+        if(radio_telem->full->gnss_n > 0) {
+            ininfo("GNSS blocks: %d\n", radio_telem->full->gnss_n);
+            blk_hdr_t blk_hdr = {
+                .type = DATA_LAT_LONG,
+                .count = radio_telem->full->gnss_n,
+            };
+            memcpy(packet_ptr, &blk_hdr, sizeof(blk_hdr));
+            packet_ptr += sizeof(blk_hdr);
+            for(int i = 0; i < radio_telem->full->gnss_n; i++) {
+                struct coord_blk_t coord_blk = radio_telem->full->gnss[i];
+                int16_t time_offset;
+                uint32_t mission_time = (uint32_t)coord_blk.time_offset;
+                if(pkt_blk_calc_time(mission_time, header->timestamp, &time_offset)) {
+                    inerr("Failed to calculate time offset for GNSS block %d\n", i);
+                    continue;
+                }
+                coord_blk.time_offset = time_offset;
+                memcpy(packet_ptr, &coord_blk, sizeof(struct coord_blk_t));
                 packet_ptr += sizeof(struct coord_blk_t);
             }
-            ((pkt_hdr_t *)packet_buffer)->blocks++;
         }
 
-        if (radio_telem->full->alt_n > 0) {
-            uint8_t num_blocks = (uint8_t)(radio_telem->full->alt_n / alt_skip);
-            blk_hdr_init((blk_hdr_t *)packet_ptr, DATA_ALT_LAUNCH, num_blocks);
-            packet_ptr += sizeof(blk_hdr_t);
-
-            for(int i = 0; i < radio_telem->full->alt_n; i += alt_skip) {
-                memcpy(packet_ptr, &radio_telem->full->alt[i], sizeof(struct alt_blk_t));
+        if(radio_telem->full->alt_n > 0) {
+            ininfo("Alt blocks: %d\n", radio_telem->full->alt_n);
+            blk_hdr_t blk_hdr = {
+                .type = DATA_ALT_LAUNCH,
+                .count = radio_telem->full->alt_n,
+            };
+            memcpy(packet_ptr, &blk_hdr, sizeof(blk_hdr));
+            packet_ptr += sizeof(blk_hdr);
+            for(int i = 0; i < radio_telem->full->alt_n; i++) {
+                struct alt_blk_t alt_blk = radio_telem->full->alt[i];
+                int16_t time_offset;
+                uint32_t mission_time = (uint32_t)alt_blk.time_offset;
+                if(pkt_blk_calc_time(mission_time, header->timestamp, &time_offset)) {
+                    inerr("Failed to calculate time offset for Alt block %d\n", i);
+                    continue;
+                }
+                alt_blk.time_offset = time_offset;
+                memcpy(packet_ptr, &alt_blk, sizeof(struct alt_blk_t));
                 packet_ptr += sizeof(struct alt_blk_t);
             }
-            ((pkt_hdr_t *)packet_buffer)->blocks++;
         }
 
-        if (radio_telem->full->mag_n > 0) {
-            uint8_t num_blocks = (uint8_t)(radio_telem->full->mag_n / mag_skip);
-            blk_hdr_init((blk_hdr_t *)packet_ptr, DATA_MAGNETIC, num_blocks);
-
-            packet_ptr += sizeof(blk_hdr_t);
-            for(int i = 0; i < radio_telem->full->mag_n; i += mag_skip) {
-                memcpy(packet_ptr, &radio_telem->full->mag[i], sizeof(struct mag_blk_t));
+        if(radio_telem->full->mag_n > 0) {
+            ininfo("Mag blocks: %d\n", radio_telem->full->mag_n);
+            blk_hdr_t blk_hdr = {
+                .type = DATA_MAGNETIC,
+                .count = radio_telem->full->mag_n,
+            };
+            memcpy(packet_ptr, &blk_hdr, sizeof(blk_hdr));
+            packet_ptr += sizeof(blk_hdr);
+            for(int i = 0; i < radio_telem->full->mag_n; i++) {
+                struct mag_blk_t mag_blk = radio_telem->full->mag[i];
+                int16_t time_offset;
+                uint32_t mission_time = (uint32_t)mag_blk.time_offset;
+                if(pkt_blk_calc_time(mission_time, header->timestamp, &time_offset)) {
+                    inerr("Failed to calculate time offset for Mag block %d\n", i);
+                    continue;
+                }
+                mag_blk.time_offset = time_offset;
+                memcpy(packet_ptr, &mag_blk, sizeof(struct mag_blk_t));
                 packet_ptr += sizeof(struct mag_blk_t);
             }
         }
 
-        if (radio_telem->full->accel_n > 0) {
-            uint8_t num_blocks = (uint8_t)(radio_telem->full->accel_n / accel_skip);
-            blk_hdr_init((blk_hdr_t *)packet_ptr, DATA_ACCEL_REL, num_blocks);
-
-            packet_ptr += sizeof(blk_hdr_t);
-            for(int i = 0; i < radio_telem->full->accel_n; i += accel_skip) {
-                memcpy(packet_ptr, &radio_telem->full->accel[i], sizeof(struct accel_blk_t));
+        if(radio_telem->full->accel_n > 0) {
+            ininfo("Accel blocks: %d\n", radio_telem->full->accel_n);
+            blk_hdr_t blk_hdr = {
+                .type = DATA_ACCEL_REL,
+                .count = radio_telem->full->accel_n,
+            };
+            memcpy(packet_ptr, &blk_hdr, sizeof(blk_hdr));
+            packet_ptr += sizeof(blk_hdr);
+            for(int i = 0; i < radio_telem->full->accel_n; i++) {
+                struct accel_blk_t accel_blk = radio_telem->full->accel[i];
+                int16_t time_offset;
+                uint32_t mission_time = (uint32_t)accel_blk.time_offset;
+                if(pkt_blk_calc_time(mission_time, header->timestamp, &time_offset)) {
+                    inerr("Failed to calculate time offset for Accel block %d\n", i);
+                    continue;
+                }
+                accel_blk.time_offset = time_offset;
+                memcpy(packet_ptr, &accel_blk, sizeof(struct accel_blk_t));
                 packet_ptr += sizeof(struct accel_blk_t);
             }
-            ((pkt_hdr_t *)packet_buffer)->blocks++;
         }
 
-        if (radio_telem->full->ang_vel_n > 0) {
-            uint8_t num_blocks = (uint8_t)(radio_telem->full->ang_vel_n / gyro_skip);
-            blk_hdr_init((blk_hdr_t *)packet_ptr, DATA_ANGULAR_VEL, num_blocks);
-
-            packet_ptr += sizeof(blk_hdr_t);
-            for(int i = 0; i < radio_telem->full->ang_vel_n; i += gyro_skip) {
-                memcpy(packet_ptr, &radio_telem->full->ang_vel[i], sizeof(struct ang_vel_blk_t));
+        if(radio_telem->full->ang_vel_n > 0) {
+            ininfo("Ang vel blocks: %d\n", radio_telem->full->ang_vel_n);
+            blk_hdr_t blk_hdr = {
+                .type = DATA_ANGULAR_VEL,
+                .count = radio_telem->full->ang_vel_n,
+            };
+            memcpy(packet_ptr, &blk_hdr, sizeof(blk_hdr));
+            packet_ptr += sizeof(blk_hdr);
+            for(int i = 0; i < radio_telem->full->ang_vel_n; i++) {
+                struct ang_vel_blk_t ang_vel_blk = radio_telem->full->ang_vel[i];
+                int16_t time_offset;
+                uint32_t mission_time = (uint32_t)ang_vel_blk.time_offset;
+                if(pkt_blk_calc_time(mission_time, header->timestamp, &time_offset)) {
+                    inerr("Failed to calculate time offset for Ang vel block %d\n", i);
+                    continue;
+                }
+                ang_vel_blk.time_offset = time_offset;
+                memcpy(packet_ptr, &ang_vel_blk, sizeof(struct ang_vel_blk_t));
                 packet_ptr += sizeof(struct ang_vel_blk_t);
             }
-            ((pkt_hdr_t *)packet_buffer)->blocks++;
         }
 
         pthread_mutex_unlock(&radio_telem->full_mux);
         size_t packet_size = packet_ptr - packet_buffer;
+        if(packet_size > PACKET_MAX_SIZE) {
+            inerr("Packet size is too large: %zu\n", packet_size);
+            continue;
+        } else if (packet_size == sizeof(pkt_hdr_t)) {
+            inerr("Packet does not contain any data\n");
+            sleep(1);
+            continue;
+        }
         ininfo("Packet size: %zu\n", packet_size);
         transmit(radio, packet_buffer, packet_size);
     }

@@ -22,7 +22,7 @@ static uint16_t calc_timestamp(uint32_t mission_time) {
  * @return If mission_time could be represented as an offset from the
  * given timestamp returns 0, otherwise returns 1
  */
-static int calc_offset(uint32_t mission_time, uint16_t abs_timestamp, int16_t *result) {
+int pkt_blk_calc_time(uint32_t mission_time, uint16_t abs_timestamp, int16_t *result) {
     /* Offset from abs_timestamp to time zero */
     int64_t offset = (int64_t)abs_timestamp * 30 * -1000;
     offset += mission_time;
@@ -30,6 +30,8 @@ static int calc_offset(uint32_t mission_time, uint16_t abs_timestamp, int16_t *r
         *result = offset;
         return 0;
     }
+
+    inerr("Mission time: %u, abs_timestamp: %u, offset: %lld\n", mission_time, abs_timestamp, (long long)offset);
     return 1;
 }
 
@@ -68,7 +70,7 @@ void pkt_hdr_init(pkt_hdr_t *p, uint8_t packet_number, uint32_t mission_time) {
 
     p->packet_num = packet_number;
     p->timestamp = calc_timestamp(mission_time);
-    p->blocks = 0;
+    p->type_count = 0;
 }
 
 /* Initialize the block header.
@@ -156,11 +158,11 @@ uint8_t *pkt_create_blk(uint8_t *packet, uint8_t *block, enum block_type_e type,
         return NULL;
     }
     if (has_offset(type)) {
-        if (calc_offset(mission_time, header->timestamp, block_timestamp(block_body(block)))) {
+        if (pkt_blk_calc_time(mission_time, header->timestamp, block_timestamp(block_body(block)))) {
             return NULL;
         }
     }
-    header->blocks++;
+    header->type_count++;
     blk_hdr_init((blk_hdr_t *)block, type, 0);
     return block + block_size;
 }

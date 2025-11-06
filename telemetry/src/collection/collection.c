@@ -37,155 +37,40 @@
 #define cm_per_sec_squared(meters_per_sec_squared) (meters_per_sec_squared * 100)
 #define millidegrees(celsius) (celsius * 1000)
 
-/* Conditional compilation for sensors */
-
-#if defined(CONFIG_INSPACE_FAKE_ACCEL) || defined(CONFIG_SENSORS_LSM6DSO32)
-#define HAS_ACCEL
-#endif
-
-#if defined(CONFIG_INSPACE_FAKE_GYRO) || defined(CONFIG_SENSORS_LSM6DSO32)
-#define HAS_GYRO
-#endif
-
-#if defined(CONFIG_INSPACE_FAKE_BARO) || defined(CONFIG_SENSORS_MS56XX)
-#define HAS_BARO
-#endif
-
-#if defined(CONFIG_INSPACE_FAKE_MAG) || defined(CONFIG_SENSORS_LIS2MDL)
-#define HAS_MAG
-#endif
-
-#if defined(CONFIG_INSPACE_FAKE_GNSS) || defined(CONFIG_SENSORS_L86_XXX)
-#define HAS_GNSS
-#endif
-
-/* How many readings of each type of priority to add to each packet */
-
-enum priority_data_limit { TRANSMIT_NUM_LOW_PRIORITY_READINGS = 1, TRANSMIT_NUM_MED_PRIORITY_READINGS = 3 };
-
 /* Minimum buffer size for copying multiple amounts of data at once */
-
-#define DATA_BUF_MIN 5
-
-/* Maximum value that can be returned by the ADC */
-
-#define ADC_MAX_VAL ((1 << 16) - 1)
-
-/* Maximum value that can be measured by the ADC. Chosen as 4V2 since that is the maximum battery voltage */
-
-#define MAX_VOLTAGE_MV (4200)
-
-typedef struct {
-    packet_buffer_t *buffer;
-    packet_node_t *current;
-    float last_lat;
-    float last_long;
-    int block_count[DATA_RES_ABOVE];
-} collection_info_t;
-
-typedef struct {
-    collection_info_t logging;
-    collection_info_t transmit;
-} processing_context_t;
-
-/* Enumeration of the sensors in the uORB network. Includes fusion 'sensors' */
+#define DATA_BUF_MIN 10
 
 enum uorb_sensors {
-#ifdef HAS_ACCEL
     SENSOR_ACCEL, /* Accelerometer */
-#endif
-#ifdef HAS_GYRO
     SENSOR_GYRO, /* Gyroscope */
-#endif
-#ifdef HAS_BARO
     SENSOR_BARO, /* Barometer */
-#endif
-#ifdef HAS_MAG
     SENSOR_MAG, /* Magnetometer */
-#endif
-#ifdef HAS_GNSS
     SENSOR_GNSS, /* GNSS */
-#endif
     SENSOR_ALT,    /* Altitude fusion */
     SENSOR_ERROR,  /* Error messages */
     SENSOR_STATUS, /* Status messages */
 };
 
 /* A buffer that can hold any of the types of data created by the sensors in uorb_inputs */
-
 union uorb_data {
-#ifdef HAS_ACCEL
     struct sensor_accel accel;
-#endif
-#ifdef HAS_GYRO
     struct sensor_gyro gyro;
-#endif
-#ifdef HAS_BARO
     struct sensor_baro baro;
-#endif
-#ifdef HAS_MAG
     struct sensor_mag mag;
-#endif
-#ifdef HAS_GNSS
     struct sensor_gnss gnss;
-#endif
     struct fusion_altitude alt;
     struct error_message error;
     struct status_message status;
 };
 
-/* A function pointer to a function that will perform operations on single pieces of uORB data
- *
- * @param context Context given to the callback by the program using this interface
- * @param element The element to perform processing on, where the length is implied by knowing the type of element
- */
-typedef void (*uorb_data_callback_t)(void *context, void *element);
-
-static int setup_collection(collection_info_t *collection, packet_buffer_t *packet_buffer);
-static void reset_block_count(collection_info_t *collection);
-static uint8_t *add_block(collection_info_t *collection, enum block_type_e type, uint32_t mission_time);
-static uint8_t *add_or_new(collection_info_t *collection, enum block_type_e type, uint32_t mission_time);
-
-/* Data handlers */
-
-#ifdef HAS_BARO
-static void baro_handler(void *ctx, void *data);
-#endif
-#ifdef HAS_MAG
-static void mag_handler(void *ctx, void *data);
-#endif
-#ifdef HAS_GNSS
-static void gnss_handler(void *ctx, void *data);
-#endif
-#ifdef HAS_ACCEL
-static void accel_handler(void *ctx, void *data);
-#endif
-#ifdef HAS_GYRO
-static void gyro_handler(void *ctx, void *data);
-#endif
-static void alt_handler(void *ctx, void *data);
-static void voltage_handler(void *ctx, void *data);
-static void error_handler(void *ctx, void *data);
-static void status_handler(void *ctx, void *data);
-
 /* uORB polling file descriptors */
 
 static struct pollfd uorb_fds[] = {
-#ifdef HAS_ACCEL
     [SENSOR_ACCEL] = {.fd = -1, .events = POLLIN, .revents = 0},
-#endif
-#ifdef HAS_GYRO
     [SENSOR_GYRO] = {.fd = -1, .events = POLLIN, .revents = 0},
-#endif
-#ifdef HAS_BARO
     [SENSOR_BARO] = {.fd = -1, .events = POLLIN, .revents = 0},
-#endif
-#ifdef HAS_MAG
     [SENSOR_MAG] = {.fd = -1, .events = POLLIN, .revents = 0},
-#endif
-#ifdef HAS_GNSS
     [SENSOR_GNSS] = {.fd = -1, .events = POLLIN, .revents = 0},
-#endif
     [SENSOR_ALT] = {.fd = -1, .events = POLLIN, .revents = 0},
     [SENSOR_ERROR] = {.fd = -1, .events = POLLIN, .revents = 0},
     [SENSOR_STATUS] = {.fd = -1, .events = POLLIN, .revents = 0},
@@ -193,39 +78,19 @@ static struct pollfd uorb_fds[] = {
 
 /* uORB sensor metadatas */
 
-#ifdef HAS_ACCEL
 ORB_DECLARE(sensor_accel);
-#endif
-#ifdef HAS_GYRO
 ORB_DECLARE(sensor_gyro);
-#endif
-#ifdef HAS_BARO
 ORB_DECLARE(sensor_baro);
-#endif
-#ifdef HAS_MAG
 ORB_DECLARE(sensor_mag);
-#endif
-#ifdef HAS_GNSS
 ORB_DECLARE(sensor_gnss);
-#endif
 ORB_DECLARE(fusion_altitude);
 
 static struct orb_metadata const *uorb_metas[] = {
-#ifdef HAS_ACCEL
     [SENSOR_ACCEL] = ORB_ID(sensor_accel),
-#endif
-#ifdef HAS_GYRO
     [SENSOR_GYRO] = ORB_ID(sensor_gyro),
-#endif
-#ifdef HAS_BARO
     [SENSOR_BARO] = ORB_ID(sensor_baro),
-#endif
-#ifdef HAS_MAG
     [SENSOR_MAG] = ORB_ID(sensor_mag),
-#endif
-#ifdef HAS_GNSS
     [SENSOR_GNSS] = ORB_ID(sensor_gnss),
-#endif
     [SENSOR_ALT] = ORB_ID(fusion_altitude),   [SENSOR_ERROR] = ORB_ID(error_message),
     [SENSOR_STATUS] = ORB_ID(status_message),
 };
@@ -234,49 +99,15 @@ static struct orb_metadata const *uorb_metas[] = {
 
 #define LOW_SAMPLE_RATE_DEFAULT 10
 
-#ifndef CONFIG_INSPACE_MOCKING
-/* Sensor desired sampling rates in Hz*/
-
 static const uint32_t sample_freqs[] = {
-#ifdef HAS_ACCEL
     [SENSOR_ACCEL] = CONFIG_INSPACE_TELEMETRY_ACCEL_SF,
-#endif
-#ifdef HAS_GYRO
     [SENSOR_GYRO] = CONFIG_INSPACE_TELEMETRY_GYRO_SF,
-#endif
-#ifdef HAS_BARO
     [SENSOR_BARO] = CONFIG_INSPACE_TELEMETRY_BARO_SF,
-#endif
-#ifdef HAS_MAG
     [SENSOR_MAG] = CONFIG_INSPACE_TELEMETRY_MAG_SF,
-#endif
-#ifdef HAS_GNSS
     [SENSOR_GNSS] = CONFIG_INSPACE_TELEMETRY_GPS_SF,
-#endif
-    [SENSOR_ALT] = CONFIG_INSPACE_TELEMETRY_ALT_SF,     [SENSOR_ERROR] = LOW_SAMPLE_RATE_DEFAULT,
+    [SENSOR_ALT] = CONFIG_INSPACE_TELEMETRY_ALT_SF,     
+    [SENSOR_ERROR] = LOW_SAMPLE_RATE_DEFAULT,
     [SENSOR_STATUS] = LOW_SAMPLE_RATE_DEFAULT,
-};
-#endif
-
-/* Data handlers for different sensors */
-
-static const uorb_data_callback_t uorb_handlers[] = {
-#ifdef HAS_BARO
-    [SENSOR_BARO] = baro_handler,
-#endif
-#ifdef HAS_GYRO
-    [SENSOR_GYRO] = gyro_handler,
-#endif
-#ifdef HAS_ACCEL
-    [SENSOR_ACCEL] = accel_handler,
-#endif
-#ifdef HAS_MAG
-    [SENSOR_MAG] = mag_handler,
-#endif
-#ifdef HAS_GNSS
-    [SENSOR_GNSS] = gnss_handler,
-#endif
-    [SENSOR_ALT] = alt_handler,     [SENSOR_ERROR] = error_handler, [SENSOR_STATUS] = status_handler,
 };
 
 /* Data buffer for copying uORB data */
@@ -287,6 +118,23 @@ static uint8_t data_buf[sizeof(union uorb_data) * DATA_BUF_MIN];
 
 #define NUM_SENSORS (sizeof(uorb_fds) / sizeof(uorb_fds[0]))
 
+struct sensor_downsampling_t {
+    int64_t sum_buffer[3];
+    uint16_t rate;
+    uint16_t reads;
+};
+
+static struct sensor_downsampling_t sensor_downsamples[] = {
+    [SENSOR_ACCEL] = {.rate = CONFIG_INSPACE_TELEMETRY_ACCEL_SF / CONFIG_INSPACE_TELEMETRY_TARGET_TRANSMIT_FREQ},
+    [SENSOR_GYRO] = {.rate = CONFIG_INSPACE_TELEMETRY_GYRO_SF / CONFIG_INSPACE_TELEMETRY_TARGET_TRANSMIT_FREQ},
+    [SENSOR_BARO] = {.rate = CONFIG_INSPACE_TELEMETRY_BARO_SF / CONFIG_INSPACE_TELEMETRY_TARGET_TRANSMIT_FREQ},
+    [SENSOR_MAG] = {.rate = CONFIG_INSPACE_TELEMETRY_MAG_SF / CONFIG_INSPACE_TELEMETRY_TARGET_TRANSMIT_FREQ},
+    [SENSOR_GNSS] = {.rate = CONFIG_INSPACE_TELEMETRY_GPS_SF / CONFIG_INSPACE_TELEMETRY_TARGET_TRANSMIT_FREQ},
+    [SENSOR_ALT] = {.rate = CONFIG_INSPACE_TELEMETRY_ALT_SF / CONFIG_INSPACE_TELEMETRY_TARGET_TRANSMIT_FREQ},
+    [SENSOR_ERROR] = {.rate = 1},
+    [SENSOR_STATUS] = {.rate = 1}
+};
+
 /*
  * Collection thread.
  *
@@ -294,41 +142,19 @@ static uint8_t data_buf[sizeof(union uorb_data) * DATA_BUF_MIN];
  */
 void *collection_main(void *arg) {
     int err;
-    ssize_t bread;
-    int adcfd;
-    struct adc_msg_s adcdata;
     struct collection_args *unpacked_args = (struct collection_args *)(arg);
-    processing_context_t context;
     radio_telem_t *radio_telem = unpacked_args->radio_telem;
 
     ininfo("Collection thread started.\n");
 
-    ininfo("Setting up collection context.\n");
-
-    err = setup_collection(&context.logging, unpacked_args->logging_buffer);
-
-    if (err < 0) {
-        inerr("Could not get an initial empty packet for collection\n");
-        pthread_exit(err_to_ptr(err));
-    }
-
-    err = setup_collection(&context.transmit, unpacked_args->transmit_buffer);
-
-    if (err < 0) {
-        inerr("Could not get an initial empty packet for collection\n");
-        pthread_exit(err_to_ptr(err));
-    }
-
     /* Subscribe to all sensors */
-
-    ininfo("Subscribing to all sensors.\n");
 
     for (int i = 0; i < NUM_SENSORS; i++) {
 
         /* Skip metadata that couldn't be found */
 
         if (uorb_metas[i] == NULL) {
-            inwarn("Missing metadata for sensor %d\n", i);
+            inerr("Missing metadata for sensor %d\n", i);
             continue;
         }
 
@@ -345,27 +171,21 @@ void *collection_main(void *arg) {
 
     ininfo("Configuring sensors with their specific requirements.\n");
 
-#ifdef HAS_ACCEL
-    ininfo("Configuring accelerometer FSR to +/-32g.\n");
-    err = orb_ioctl(uorb_fds[SENSOR_ACCEL].fd, SNIOC_SETFULLSCALE, 32);
-    if (err < 0) {
-        inerr("Couldn't set FSR of sensor_accel: %d\n", errno);
+    if(uorb_fds[SENSOR_ACCEL].fd >= 0) {
+        ininfo("Configuring accelerometer FSR to +/-32g.\n");
+        err = orb_ioctl(uorb_fds[SENSOR_ACCEL].fd, SNIOC_SETFULLSCALE, 32);
+        if (err < 0) {
+            inerr("Couldn't set FSR of sensor_accel: %d\n", errno);
+        }
     }
-#endif
 
-#ifdef HAS_GYRO
-    ininfo("Configuring gyro FSR to +/-2000dps.\n");
-    err = orb_ioctl(uorb_fds[SENSOR_GYRO].fd, SNIOC_SETFULLSCALE, 2000);
-    if (err < 0) {
-        inerr("Couldn't set FSR of sensor_gyro: %d\n", errno);
+    if(uorb_fds[SENSOR_GYRO].fd >= 0) {
+        ininfo("Configuring gyro FSR to +/-2000dps.\n");
+        err = orb_ioctl(uorb_fds[SENSOR_GYRO].fd, SNIOC_SETFULLSCALE, 2000);
+        if (err < 0) {
+            inerr("Couldn't set FSR of sensor_gyro: %d\n", errno);
+        }
     }
-#endif
-
-#ifdef HAS_MAG
-    /* TODO: maybe low pass filter? */
-#endif
-
-    ininfo("Sensors configured with specific settings.\n");
 
 #ifndef CONFIG_INSPACE_MOCKING
     /* Set sample frequencies for all sensors
@@ -396,26 +216,8 @@ void *collection_main(void *arg) {
     ininfo("Sensor frequencies set.\n");
 #endif
 
-    ininfo("Setting up ADC device.\n");
-
-    adcfd = open(CONFIG_INSPACE_TELEMETRY_ADC, O_RDONLY | O_NONBLOCK);
-    if (adcfd < 0) {
-        inerr("Failed to open %s: %d\n", CONFIG_INSPACE_TELEMETRY_ADC, errno);
-    }
-
-    ininfo("ADC device setup.\n");
-
     /* Measure data forever */
-
     for (;;) {
-
-        /* Read the battery voltage ADC */
-
-        bread = read(adcfd, &adcdata, sizeof(adcdata));
-        if (bread > 0) {
-            voltage_handler(&context, &adcdata);
-        }
-
         /* Wait for new data */
 
         poll(uorb_fds, NUM_SENSORS, -1);
@@ -438,470 +240,210 @@ void *collection_main(void *arg) {
                 continue;
             }
 
-            /* Add all the data to a packet */
+            /* locking this early heavily simplifies the logic, i'm not locked in */
+            pthread_mutex_lock(&radio_telem->empty_mux);
 
-            for (int j = 0; j < (err / uorb_metas[i]->o_size); j++) {
-                pthread_mutex_lock(&radio_telem->empty_mux);
+            /* check if telem thead swapped the buffer */
+            if(radio_telem->empty->accel_n == -1 || radio_telem->empty->ang_vel_n == -1 || radio_telem->empty->mag_n == -1 || radio_telem->empty->gnss_n == -1 || radio_telem->empty->alt_n == -1){
 
-                switch (i) {
-                    case SENSOR_ACCEL:
-                        if (radio_telem->empty->accel_n < 200) {
-                            struct sensor_accel *accel = (struct sensor_accel *)data_buf;
+                /* adjust downsampling rates and reset internal state */
+                for(int k = 0; k < sizeof(sensor_downsamples) / sizeof(sensor_downsamples[0]); k++){
+                    int updated_rate = sensor_downsamples[k].reads / CONFIG_INSPACE_TELEMETRY_TARGET_TRANSMIT_FREQ;
+                    if(sensor_downsamples[k].rate != updated_rate) {
+                        ininfo("Adjusted downsampling rate for %s from %d to %d\n", uorb_metas[k]->o_name, sensor_downsamples[k].rate, updated_rate);
+                        sensor_downsamples[k].rate = updated_rate;
+                    }
 
-                            struct accel_blk_t accel_blk = {
-                                .time_offset = us_to_ms(accel->timestamp),
-                                .x = accel->x,
-                                .y = accel->y,
-                                .z = accel->z,
-                            };
-
-                            radio_telem->empty->accel[radio_telem->empty->accel_n++] = accel_blk;
-                        }
-                        break;
-                    case SENSOR_GYRO:
-                        if (radio_telem->empty->ang_vel_n < 200) {  
-                            struct sensor_gyro *gyro = (struct sensor_gyro *)data_buf;
-                            struct ang_vel_blk_t ang_vel_blk = {
-                                .time_offset = us_to_ms(gyro->timestamp),
-                                .x = gyro->x,
-                                .y = gyro->y,
-                                .z = gyro->z,
-                            };
-
-                            radio_telem->empty->ang_vel[radio_telem->empty->ang_vel_n++] = ang_vel_blk;
-                        }
-                        break;
-                    case SENSOR_MAG:
-                        if (radio_telem->empty->mag_n < 200) {
-                            struct sensor_mag *mag = (struct sensor_mag *)data_buf;
-                            struct mag_blk_t mag_blk = {
-                                .time_offset = us_to_ms(mag->timestamp),
-                                .x = mag->x,
-                                .y = mag->y,
-                                .z = mag->z,
-                            };
-
-                            radio_telem->empty->mag[radio_telem->empty->mag_n++] = mag_blk;
-                        }
-                        break;
-                    case SENSOR_GNSS:
-                        if (radio_telem->empty->gnss_n < 200) {
-                            struct sensor_gnss *gnss = (struct sensor_gnss *)data_buf;
-                            struct coord_blk_t coord_blk = {
-                                .time_offset = us_to_ms(gnss->timestamp),
-                                .latitude = gnss->latitude,
-                                .longitude = gnss->longitude,
-                            };
-
-                            radio_telem->empty->gnss[radio_telem->empty->gnss_n++] = coord_blk;
-                        }
-                        break;
-                    case SENSOR_ALT:
-                        if (radio_telem->empty->alt_n < 200) {
-                            struct fusion_altitude *alt = (struct fusion_altitude *)data_buf;
-                            struct alt_blk_t alt_blk = {
-                                .time_offset = us_to_ms(alt->timestamp),
-                                .altitude = alt->altitude,
-                            };
-
-                            radio_telem->empty->alt[radio_telem->empty->alt_n++] = alt_blk;
-                        }
-                        break;
+                    sensor_downsamples[k].reads = 0;
+                    sensor_downsamples[k].sum_buffer[0] = 0;
+                    sensor_downsamples[k].sum_buffer[1] = 0;
+                    sensor_downsamples[k].sum_buffer[2] = 0;
                 }
 
-                pthread_mutex_unlock(&radio_telem->empty_mux);
+                radio_telem->empty->accel_n = 0;
+                radio_telem->empty->ang_vel_n = 0;
+                radio_telem->empty->mag_n = 0;
+                radio_telem->empty->gnss_n = 0;
+                radio_telem->empty->alt_n = 0;
             }
+
+            for (int j = 0; j < (err / uorb_metas[i]->o_size); j++) {
+                sensor_downsamples[i].reads++;
+
+                /* skip readings if have more reads than the target frequency */
+                if(sensor_downsamples[i].reads > sensor_downsamples[i].rate * CONFIG_INSPACE_TELEMETRY_TARGET_TRANSMIT_FREQ) {
+                    continue;
+                }
+
+                switch (i) {
+                    case SENSOR_ACCEL: {
+                        struct sensor_accel accel = ((struct sensor_accel *)data_buf)[j];
+
+                        sensor_downsamples[SENSOR_ACCEL].sum_buffer[0] += (int32_t)cm_per_sec_squared(accel.x);
+                        sensor_downsamples[SENSOR_ACCEL].sum_buffer[1] += (int32_t)cm_per_sec_squared(accel.y);
+                        sensor_downsamples[SENSOR_ACCEL].sum_buffer[2] += (int32_t)cm_per_sec_squared(accel.z);
+
+                        /* we check whether the sum buffer is full, if it is we downsample and pass the output to the radio buffer */
+                        if(sensor_downsamples[SENSOR_ACCEL].reads > 0 && sensor_downsamples[SENSOR_ACCEL].reads % sensor_downsamples[SENSOR_ACCEL].rate == 0) {
+                            float x = sensor_downsamples[SENSOR_ACCEL].sum_buffer[0] / sensor_downsamples[SENSOR_ACCEL].rate;
+                            float y = sensor_downsamples[SENSOR_ACCEL].sum_buffer[1] / sensor_downsamples[SENSOR_ACCEL].rate;
+                            float z = sensor_downsamples[SENSOR_ACCEL].sum_buffer[2] / sensor_downsamples[SENSOR_ACCEL].rate;
+
+                            struct accel_blk_t accel_blk = {
+                                .time_offset = us_to_ms(accel.timestamp),
+                                .x = x,
+                                .y = y,
+                                .z = z,
+                            };
+
+                            /* send the packet to the radio buffer */
+                            if(radio_telem->empty->accel_n == CONFIG_INSPACE_TELEMETRY_TARGET_TRANSMIT_FREQ) {
+                                inerr("Accelerometer buffer full, dropping data\n");
+                                break;
+                            }
+
+                            radio_telem->empty->accel[radio_telem->empty->accel_n++] = accel_blk;
+
+                            sensor_downsamples[SENSOR_ACCEL].sum_buffer[0] = 0;
+                            sensor_downsamples[SENSOR_ACCEL].sum_buffer[1] = 0;
+                            sensor_downsamples[SENSOR_ACCEL].sum_buffer[2] = 0;
+                        }
+
+                        break;
+                    }
+                    case SENSOR_GYRO: {
+                        struct sensor_gyro gyro = ((struct sensor_gyro *)data_buf)[j];
+
+                        sensor_downsamples[SENSOR_GYRO].sum_buffer[0] += (int32_t)tenth_degree(gyro.x);
+                        sensor_downsamples[SENSOR_GYRO].sum_buffer[1] += (int32_t)tenth_degree(gyro.y);
+                        sensor_downsamples[SENSOR_GYRO].sum_buffer[2] += (int32_t)tenth_degree(gyro.z);
+
+                        /* we check whether the sum buffer is full, if it is we downsample and pass the output to the radio buffer */
+                        if(sensor_downsamples[SENSOR_GYRO].reads > 0 && sensor_downsamples[SENSOR_GYRO].reads % sensor_downsamples[SENSOR_GYRO].rate == 0) {
+                            float x = sensor_downsamples[SENSOR_GYRO].sum_buffer[0] / sensor_downsamples[SENSOR_GYRO].rate;
+                            float y = sensor_downsamples[SENSOR_GYRO].sum_buffer[1] / sensor_downsamples[SENSOR_GYRO].rate;
+                            float z = sensor_downsamples[SENSOR_GYRO].sum_buffer[2] / sensor_downsamples[SENSOR_GYRO].rate;
+
+                            struct ang_vel_blk_t ang_vel_blk = {
+                                .time_offset = us_to_ms(gyro.timestamp),
+                                .x = x,
+                                .y = y,
+                                .z = z,
+                            };
+
+                            /* send the packet to the radio buffer */
+                            if(radio_telem->empty->ang_vel_n == CONFIG_INSPACE_TELEMETRY_TARGET_TRANSMIT_FREQ) {
+                                inerr("Gyroscope buffer full, dropping data\n");
+                                break;
+                            }
+
+                            radio_telem->empty->ang_vel[radio_telem->empty->ang_vel_n++] = ang_vel_blk;
+
+                            sensor_downsamples[SENSOR_GYRO].sum_buffer[0] = 0;
+                            sensor_downsamples[SENSOR_GYRO].sum_buffer[1] = 0;
+                            sensor_downsamples[SENSOR_GYRO].sum_buffer[2] = 0;
+                        }
+
+                        break;
+                    }
+                    case SENSOR_MAG: {
+                        struct sensor_mag mag = ((struct sensor_mag *)data_buf)[j];
+
+                        sensor_downsamples[SENSOR_MAG].sum_buffer[0] += (int32_t)tenth_microtesla(mag.x);
+                        sensor_downsamples[SENSOR_MAG].sum_buffer[1] += (int32_t)tenth_microtesla(mag.y);
+                        sensor_downsamples[SENSOR_MAG].sum_buffer[2] += (int32_t)tenth_microtesla(mag.z);
+
+                        /* we check whether the sum buffer is full, if it is we downsample and pass the output to the radio buffer */
+                        if(sensor_downsamples[SENSOR_MAG].reads > 0 && sensor_downsamples[SENSOR_MAG].reads % sensor_downsamples[SENSOR_MAG].rate == 0) {
+                            float x = sensor_downsamples[SENSOR_MAG].sum_buffer[0] / sensor_downsamples[SENSOR_MAG].rate;
+                            float y = sensor_downsamples[SENSOR_MAG].sum_buffer[1] / sensor_downsamples[SENSOR_MAG].rate;
+                            float z = sensor_downsamples[SENSOR_MAG].sum_buffer[2] / sensor_downsamples[SENSOR_MAG].rate;
+
+                            struct mag_blk_t mag_blk = {
+                                .time_offset = us_to_ms(mag.timestamp),
+                                .x = x,
+                                .y = y,
+                                .z = z,
+                            };
+
+                            /* send the packet to the radio buffer */
+                            if(radio_telem->empty->mag_n == CONFIG_INSPACE_TELEMETRY_TARGET_TRANSMIT_FREQ) {
+                                inerr("Magnetometer buffer full, dropping data\n");
+                                break;
+                            }
+
+                            radio_telem->empty->mag[radio_telem->empty->mag_n++] = mag_blk;
+
+                            sensor_downsamples[SENSOR_MAG].sum_buffer[0] = 0;
+                            sensor_downsamples[SENSOR_MAG].sum_buffer[1] = 0;
+                            sensor_downsamples[SENSOR_MAG].sum_buffer[2] = 0;
+                        }
+
+                        break;
+                    }
+                    case SENSOR_GNSS: {
+                        struct sensor_gnss gnss = ((struct sensor_gnss *)data_buf)[j];
+
+                        sensor_downsamples[SENSOR_GNSS].sum_buffer[0] += (int64_t)point_one_microdegrees(gnss.latitude);
+                        sensor_downsamples[SENSOR_GNSS].sum_buffer[1] += (int64_t)point_one_microdegrees(gnss.longitude);
+
+                        /* we check whether the sum buffer is full, if it is we downsample and pass the output to the radio buffer */
+                        if(sensor_downsamples[SENSOR_GNSS].reads > 0 && sensor_downsamples[SENSOR_GNSS].reads % sensor_downsamples[SENSOR_GNSS].rate == 0) {
+                            float lat = sensor_downsamples[SENSOR_GNSS].sum_buffer[0] / sensor_downsamples[SENSOR_GNSS].rate;
+                            float lon = sensor_downsamples[SENSOR_GNSS].sum_buffer[1] / sensor_downsamples[SENSOR_GNSS].rate;
+
+                            struct coord_blk_t coord_blk = {
+                                .time_offset = us_to_ms(gnss.timestamp),
+                                .latitude = lat,
+                                .longitude = lon,
+                            };
+
+                            /* send the packet to the radio buffer */
+                            if(radio_telem->empty->gnss_n == CONFIG_INSPACE_TELEMETRY_TARGET_TRANSMIT_FREQ) {
+                                inerr("GNSS buffer full, dropping data\n");
+                                break;
+                            }
+
+                            radio_telem->empty->gnss[radio_telem->empty->gnss_n++] = coord_blk;
+
+                            sensor_downsamples[SENSOR_GNSS].sum_buffer[0] = 0;
+                            sensor_downsamples[SENSOR_GNSS].sum_buffer[1] = 0;
+                        }
+
+                        break;
+                    }
+                    case SENSOR_ALT: {
+                        struct fusion_altitude alt = ((struct fusion_altitude *)data_buf)[j];
+
+                        sensor_downsamples[SENSOR_ALT].sum_buffer[0] += (int64_t)millimeters(alt.altitude);
+
+                        /* we check whether the sum buffer is full, if it is we downsample and pass the output to the radio buffer */
+                        if(sensor_downsamples[SENSOR_ALT].reads > 0 && sensor_downsamples[SENSOR_ALT].reads % sensor_downsamples[SENSOR_ALT].rate == 0) {
+                            float altitude = sensor_downsamples[SENSOR_ALT].sum_buffer[0] / sensor_downsamples[SENSOR_ALT].rate;
+
+                            struct alt_blk_t alt_blk = {
+                                .time_offset = us_to_ms(alt.timestamp),
+                                .altitude = altitude,
+                            };
+
+                            /* send the packet to the radio buffer */
+                            if(radio_telem->empty->alt_n == CONFIG_INSPACE_TELEMETRY_TARGET_TRANSMIT_FREQ) {
+                                inerr("Altitude buffer full, dropping data\n");
+                                break;
+                            }
+
+                            radio_telem->empty->alt[radio_telem->empty->alt_n++] = alt_blk;
+
+                            sensor_downsamples[SENSOR_ALT].sum_buffer[0] = 0;
+                        }
+                        break;
+                    }
+                }
+            }
+
+            pthread_mutex_unlock(&radio_telem->empty_mux);
         }
     }
     publish_error(PROC_ID_COLLECTION, ERROR_PROCESS_DEAD);
     pthread_exit(0);
-}
-
-/* Sets up a collection_info_t struct with a packet buffer and gets an initially empty node to work on
- *
- * @param collection The collection_info_t struct to set up
- * @param packet_buffer The buffer to get packets from a put into
- * @return 0 on success, or a negative error code on failure
- */
-static int setup_collection(collection_info_t *collection, packet_buffer_t *packet_buffer) {
-    collection->buffer = packet_buffer;
-    collection->current = packet_buffer_get_empty(packet_buffer);
-    collection->last_lat = NAN;
-    collection->last_long = NAN;
-    reset_block_count(collection);
-    if (!collection->current) {
-        return -1;
-    }
-    return 0;
-}
-
-/* Resets the current block count for the collected data
- *
- * @param collection Information about collected data
- */
-static void reset_block_count(collection_info_t *collection) {
-    for (int i = 0; i < sizeof(collection->block_count) / sizeof(collection->block_count[0]); i++) {
-        collection->block_count[i] = 0;
-    }
-}
-
-/* Adds a block to the current packet being worked on
- *
- * @param collection Collection information containing a packet to add the block to
- * @param type The type of block to add
- * @param mission_time The time of measurement for the block, if it has one
- * @return The location to write the block, or NULL if the block could not be added
- */
-static uint8_t *add_block(collection_info_t *collection, enum block_type_e type, uint32_t mission_time) {
-    uint8_t *block_end = pkt_create_blk(collection->current->packet, collection->current->end, type, mission_time);
-    uint8_t *block_start = collection->current->end;
-    /* Will be NULL if the block can't be added to this packet */
-    if (block_end) {
-        collection->block_count[type]++;
-        collection->current->end = block_end;
-        return block_start;
-    }
-
-    return NULL;
-}
-
-/**
- * Allocates a block in the current packet or swaps out the current packet if the block can't be added
- *
- * @param collection Collection information to add the block to
- * @param type The type of block being allocated
- * @param mission_time The time of the measurement, if this block type has one
- * @return The location to write the requested type of block
- */
-static uint8_t *add_or_new(collection_info_t *collection, enum block_type_e type, uint32_t mission_time) {
-    uint8_t *block_start;
-
-    /* The last byte of the packet will be where the block is allocated, but we need to know where it will end to update
-     * (*node)->end */
-
-    block_start = add_block(collection, type, mission_time);
-    if (block_start == NULL) {
-        /* Can't add to this packet, it's full or we can just assume its done being assembled */
-        packet_buffer_put_full(collection->buffer, collection->current);
-        collection->current = packet_buffer_get_empty(collection->buffer);
-        reset_block_count(collection);
-
-        if (collection->current == NULL) {
-            inerr("Couldn't get an empty packet or overwrite a full one - not enough packets in buffer\n");
-            return NULL;
-        }
-
-        /* Leave seq num up to the logger/transmitter (don't know if or in what order packets get transmitted) */
-
-        collection->current->end = pkt_init(collection->current->packet, 0, mission_time);
-
-#ifdef HAS_GNSS
-        /* Always make first block of packet a coords block with most recent coordinates if we have them */
-        if (isnanf(collection->last_lat) || isnanf(collection->last_long)) {
-            inwarn("No coordinates data in packet\n");
-        } else {
-            block_start = add_block(collection, DATA_LAT_LONG, mission_time);
-            if (block_start == NULL) {
-                inerr("Couldn't add a block to a new packet\n");
-                return NULL;
-            }
-            coord_blk_init((struct coord_blk_t *)block_body(block_start), point_one_microdegrees(collection->last_lat),
-                           point_one_microdegrees(collection->last_long));
-        }
-#endif
-        block_start = add_block(collection, type, mission_time);
-        if (block_start == NULL) {
-            inerr("Couldn't add a block to a new packet\n");
-        }
-    }
-    return block_start;
-}
-
-#ifdef HAS_BARO
-/* Add a pressure block to the packet being assembled
- *
- * @param collection Collection information where the block should be added
- * @param baro_data The baro data to add
- */
-static void add_pres_blk(collection_info_t *collection, struct sensor_baro *baro_data) {
-    uint8_t *block = add_or_new(collection, DATA_PRESSURE, us_to_ms(baro_data->timestamp));
-    if (block) {
-        pres_blk_init((struct pres_blk_t *)block_body(block), pascals(baro_data->pressure));
-    }
-}
-
-/* Add a temperature block to the packet being assembled
- *
- * @param collection Collection information where the block should be added
- * @param baro_data The baro data to add
- */
-static void add_temp_blk(collection_info_t *collection, struct sensor_baro *baro_data) {
-    uint8_t *block = add_or_new(collection, DATA_TEMP, us_to_ms(baro_data->timestamp));
-    if (block) {
-        temp_blk_init((struct temp_blk_t *)block_body(block), millidegrees(baro_data->temperature));
-    }
-}
-
-/* A uorb_data_callback_t function - adds barometric data to the required packets
- *
- * @param ctx Context information, type processing_context_t
- * @param data Barometric data to add, type struct sensor_baro
- */
-static void baro_handler(void *ctx, void *data) {
-    struct sensor_baro *baro_data = (struct sensor_baro *)data;
-    processing_context_t *context = (processing_context_t *)ctx;
-    add_pres_blk(&context->logging, baro_data);
-    add_temp_blk(&context->logging, baro_data);
-
-    if (context->transmit.block_count[DATA_PRESSURE] < TRANSMIT_NUM_LOW_PRIORITY_READINGS) {
-        add_pres_blk(&context->transmit, baro_data);
-    }
-    if (context->transmit.block_count[DATA_TEMP] < TRANSMIT_NUM_LOW_PRIORITY_READINGS) {
-        add_temp_blk(&context->transmit, baro_data);
-    }
-}
-#endif
-
-#ifdef HAS_MAG
-/* Add a magnetometer block to the packet being assembled
- *
- * @param collection Collection information where the block should be added
- * @param mag_data The magnetic field data to add
- */
-static void add_mag_blk(collection_info_t *collection, struct sensor_mag *mag_data) {
-    uint8_t *block = add_or_new(collection, DATA_MAGNETIC, us_to_ms(mag_data->timestamp));
-    if (block) {
-        mag_blk_init((struct mag_blk_t *)block_body(block), tenth_microtesla(mag_data->x),
-                     tenth_microtesla(mag_data->y), tenth_microtesla(mag_data->z));
-    }
-}
-
-/* A uorb_data_callback_t function - adds magnetometer data to the required packets
- *
- * @param ctx Context information, type processing_context_t
- * @param data magnetometer data to add, type struct sensor_mag
- */
-static void mag_handler(void *ctx, void *data) {
-    struct sensor_mag *mag_data = (struct sensor_mag *)data;
-    processing_context_t *context = (processing_context_t *)ctx;
-    add_mag_blk(&context->logging, mag_data);
-    if (context->transmit.block_count[DATA_MAGNETIC] < TRANSMIT_NUM_LOW_PRIORITY_READINGS) {
-        add_mag_blk(&context->transmit, mag_data);
-    }
-}
-#endif
-
-#ifdef HAS_ACCEL
-/* Add an acceleration block to the packet being assembled
- *
- * @param collection Collection information where the block should be added
- * @param node The packet currently being assembled
- * @param accel_data The accel data to add
- */
-static void add_accel_blk(collection_info_t *collection, struct sensor_accel *accel_data) {
-    uint8_t *block = add_or_new(collection, DATA_ACCEL_REL, us_to_ms(accel_data->timestamp));
-    if (block) {
-        accel_blk_init((struct accel_blk_t *)block_body(block), cm_per_sec_squared(accel_data->x),
-                       cm_per_sec_squared(accel_data->y), cm_per_sec_squared(accel_data->z));
-    }
-}
-
-/* A uorb_data_callback_t function - adds acceleration data to the required packets
- *
- * @param ctx Context information, type processing_context_t
- * @param data Acceleration data to add, type struct sensor_accel
- */
-static void accel_handler(void *ctx, void *data) {
-    struct sensor_accel *accel_data = (struct sensor_accel *)data;
-    processing_context_t *context = (processing_context_t *)ctx;
-    add_accel_blk(&context->logging, accel_data);
-    if (context->transmit.block_count[DATA_MAGNETIC] < TRANSMIT_NUM_MED_PRIORITY_READINGS) {
-        add_accel_blk(&context->transmit, accel_data);
-    }
-}
-#endif
-
-#ifdef HAS_GYRO
-/* Add an gyro block to the packet being assembled
- *
- * @param collection Collection information where the block should be added
- * @param gyro_data The gyro data to add
- */
-static void add_gyro_blk(collection_info_t *collection, struct sensor_gyro *gyro_data) {
-    uint8_t *block = add_or_new(collection, DATA_ANGULAR_VEL, us_to_ms(gyro_data->timestamp));
-    if (block) {
-        ang_vel_blk_init((struct ang_vel_blk_t *)block_body(block), tenth_degree(gyro_data->x),
-                         tenth_degree(gyro_data->y), tenth_degree(gyro_data->z));
-    }
-}
-
-/* A uorb_data_callback_t function - adds gyro data to the required packets
- *
- * @param ctx Context information, type processing_context_t
- * @param data Acceleration data to add, type struct sensor_gyro
- */
-static void gyro_handler(void *ctx, void *data) {
-    struct sensor_gyro *gyro_data = (struct sensor_gyro *)data;
-    processing_context_t *context = (processing_context_t *)ctx;
-    add_gyro_blk(&context->logging, gyro_data);
-    if (context->transmit.block_count[DATA_ANGULAR_VEL] < TRANSMIT_NUM_LOW_PRIORITY_READINGS) {
-        add_gyro_blk(&context->transmit, gyro_data);
-    }
-}
-#endif
-
-#ifdef HAS_GNSS
-/* Add a gnss block to the packet being assembled
- *
- * @param collection Collection information where the block should be added
- * @param gnss_data The gnss data to add
- */
-static void add_gnss_block(collection_info_t *collection, struct sensor_gnss *gnss_data) {
-    collection->last_lat = gnss_data->latitude;
-    collection->last_long = gnss_data->longitude;
-    uint8_t *block = add_or_new(collection, DATA_LAT_LONG, us_to_ms(gnss_data->timestamp));
-    if (block) {
-        coord_blk_init((struct coord_blk_t *)block_body(block), point_one_microdegrees(gnss_data->latitude),
-                       point_one_microdegrees(gnss_data->longitude));
-    }
-}
-
-/* Add a gnss mean sea level altitude block to the packet being assembled
- *
- * @param collection Collection information where the block should be added
- * @param alt_data The altitude data to add
- */
-static void add_gnss_msl_block(collection_info_t *collection, struct sensor_gnss *alt_data) {
-    uint8_t *block = add_or_new(collection, DATA_ALT_SEA, us_to_ms(alt_data->timestamp));
-    if (block) {
-        alt_blk_init((struct alt_blk_t *)block_body(block), millimeters(alt_data->altitude));
-    }
-}
-#endif
-
-/**
- * Add a mean sea level altitude block to the packet being assembled
- *
- * @param collection Collection information where the block should be added
- * @param alt_data The altitude data to add
- */
-static void add_msl_block(collection_info_t *collection, struct fusion_altitude *alt_data) {
-    uint8_t *block = add_or_new(collection, DATA_ALT_SEA, us_to_ms(alt_data->timestamp));
-    if (block) {
-        alt_blk_init((struct alt_blk_t *)block_body(block), millimeters(alt_data->altitude));
-    }
-}
-
-#ifdef HAS_GNSS
-/* A uorb_data_callback_t function - adds gnss data to the required packets
- *
- * @param ctx Context information, type processing_context_t
- * @param data GNSS data to add, type struct sensor_gnss
- */
-static void gnss_handler(void *ctx, void *data) {
-    struct sensor_gnss *gnss_data = (struct sensor_gnss *)data;
-    processing_context_t *context = (processing_context_t *)ctx;
-    if (gnss_data->latitude == (int)NULL && gnss_data->longitude == (int)NULL)
-        return; // Don't send packets with no sat fix
-
-    add_gnss_block(&context->logging, gnss_data);
-    add_gnss_msl_block(&context->logging, gnss_data);
-
-    add_gnss_block(&context->transmit, gnss_data);
-    add_gnss_msl_block(&context->transmit, gnss_data);
-}
-#endif
-
-/* A uorb_data_callback_t function - adds altitude data to the required packets
- *
- * @param ctx Context information, type processing_context_t
- * @param data Altitude data to add, type struct fusion_altitude
- */
-static void alt_handler(void *ctx, void *data) {
-    struct fusion_altitude *alt_data = (struct fusion_altitude *)data;
-    processing_context_t *context = (processing_context_t *)ctx;
-    add_msl_block(&context->logging, alt_data);
-    add_msl_block(&context->transmit, alt_data);
-}
-
-/* Add a voltage block to the packet being assembled
- *
- * @param collection Collection information where the block should be added
- * @param node The packet currently being assembled
- * @param data The voltage data to add
- */
-static void add_voltage_block(collection_info_t *collection, struct adc_msg_s *data) {
-    uint8_t *block;
-    block = add_or_new(collection, DATA_VOLTAGE, us_to_ms(orb_absolute_time()));
-    if (block) {
-        volt_blk_init((struct volt_blk_t *)block_body(block), data->am_channel,
-                      (data->am_data * MAX_VOLTAGE_MV / (ADC_MAX_VAL)));
-    }
-}
-
-/* Handle incoming voltage data.
- *
- * @param ctx Context information, `processing_context_t`
- * @param data The voltage data to add, as a `struct adc_msg_s`
- */
-static void voltage_handler(void *ctx, void *data) {
-    processing_context_t *context = (processing_context_t *)ctx;
-    if (context->logging.block_count[DATA_VOLTAGE] < TRANSMIT_NUM_LOW_PRIORITY_READINGS) {
-        add_voltage_block(&context->logging, data);
-    }
-    if (context->transmit.block_count[DATA_VOLTAGE] < TRANSMIT_NUM_LOW_PRIORITY_READINGS) {
-        add_voltage_block(&context->transmit, data);
-    }
-}
-
-/**
- * Add an error block to the packet being assembled
- *
- * @param collection Collection information where the block should be added
- * @param error The error data to add
- */
-static void add_error_block(collection_info_t *collection, struct error_message *error) {
-    uint8_t *block = add_or_new(collection, DATA_ERROR, us_to_ms(error->timestamp));
-    if (block) {
-        error_blk_init((struct error_blk_t *)block_body(block), error->proc_id, error->error_code);
-    }
-}
-
-/**
- * A uorb_data_callback_t function - adds error data to the required packets
- *
- * @param ctx Context information, type processing_context_t
- * @param data Error data to add, type struct error_message
- */
-static void error_handler(void *ctx, void *data) {
-    struct error_message *error = (struct error_message *)data;
-    processing_context_t *context = (processing_context_t *)ctx;
-    add_error_block(&context->logging, error);
-    add_error_block(&context->transmit, error);
-}
-
-/**
- * Add a status block to the packet being assembled
- *
- * @param collection Collection information where the block should be added
- * @param status The status data to add
- */
-static void add_status_block(collection_info_t *collection, struct status_message *status) {
-    uint8_t *block = add_or_new(collection, DATA_STATUS, us_to_ms(status->timestamp));
-    if (block) {
-        status_blk_init((struct status_blk_t *)block_body(block), status->status_code);
-    }
-}
-
-/**
- * A uorb_data_callback_t function - adds error data to the required packets
- *
- * @param ctx Context information, type processing_context_t
- * @param data Status data to add, type struct status_message
- */
-static void status_handler(void *ctx, void *data) {
-    struct status_message *status = (struct status_message *)data;
-    processing_context_t *context = (processing_context_t *)ctx;
-    add_status_block(&context->logging, status);
-    add_status_block(&context->transmit, status);
 }
