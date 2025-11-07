@@ -1,5 +1,6 @@
 #include <errno.h>
 #include <fcntl.h>
+#include <math.h>
 #include <pthread.h>
 #include <string.h>
 #include <sys/ioctl.h>
@@ -75,7 +76,7 @@ void *transmit_main(void *arg) {
         radio_telem->empty->alt_n = -1;
         radio_telem->empty->mag_n = -1;
         radio_telem->empty->accel_n = -1;
-        radio_telem->empty->ang_vel_n = -1;
+        radio_telem->empty->gyro_n = -1;
 
         /* release the empty mutex, collector can lock it and start collecting again */
         pthread_mutex_unlock(&radio_telem->empty_mux);
@@ -87,12 +88,12 @@ void *transmit_main(void *arg) {
         /* use mission time as current time for now */
         struct timespec current_time;
         clock_gettime(CLOCK_REALTIME, &current_time);
-        pkt_hdr_init((pkt_hdr_t *)packet_ptr, seq_num, current_time.tv_sec);
+        uint32_t mission_time_ms = current_time.tv_sec * 1000 + current_time.tv_nsec / 1000000;
         pkt_hdr_t *header = (pkt_hdr_t *)packet_ptr;
-        packet_ptr = pkt_init(packet_ptr, 0, current_time.tv_sec);
+        packet_ptr = pkt_init(packet_ptr, seq_num++, mission_time_ms);
 
         if(radio_telem->full->gnss_n > 0) {
-            ininfo("GNSS blocks: %d\n", radio_telem->full->gnss_n);
+            header->type_count++;
             blk_hdr_t blk_hdr = {
                 .type = DATA_LAT_LONG,
                 .count = radio_telem->full->gnss_n,
@@ -100,21 +101,23 @@ void *transmit_main(void *arg) {
             memcpy(packet_ptr, &blk_hdr, sizeof(blk_hdr));
             packet_ptr += sizeof(blk_hdr);
             for(int i = 0; i < radio_telem->full->gnss_n; i++) {
-                struct coord_blk_t coord_blk = radio_telem->full->gnss[i];
+                struct sensor_gnss gnss = radio_telem->full->gnss[i];
                 int16_t time_offset;
-                uint32_t mission_time = (uint32_t)coord_blk.time_offset;
-                if(pkt_blk_calc_time(mission_time, header->timestamp, &time_offset)) {
+                if(pkt_blk_calc_time(gnss.timestamp, header->timestamp, &time_offset)) {
                     inerr("Failed to calculate time offset for GNSS block %d\n", i);
                     continue;
                 }
+                struct coord_blk_t coord_blk;
                 coord_blk.time_offset = time_offset;
+                coord_blk.latitude = (int32_t)gnss.latitude;
+                coord_blk.longitude = (int32_t)gnss.longitude;
                 memcpy(packet_ptr, &coord_blk, sizeof(struct coord_blk_t));
                 packet_ptr += sizeof(struct coord_blk_t);
             }
         }
 
         if(radio_telem->full->alt_n > 0) {
-            ininfo("Alt blocks: %d\n", radio_telem->full->alt_n);
+            header->type_count++;
             blk_hdr_t blk_hdr = {
                 .type = DATA_ALT_LAUNCH,
                 .count = radio_telem->full->alt_n,
@@ -122,21 +125,23 @@ void *transmit_main(void *arg) {
             memcpy(packet_ptr, &blk_hdr, sizeof(blk_hdr));
             packet_ptr += sizeof(blk_hdr);
             for(int i = 0; i < radio_telem->full->alt_n; i++) {
-                struct alt_blk_t alt_blk = radio_telem->full->alt[i];
+                struct fusion_altitude alt = radio_telem->full->alt[i];
+
                 int16_t time_offset;
-                uint32_t mission_time = (uint32_t)alt_blk.time_offset;
-                if(pkt_blk_calc_time(mission_time, header->timestamp, &time_offset)) {
+                if(pkt_blk_calc_time(alt.timestamp, header->timestamp, &time_offset)) {
                     inerr("Failed to calculate time offset for Alt block %d\n", i);
                     continue;
                 }
+                struct alt_blk_t alt_blk;
                 alt_blk.time_offset = time_offset;
+                alt_blk.altitude = (int32_t)alt.altitude;
                 memcpy(packet_ptr, &alt_blk, sizeof(struct alt_blk_t));
                 packet_ptr += sizeof(struct alt_blk_t);
             }
         }
 
         if(radio_telem->full->mag_n > 0) {
-            ininfo("Mag blocks: %d\n", radio_telem->full->mag_n);
+            header->type_count++;
             blk_hdr_t blk_hdr = {
                 .type = DATA_MAGNETIC,
                 .count = radio_telem->full->mag_n,
@@ -144,21 +149,24 @@ void *transmit_main(void *arg) {
             memcpy(packet_ptr, &blk_hdr, sizeof(blk_hdr));
             packet_ptr += sizeof(blk_hdr);
             for(int i = 0; i < radio_telem->full->mag_n; i++) {
-                struct mag_blk_t mag_blk = radio_telem->full->mag[i];
+                struct sensor_mag mag = radio_telem->full->mag[i];
                 int16_t time_offset;
-                uint32_t mission_time = (uint32_t)mag_blk.time_offset;
-                if(pkt_blk_calc_time(mission_time, header->timestamp, &time_offset)) {
+                if(pkt_blk_calc_time(mag.timestamp, header->timestamp, &time_offset)) {
                     inerr("Failed to calculate time offset for Mag block %d\n", i);
                     continue;
                 }
+                struct mag_blk_t mag_blk;
                 mag_blk.time_offset = time_offset;
+                mag_blk.x = (int16_t)mag.x;
+                mag_blk.y = (int16_t)mag.y;
+                mag_blk.z = (int16_t)mag.z;
                 memcpy(packet_ptr, &mag_blk, sizeof(struct mag_blk_t));
                 packet_ptr += sizeof(struct mag_blk_t);
             }
         }
 
         if(radio_telem->full->accel_n > 0) {
-            ininfo("Accel blocks: %d\n", radio_telem->full->accel_n);
+            header->type_count++;
             blk_hdr_t blk_hdr = {
                 .type = DATA_ACCEL_REL,
                 .count = radio_telem->full->accel_n,
@@ -166,36 +174,42 @@ void *transmit_main(void *arg) {
             memcpy(packet_ptr, &blk_hdr, sizeof(blk_hdr));
             packet_ptr += sizeof(blk_hdr);
             for(int i = 0; i < radio_telem->full->accel_n; i++) {
-                struct accel_blk_t accel_blk = radio_telem->full->accel[i];
+                struct sensor_accel accel = radio_telem->full->accel[i];
                 int16_t time_offset;
-                uint32_t mission_time = (uint32_t)accel_blk.time_offset;
-                if(pkt_blk_calc_time(mission_time, header->timestamp, &time_offset)) {
+                if(pkt_blk_calc_time(accel.timestamp, header->timestamp, &time_offset)) {
                     inerr("Failed to calculate time offset for Accel block %d\n", i);
                     continue;
                 }
+                struct accel_blk_t accel_blk;
                 accel_blk.time_offset = time_offset;
+                accel_blk.x = (int16_t)accel.x;
+                accel_blk.y = (int16_t)accel.y;
+                accel_blk.z = (int16_t)accel.z;
                 memcpy(packet_ptr, &accel_blk, sizeof(struct accel_blk_t));
                 packet_ptr += sizeof(struct accel_blk_t);
             }
         }
 
-        if(radio_telem->full->ang_vel_n > 0) {
-            ininfo("Ang vel blocks: %d\n", radio_telem->full->ang_vel_n);
+        if(radio_telem->full->gyro_n > 0) {
+            header->type_count++;
             blk_hdr_t blk_hdr = {
                 .type = DATA_ANGULAR_VEL,
-                .count = radio_telem->full->ang_vel_n,
+                .count = radio_telem->full->gyro_n,
             };
             memcpy(packet_ptr, &blk_hdr, sizeof(blk_hdr));
             packet_ptr += sizeof(blk_hdr);
-            for(int i = 0; i < radio_telem->full->ang_vel_n; i++) {
-                struct ang_vel_blk_t ang_vel_blk = radio_telem->full->ang_vel[i];
+            for(int i = 0; i < radio_telem->full->gyro_n; i++) {
+                struct sensor_gyro gyro = radio_telem->full->gyro[i];
                 int16_t time_offset;
-                uint32_t mission_time = (uint32_t)ang_vel_blk.time_offset;
-                if(pkt_blk_calc_time(mission_time, header->timestamp, &time_offset)) {
+                if(pkt_blk_calc_time(gyro.timestamp, header->timestamp, &time_offset)) {
                     inerr("Failed to calculate time offset for Ang vel block %d\n", i);
                     continue;
                 }
+                struct ang_vel_blk_t ang_vel_blk;
                 ang_vel_blk.time_offset = time_offset;
+                ang_vel_blk.x = (int16_t)gyro.x;
+                ang_vel_blk.y = (int16_t)gyro.y;
+                ang_vel_blk.z = (int16_t)gyro.z;
                 memcpy(packet_ptr, &ang_vel_blk, sizeof(struct ang_vel_blk_t));
                 packet_ptr += sizeof(struct ang_vel_blk_t);
             }
@@ -251,22 +265,29 @@ static int configure_radio(int fd, struct radio_options const *config) {
 
     err = ioctl(fd, WLIOC_SETRADIOFREQ, config->freq);
     config_error(err);
+    ininfo("RADIO: Set frequency to %d\n", config->freq);
     err = ioctl(fd, WLIOC_SETTXPOWERF, &txpwr);
     config_error(err);
     err = ioctl(fd, WLIOC_SETSPREAD, config->spread);
+    ininfo("RADIO: Set spread to %d\n", config->spread);
     config_error(err);
     err = ioctl(fd, WLIOC_SETCODERATE, config->cr);
     config_error(err);
+    ininfo("RADIO: Set code rate to %d\n", config->cr);
     err = ioctl(fd, WLIOC_SETBANDWIDTH, config->bw);
     config_error(err);
+    ininfo("RADIO: Set bandwidth to %d\n", config->bw);
     err = ioctl(fd, WLIOC_CRCEN, config->crc);
     config_error(err);
     err = ioctl(fd, WLIOC_IQIEN, config->iqi);
     config_error(err);
+    ininfo("RADIO: Set IQ inversion to %d\n", config->iqi);
     err = ioctl(fd, WLIOC_SETSYNC, &sync);
     config_error(err);
+    ininfo("RADIO: Set sync to %llu\n", (unsigned long long)sync);
     err = ioctl(fd, WLIOC_SETPRLEN, config->preamble);
     config_error(err);
+    ininfo("RADIO: Set preamble to %d\n", config->preamble);
 #endif /* defined(CONFIG_LPWAN_RN2XX3) */
 
     return err;

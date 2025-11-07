@@ -244,12 +244,12 @@ void *collection_main(void *arg) {
             pthread_mutex_lock(&radio_telem->empty_mux);
 
             /* check if telem thead swapped the buffer */
-            if(radio_telem->empty->accel_n == -1 || radio_telem->empty->ang_vel_n == -1 || radio_telem->empty->mag_n == -1 || radio_telem->empty->gnss_n == -1 || radio_telem->empty->alt_n == -1){
+            if(radio_telem->empty->accel_n == -1 || radio_telem->empty->gyro_n == -1 || radio_telem->empty->mag_n == -1 || radio_telem->empty->gnss_n == -1 || radio_telem->empty->alt_n == -1){
 
                 /* adjust downsampling rates and reset internal state */
                 for(int k = 0; k < sizeof(sensor_downsamples) / sizeof(sensor_downsamples[0]); k++){
                     int updated_rate = sensor_downsamples[k].reads / CONFIG_INSPACE_TELEMETRY_TARGET_TRANSMIT_FREQ;
-                    if(sensor_downsamples[k].rate != updated_rate) {
+                    if(updated_rate > 0 && sensor_downsamples[k].rate != updated_rate) {
                         ininfo("Adjusted downsampling rate for %s from %d to %d\n", uorb_metas[k]->o_name, sensor_downsamples[k].rate, updated_rate);
                         sensor_downsamples[k].rate = updated_rate;
                     }
@@ -261,7 +261,7 @@ void *collection_main(void *arg) {
                 }
 
                 radio_telem->empty->accel_n = 0;
-                radio_telem->empty->ang_vel_n = 0;
+                radio_telem->empty->gyro_n = 0;
                 radio_telem->empty->mag_n = 0;
                 radio_telem->empty->gnss_n = 0;
                 radio_telem->empty->alt_n = 0;
@@ -270,13 +270,13 @@ void *collection_main(void *arg) {
             for (int j = 0; j < (err / uorb_metas[i]->o_size); j++) {
                 sensor_downsamples[i].reads++;
 
-                /* skip readings if have more reads than the target frequency */
-                if(sensor_downsamples[i].reads > sensor_downsamples[i].rate * CONFIG_INSPACE_TELEMETRY_TARGET_TRANSMIT_FREQ) {
-                    continue;
-                }
-
                 switch (i) {
                     case SENSOR_ACCEL: {
+                        /* skip readings if the buffer is full */
+                        if(radio_telem->empty->accel_n == CONFIG_INSPACE_TELEMETRY_TARGET_TRANSMIT_FREQ) {
+                            break;
+                        }
+
                         struct sensor_accel accel = ((struct sensor_accel *)data_buf)[j];
 
                         sensor_downsamples[SENSOR_ACCEL].sum_buffer[0] += (int32_t)cm_per_sec_squared(accel.x);
@@ -289,20 +289,15 @@ void *collection_main(void *arg) {
                             float y = sensor_downsamples[SENSOR_ACCEL].sum_buffer[1] / sensor_downsamples[SENSOR_ACCEL].rate;
                             float z = sensor_downsamples[SENSOR_ACCEL].sum_buffer[2] / sensor_downsamples[SENSOR_ACCEL].rate;
 
-                            struct accel_blk_t accel_blk = {
-                                .time_offset = us_to_ms(accel.timestamp),
+                            struct sensor_accel sensor_accel = {
+                                .timestamp = us_to_ms(accel.timestamp),
                                 .x = x,
                                 .y = y,
                                 .z = z,
                             };
 
-                            /* send the packet to the radio buffer */
-                            if(radio_telem->empty->accel_n == CONFIG_INSPACE_TELEMETRY_TARGET_TRANSMIT_FREQ) {
-                                inerr("Accelerometer buffer full, dropping data\n");
-                                break;
-                            }
 
-                            radio_telem->empty->accel[radio_telem->empty->accel_n++] = accel_blk;
+                            radio_telem->empty->accel[radio_telem->empty->accel_n++] = sensor_accel;
 
                             sensor_downsamples[SENSOR_ACCEL].sum_buffer[0] = 0;
                             sensor_downsamples[SENSOR_ACCEL].sum_buffer[1] = 0;
@@ -312,6 +307,10 @@ void *collection_main(void *arg) {
                         break;
                     }
                     case SENSOR_GYRO: {
+                        /* skip readings if the buffer is full */
+                        if(radio_telem->empty->gyro_n == CONFIG_INSPACE_TELEMETRY_TARGET_TRANSMIT_FREQ) {
+                            break;
+                        }
                         struct sensor_gyro gyro = ((struct sensor_gyro *)data_buf)[j];
 
                         sensor_downsamples[SENSOR_GYRO].sum_buffer[0] += (int32_t)tenth_degree(gyro.x);
@@ -324,21 +323,13 @@ void *collection_main(void *arg) {
                             float y = sensor_downsamples[SENSOR_GYRO].sum_buffer[1] / sensor_downsamples[SENSOR_GYRO].rate;
                             float z = sensor_downsamples[SENSOR_GYRO].sum_buffer[2] / sensor_downsamples[SENSOR_GYRO].rate;
 
-                            struct ang_vel_blk_t ang_vel_blk = {
-                                .time_offset = us_to_ms(gyro.timestamp),
+                            struct sensor_gyro sensor_gyro = {
+                                .timestamp = us_to_ms(gyro.timestamp),
                                 .x = x,
                                 .y = y,
                                 .z = z,
                             };
-
-                            /* send the packet to the radio buffer */
-                            if(radio_telem->empty->ang_vel_n == CONFIG_INSPACE_TELEMETRY_TARGET_TRANSMIT_FREQ) {
-                                inerr("Gyroscope buffer full, dropping data\n");
-                                break;
-                            }
-
-                            radio_telem->empty->ang_vel[radio_telem->empty->ang_vel_n++] = ang_vel_blk;
-
+                            radio_telem->empty->gyro[radio_telem->empty->gyro_n++] = sensor_gyro;
                             sensor_downsamples[SENSOR_GYRO].sum_buffer[0] = 0;
                             sensor_downsamples[SENSOR_GYRO].sum_buffer[1] = 0;
                             sensor_downsamples[SENSOR_GYRO].sum_buffer[2] = 0;
@@ -347,6 +338,10 @@ void *collection_main(void *arg) {
                         break;
                     }
                     case SENSOR_MAG: {
+                        /* skip readings if the buffer is full */
+                        if(radio_telem->empty->mag_n == CONFIG_INSPACE_TELEMETRY_TARGET_TRANSMIT_FREQ) {
+                            break;
+                        }
                         struct sensor_mag mag = ((struct sensor_mag *)data_buf)[j];
 
                         sensor_downsamples[SENSOR_MAG].sum_buffer[0] += (int32_t)tenth_microtesla(mag.x);
@@ -359,8 +354,8 @@ void *collection_main(void *arg) {
                             float y = sensor_downsamples[SENSOR_MAG].sum_buffer[1] / sensor_downsamples[SENSOR_MAG].rate;
                             float z = sensor_downsamples[SENSOR_MAG].sum_buffer[2] / sensor_downsamples[SENSOR_MAG].rate;
 
-                            struct mag_blk_t mag_blk = {
-                                .time_offset = us_to_ms(mag.timestamp),
+                            struct sensor_mag sensor_mag = {
+                                .timestamp = us_to_ms(mag.timestamp),
                                 .x = x,
                                 .y = y,
                                 .z = z,
@@ -372,7 +367,7 @@ void *collection_main(void *arg) {
                                 break;
                             }
 
-                            radio_telem->empty->mag[radio_telem->empty->mag_n++] = mag_blk;
+                            radio_telem->empty->mag[radio_telem->empty->mag_n++] = sensor_mag;
 
                             sensor_downsamples[SENSOR_MAG].sum_buffer[0] = 0;
                             sensor_downsamples[SENSOR_MAG].sum_buffer[1] = 0;
@@ -382,6 +377,10 @@ void *collection_main(void *arg) {
                         break;
                     }
                     case SENSOR_GNSS: {
+                        /* skip readings if the buffer is full */
+                        if(radio_telem->empty->gnss_n == CONFIG_INSPACE_TELEMETRY_TARGET_TRANSMIT_FREQ) {
+                            break;
+                        }
                         struct sensor_gnss gnss = ((struct sensor_gnss *)data_buf)[j];
 
                         sensor_downsamples[SENSOR_GNSS].sum_buffer[0] += (int64_t)point_one_microdegrees(gnss.latitude);
@@ -392,11 +391,12 @@ void *collection_main(void *arg) {
                             float lat = sensor_downsamples[SENSOR_GNSS].sum_buffer[0] / sensor_downsamples[SENSOR_GNSS].rate;
                             float lon = sensor_downsamples[SENSOR_GNSS].sum_buffer[1] / sensor_downsamples[SENSOR_GNSS].rate;
 
-                            struct coord_blk_t coord_blk = {
-                                .time_offset = us_to_ms(gnss.timestamp),
+                            struct sensor_gnss sensor_gnss = {
+                                .timestamp = us_to_ms(gnss.timestamp),
                                 .latitude = lat,
                                 .longitude = lon,
                             };
+
 
                             /* send the packet to the radio buffer */
                             if(radio_telem->empty->gnss_n == CONFIG_INSPACE_TELEMETRY_TARGET_TRANSMIT_FREQ) {
@@ -404,7 +404,7 @@ void *collection_main(void *arg) {
                                 break;
                             }
 
-                            radio_telem->empty->gnss[radio_telem->empty->gnss_n++] = coord_blk;
+                            radio_telem->empty->gnss[radio_telem->empty->gnss_n++] = sensor_gnss;
 
                             sensor_downsamples[SENSOR_GNSS].sum_buffer[0] = 0;
                             sensor_downsamples[SENSOR_GNSS].sum_buffer[1] = 0;
@@ -413,6 +413,10 @@ void *collection_main(void *arg) {
                         break;
                     }
                     case SENSOR_ALT: {
+                        /* skip readings if the buffer is full */
+                        if(radio_telem->empty->alt_n == CONFIG_INSPACE_TELEMETRY_TARGET_TRANSMIT_FREQ) {
+                            break;
+                        }
                         struct fusion_altitude alt = ((struct fusion_altitude *)data_buf)[j];
 
                         sensor_downsamples[SENSOR_ALT].sum_buffer[0] += (int64_t)millimeters(alt.altitude);
@@ -421,8 +425,8 @@ void *collection_main(void *arg) {
                         if(sensor_downsamples[SENSOR_ALT].reads > 0 && sensor_downsamples[SENSOR_ALT].reads % sensor_downsamples[SENSOR_ALT].rate == 0) {
                             float altitude = sensor_downsamples[SENSOR_ALT].sum_buffer[0] / sensor_downsamples[SENSOR_ALT].rate;
 
-                            struct alt_blk_t alt_blk = {
-                                .time_offset = us_to_ms(alt.timestamp),
+                            struct fusion_altitude sensor_alt = {
+                                .timestamp = us_to_ms(alt.timestamp),
                                 .altitude = altitude,
                             };
 
@@ -432,7 +436,7 @@ void *collection_main(void *arg) {
                                 break;
                             }
 
-                            radio_telem->empty->alt[radio_telem->empty->alt_n++] = alt_blk;
+                            radio_telem->empty->alt[radio_telem->empty->alt_n++] = sensor_alt;
 
                             sensor_downsamples[SENSOR_ALT].sum_buffer[0] = 0;
                         }
