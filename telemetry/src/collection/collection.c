@@ -35,6 +35,7 @@ enum uorb_sensors {
     SENSOR_MAG, /* Magnetometer */
     SENSOR_GNSS, /* GNSS */
     SENSOR_ALT,    /* Altitude fusion */
+    SENSOR_BARO,
 };
 
 /* A buffer that can hold any of the types of data created by the sensors in uorb_inputs */
@@ -44,6 +45,7 @@ union uorb_data {
     struct sensor_mag mag;
     struct sensor_gnss gnss;
     struct fusion_altitude alt;
+    struct sensor_baro baro;
 };
 
 /* uORB polling file descriptors */
@@ -54,6 +56,7 @@ static struct pollfd uorb_fds[] = {
     [SENSOR_MAG] = {.fd = -1, .events = POLLIN, .revents = 0},
     [SENSOR_GNSS] = {.fd = -1, .events = POLLIN, .revents = 0},
     [SENSOR_ALT] = {.fd = -1, .events = POLLIN, .revents = 0},
+    [SENSOR_BARO] = {.fd = -1, .events = POLLIN, .revents = 0},
 };
 
 /* uORB sensor metadatas */
@@ -63,13 +66,15 @@ ORB_DECLARE(sensor_gyro);
 ORB_DECLARE(sensor_mag);
 ORB_DECLARE(sensor_gnss);
 ORB_DECLARE(fusion_altitude);
+ORB_DECLARE(sensor_baro);
 
 static struct orb_metadata const *uorb_metas[] = {
     [SENSOR_ACCEL] = ORB_ID(sensor_accel),
     [SENSOR_GYRO] = ORB_ID(sensor_gyro),
     [SENSOR_MAG] = ORB_ID(sensor_mag),
     [SENSOR_GNSS] = ORB_ID(sensor_gnss),
-    [SENSOR_ALT] = ORB_ID(fusion_altitude)
+    [SENSOR_ALT] = ORB_ID(fusion_altitude),
+    [SENSOR_BARO] = ORB_ID(sensor_baro),
 };
 
 /* The default sampling rate for low-sample sensors or topics */
@@ -80,7 +85,8 @@ static const uint32_t sample_freqs[] = {
     [SENSOR_ACCEL] = CONFIG_INSPACE_TELEMETRY_ACCEL_SF,
     [SENSOR_GYRO] = CONFIG_INSPACE_TELEMETRY_GYRO_SF,
     [SENSOR_MAG] = CONFIG_INSPACE_TELEMETRY_MAG_SF,
-    [SENSOR_GNSS] = CONFIG_INSPACE_TELEMETRY_GPS_SF
+    [SENSOR_GNSS] = CONFIG_INSPACE_TELEMETRY_GPS_SF,
+    [SENSOR_BARO] = CONFIG_INSPACE_TELEMETRY_BARO_SF,
 };
 
 /* Data buffer for copying uORB data */
@@ -91,18 +97,20 @@ static uint8_t data_buf[sizeof(union uorb_data) * DATA_BUF_MIN];
 
 #define NUM_SENSORS (sizeof(uorb_fds) / sizeof(uorb_fds[0]))
 
-struct sensor_downsampling_t {
-    int64_t mean[3];
-    uint16_t count;
+typedef struct {
+    float mean[3];
+    uint16_t sample_count;
+    uint16_t total_count;
     uint16_t rate;
-};
+} sensor_downsampling_t;
 
-static struct sensor_downsampling_t sensor_downsamples[] = {
+static sensor_downsampling_t sensor_downsamples[] = {
     [SENSOR_ACCEL] = {.rate = CONFIG_INSPACE_TELEMETRY_ACCEL_SF / CONFIG_INSPACE_DOWNSAMPLING_TARGET_FREQ},
     [SENSOR_GYRO] = {.rate = CONFIG_INSPACE_TELEMETRY_GYRO_SF / CONFIG_INSPACE_DOWNSAMPLING_TARGET_FREQ},
     [SENSOR_MAG] = {.rate = CONFIG_INSPACE_TELEMETRY_MAG_SF / CONFIG_INSPACE_DOWNSAMPLING_TARGET_FREQ},
     [SENSOR_GNSS] = {.rate = CONFIG_INSPACE_TELEMETRY_GPS_SF / CONFIG_INSPACE_DOWNSAMPLING_TARGET_FREQ},
     [SENSOR_ALT] = {.rate = CONFIG_INSPACE_TELEMETRY_ALT_SF / CONFIG_INSPACE_DOWNSAMPLING_TARGET_FREQ},
+    [SENSOR_BARO] = {.rate = CONFIG_INSPACE_TELEMETRY_BARO_SF / CONFIG_INSPACE_DOWNSAMPLING_TARGET_FREQ},
 };
 
 /*
@@ -168,7 +176,7 @@ void *collection_main(void *arg) {
 
     ininfo("Setting sensor sample frequencies.\n");
 
-    for (int i = 0; i < NUM_SENSORS; i++) {
+    for (int i = 0; i < sizeof(sample_freqs) / sizeof(sample_freqs[0]); i++) {
 
         /* Skip invalid sensors */
 
@@ -217,12 +225,13 @@ void *collection_main(void *arg) {
 
                 /* adjust downsampling rates and reset internal state */
                 for(int k = 0; k < sizeof(sensor_downsamples) / sizeof(sensor_downsamples[0]); k++){
-                    int updated_rate = sensor_downsamples[k].count / CONFIG_INSPACE_DOWNSAMPLING_TARGET_FREQ;
+                    int updated_rate = sensor_downsamples[k].total_count / CONFIG_INSPACE_DOWNSAMPLING_TARGET_FREQ;
                     if(updated_rate > 0 && (sensor_downsamples[k].rate != updated_rate)) {
                         sensor_downsamples[k].rate = updated_rate;
                     }
 
-                    sensor_downsamples[k].count = 0;
+                    sensor_downsamples[k].total_count = 0;
+                    sensor_downsamples[k].sample_count = 0;
                     sensor_downsamples[k].mean[0] = 0;
                     sensor_downsamples[k].mean[1] = 0;
                     sensor_downsamples[k].mean[2] = 0;
@@ -236,7 +245,8 @@ void *collection_main(void *arg) {
             }
 
             for (int j = 0; j < (err / uorb_metas[i]->o_size); j++) {
-                sensor_downsamples[i].count++;
+                sensor_downsamples[i].total_count++;
+                sensor_downsamples[i].sample_count++;
 
                 /* using the Welford formula to calculate the mean */
                 switch (i) {
@@ -247,11 +257,11 @@ void *collection_main(void *arg) {
 
                         struct sensor_accel accel_input = ((struct sensor_accel *)data_buf)[j];
 
-                        sensor_downsamples[SENSOR_ACCEL].mean[0] += (accel_input.x - sensor_downsamples[SENSOR_ACCEL].mean[0]) / sensor_downsamples[SENSOR_ACCEL].count;
-                        sensor_downsamples[SENSOR_ACCEL].mean[1] += (accel_input.y - sensor_downsamples[SENSOR_ACCEL].mean[1]) / sensor_downsamples[SENSOR_ACCEL].count;
-                        sensor_downsamples[SENSOR_ACCEL].mean[2] += (accel_input.z - sensor_downsamples[SENSOR_ACCEL].mean[2]) / sensor_downsamples[SENSOR_ACCEL].count;
+                        sensor_downsamples[SENSOR_ACCEL].mean[0] += (accel_input.x - sensor_downsamples[SENSOR_ACCEL].mean[0]) / sensor_downsamples[SENSOR_ACCEL].sample_count;
+                        sensor_downsamples[SENSOR_ACCEL].mean[1] += (accel_input.y - sensor_downsamples[SENSOR_ACCEL].mean[1]) / sensor_downsamples[SENSOR_ACCEL].sample_count;
+                        sensor_downsamples[SENSOR_ACCEL].mean[2] += (accel_input.z - sensor_downsamples[SENSOR_ACCEL].mean[2]) / sensor_downsamples[SENSOR_ACCEL].sample_count;
 
-                        if(sensor_downsamples[SENSOR_ACCEL].count % sensor_downsamples[SENSOR_ACCEL].rate == 0) {
+                        if(sensor_downsamples[SENSOR_ACCEL].sample_count == sensor_downsamples[SENSOR_ACCEL].rate) {
 
                             struct sensor_accel sensor_accel = {
                                 .timestamp = accel_input.timestamp,
@@ -264,6 +274,7 @@ void *collection_main(void *arg) {
                             sensor_downsamples[SENSOR_ACCEL].mean[0] = 0;
                             sensor_downsamples[SENSOR_ACCEL].mean[1] = 0;
                             sensor_downsamples[SENSOR_ACCEL].mean[2] = 0;
+                            sensor_downsamples[SENSOR_ACCEL].sample_count = 0;
                         }
 
                         break;
@@ -275,21 +286,23 @@ void *collection_main(void *arg) {
 
                         struct sensor_gyro gyro_input = ((struct sensor_gyro *)data_buf)[j];
 
-                        sensor_downsamples[SENSOR_GYRO].mean[0] += (gyro_input.x - sensor_downsamples[SENSOR_GYRO].mean[0]) / sensor_downsamples[SENSOR_GYRO].count;
-                        sensor_downsamples[SENSOR_GYRO].mean[1] += (gyro_input.y - sensor_downsamples[SENSOR_GYRO].mean[1]) / sensor_downsamples[SENSOR_GYRO].count;
-                        sensor_downsamples[SENSOR_GYRO].mean[2] += (gyro_input.z - sensor_downsamples[SENSOR_GYRO].mean[2]) / sensor_downsamples[SENSOR_GYRO].count;
+                        sensor_downsamples[SENSOR_GYRO].mean[0] += (gyro_input.x - sensor_downsamples[SENSOR_GYRO].mean[0]) / sensor_downsamples[SENSOR_GYRO].sample_count;
+                        sensor_downsamples[SENSOR_GYRO].mean[1] += (gyro_input.y - sensor_downsamples[SENSOR_GYRO].mean[1]) / sensor_downsamples[SENSOR_GYRO].sample_count;
+                        sensor_downsamples[SENSOR_GYRO].mean[2] += (gyro_input.z - sensor_downsamples[SENSOR_GYRO].mean[2]) / sensor_downsamples[SENSOR_GYRO].sample_count;
 
-                        if(sensor_downsamples[SENSOR_GYRO].count % sensor_downsamples[SENSOR_GYRO].rate == 0) {
+                        if(sensor_downsamples[SENSOR_GYRO].sample_count == sensor_downsamples[SENSOR_GYRO].rate) {
                             struct sensor_gyro sensor_gyro = {
                                 .timestamp = gyro_input.timestamp,
                                 .x = sensor_downsamples[SENSOR_GYRO].mean[0],
                                 .y = sensor_downsamples[SENSOR_GYRO].mean[1],
                                 .z = sensor_downsamples[SENSOR_GYRO].mean[2],
                             };
+
                             radio_telem->empty->gyro[radio_telem->empty->gyro_n++] = sensor_gyro;
                             sensor_downsamples[SENSOR_GYRO].mean[0] = 0;
                             sensor_downsamples[SENSOR_GYRO].mean[1] = 0;
                             sensor_downsamples[SENSOR_GYRO].mean[2] = 0;
+                            sensor_downsamples[SENSOR_GYRO].sample_count = 0;
                         }
 
                         break;
@@ -301,11 +314,11 @@ void *collection_main(void *arg) {
 
                         struct sensor_mag mag_input = ((struct sensor_mag *)data_buf)[j];
 
-                        sensor_downsamples[SENSOR_MAG].mean[0] += (mag_input.x - sensor_downsamples[SENSOR_MAG].mean[0]) / sensor_downsamples[SENSOR_MAG].count;
-                        sensor_downsamples[SENSOR_MAG].mean[1] += (mag_input.y - sensor_downsamples[SENSOR_MAG].mean[1]) / sensor_downsamples[SENSOR_MAG].count;
-                        sensor_downsamples[SENSOR_MAG].mean[2] += (mag_input.z - sensor_downsamples[SENSOR_MAG].mean[2]) / sensor_downsamples[SENSOR_MAG].count;
+                        sensor_downsamples[SENSOR_MAG].mean[0] += (mag_input.x - sensor_downsamples[SENSOR_MAG].mean[0]) / sensor_downsamples[SENSOR_MAG].sample_count;
+                        sensor_downsamples[SENSOR_MAG].mean[1] += (mag_input.y - sensor_downsamples[SENSOR_MAG].mean[1]) / sensor_downsamples[SENSOR_MAG].sample_count;
+                        sensor_downsamples[SENSOR_MAG].mean[2] += (mag_input.z - sensor_downsamples[SENSOR_MAG].mean[2]) / sensor_downsamples[SENSOR_MAG].sample_count;
 
-                        if(sensor_downsamples[SENSOR_MAG].count % sensor_downsamples[SENSOR_MAG].rate == 0) {
+                        if(sensor_downsamples[SENSOR_MAG].sample_count == sensor_downsamples[SENSOR_MAG].rate) {
                             struct sensor_mag sensor_mag = {
                                 .timestamp = mag_input.timestamp,
                                 .x = sensor_downsamples[SENSOR_MAG].mean[0],
@@ -323,6 +336,7 @@ void *collection_main(void *arg) {
                             sensor_downsamples[SENSOR_MAG].mean[0] = 0;
                             sensor_downsamples[SENSOR_MAG].mean[1] = 0;
                             sensor_downsamples[SENSOR_MAG].mean[2] = 0;
+                            sensor_downsamples[SENSOR_MAG].sample_count = 0;
                         }
 
                         break;
@@ -334,10 +348,10 @@ void *collection_main(void *arg) {
 
                         struct sensor_gnss gnss_input = ((struct sensor_gnss *)data_buf)[j];
 
-                        sensor_downsamples[SENSOR_GNSS].mean[0] += (gnss_input.latitude - sensor_downsamples[SENSOR_GNSS].mean[0]) / sensor_downsamples[SENSOR_GNSS].count;
-                        sensor_downsamples[SENSOR_GNSS].mean[1] += (gnss_input.longitude - sensor_downsamples[SENSOR_GNSS].mean[1]) / sensor_downsamples[SENSOR_GNSS].count;
+                        sensor_downsamples[SENSOR_GNSS].mean[0] += (gnss_input.latitude - sensor_downsamples[SENSOR_GNSS].mean[0]) / sensor_downsamples[SENSOR_GNSS].sample_count;
+                        sensor_downsamples[SENSOR_GNSS].mean[1] += (gnss_input.longitude - sensor_downsamples[SENSOR_GNSS].mean[1]) / sensor_downsamples[SENSOR_GNSS].sample_count;
 
-                        if(sensor_downsamples[SENSOR_GNSS].count % sensor_downsamples[SENSOR_GNSS].rate == 0) {
+                        if(sensor_downsamples[SENSOR_GNSS].sample_count == sensor_downsamples[SENSOR_GNSS].rate) {
                             struct sensor_gnss sensor_gnss = {
                                 .timestamp = gnss_input.timestamp,
                                 .latitude = sensor_downsamples[SENSOR_GNSS].mean[0],
@@ -353,6 +367,7 @@ void *collection_main(void *arg) {
 
                             sensor_downsamples[SENSOR_GNSS].mean[0] = 0;
                             sensor_downsamples[SENSOR_GNSS].mean[1] = 0;
+                            sensor_downsamples[SENSOR_GNSS].sample_count = 0;
                         }
 
                         break;
@@ -364,9 +379,9 @@ void *collection_main(void *arg) {
 
                         struct fusion_altitude alt_input = ((struct fusion_altitude *)data_buf)[j];
 
-                        sensor_downsamples[SENSOR_ALT].mean[0] += (alt_input.altitude - sensor_downsamples[SENSOR_ALT].mean[0]) / sensor_downsamples[SENSOR_ALT].count;
+                        sensor_downsamples[SENSOR_ALT].mean[0] += (alt_input.altitude - sensor_downsamples[SENSOR_ALT].mean[0]) / sensor_downsamples[SENSOR_ALT].sample_count;
 
-                        if(sensor_downsamples[SENSOR_ALT].count % sensor_downsamples[SENSOR_ALT].rate == 0) {
+                        if(sensor_downsamples[SENSOR_ALT].sample_count == sensor_downsamples[SENSOR_ALT].rate) {
                             struct fusion_altitude sensor_alt = {
                                 .timestamp = alt_input.timestamp,
                                 .altitude = sensor_downsamples[SENSOR_ALT].mean[0],
@@ -380,6 +395,7 @@ void *collection_main(void *arg) {
                             radio_telem->empty->alt[radio_telem->empty->alt_n++] = sensor_alt;
 
                             sensor_downsamples[SENSOR_ALT].mean[0] = 0;
+                            sensor_downsamples[SENSOR_ALT].sample_count = 0;
                         }
                         break;
                     }
