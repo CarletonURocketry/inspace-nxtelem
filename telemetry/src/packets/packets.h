@@ -3,6 +3,9 @@
 
 #include <stdint.h>
 #include <stdlib.h>
+#include <nuttx/uorb.h>
+#include "../fusion/fusion.h"
+#include "../collection/status-update.h"
 
 /* The CU InSpace packet specification version implemented here */
 
@@ -201,5 +204,16 @@ struct error_blk_t {
 
 void error_blk_init(struct error_blk_t *b, const uint8_t proc_id, const uint8_t error_code);
 int pkt_blk_calc_time(uint32_t mission_time, uint16_t abs_timestamp, int16_t *result);
+
+int orb_accel_pkt(struct sensor_accel *accel, struct accel_blk_t *blk, uint16_t base_time);
+int orb_ang_vel_pkt(struct sensor_gyro *gyro, struct ang_vel_blk_t *blk, uint16_t base_time);
+int orb_mag_pkt(struct sensor_mag *mag, struct mag_blk_t *blk, uint16_t base_time);
+int orb_baro_pkt(struct sensor_baro *baro, struct pres_blk_t *blk, uint16_t base_time);
+int orb_baro_temp_pkt(struct sensor_baro *baro, struct temp_blk_t *blk, uint16_t base_time);
+int orb_alt_pkt(struct fusion_altitude *alt, struct alt_blk_t *blk, uint16_t base_time);
+int orb_gnss_pkt(struct sensor_gnss *gnss, struct coord_blk_t *blk, uint16_t base_time);
+int orb_battery_pkt(struct sensor_battery *battery, struct volt_blk_t *blk, uint16_t base_time);
+int orb_error_pkt(struct error_message *error, struct error_blk_t *blk, uint16_t base_time);
+int orb_status_pkt(struct status_message *status, struct status_blk_t *blk, uint16_t base_time);
 
 #endif // _INSPACE_TELEMETRY_PACKET_H_

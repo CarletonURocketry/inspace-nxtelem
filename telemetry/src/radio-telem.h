@@ -6,15 +6,15 @@
 #include "fusion/fusion.h"
 
 typedef struct{
-    struct sensor_gnss gnss[CONFIG_INSPACE_TELEMETRY_TARGET_TRANSMIT_FREQ];
+    struct sensor_gnss gnss[CONFIG_INSPACE_DOWNSAMPLING_TARGET_FREQ];
     int gnss_n;
-    struct fusion_altitude alt[CONFIG_INSPACE_TELEMETRY_TARGET_TRANSMIT_FREQ];
+    struct fusion_altitude alt[CONFIG_INSPACE_DOWNSAMPLING_TARGET_FREQ];
     int alt_n;
-    struct sensor_mag mag[CONFIG_INSPACE_TELEMETRY_TARGET_TRANSMIT_FREQ];
+    struct sensor_mag mag[CONFIG_INSPACE_DOWNSAMPLING_TARGET_FREQ];
     int mag_n;
-    struct sensor_accel accel[CONFIG_INSPACE_TELEMETRY_TARGET_TRANSMIT_FREQ];
+    struct sensor_accel accel[CONFIG_INSPACE_DOWNSAMPLING_TARGET_FREQ];
     int accel_n;
-    struct sensor_gyro gyro[CONFIG_INSPACE_TELEMETRY_TARGET_TRANSMIT_FREQ];
+    struct sensor_gyro gyro[CONFIG_INSPACE_DOWNSAMPLING_TARGET_FREQ];
     int gyro_n;
 } radio_raw_data;
 

@@ -2,6 +2,7 @@
 
 #include "../syslogging.h"
 #include "packets.h"
+#include <math.h>
 
 /* Get the absolute timestamp that should be used for a packet created
  * at the given mission time
@@ -226,6 +227,8 @@ void ang_vel_blk_init(struct ang_vel_blk_t *b, const int16_t x_axis, const int16
     b->z = z_axis;
 }
 
+
+
 /*
  * Construct a magnetic field block
  * @param b The magnetic field block to initialize
@@ -270,3 +273,135 @@ void error_blk_init(struct error_blk_t *b, const uint8_t proc_id, const uint8_t 
     b->originating_process = proc_id;
     b->error_code = error_code;
 }
+
+/* Unit conversion helpers */
+
+#define us_to_ms(us) (us / 1000)
+#define pascals(millibar) (millibar * 100)
+#define millimeters(meters) (meters * 1000)
+#define point_one_microdegrees(degrees) (1E7f * degrees)
+#define tenth_degree(radian) (radian * 18 / M_PI)
+#define tenth_microtesla(microtesla) (microtesla * 1000)
+#define cm_per_sec_squared(meters_per_sec_squared) (meters_per_sec_squared * 100)
+#define millidegrees(celsius) (celsius * 1000)
+
+int orb_accel_pkt(struct sensor_accel *accel, struct accel_blk_t *blk, uint16_t base_time) {
+    int16_t time_offset;
+    if(pkt_blk_calc_time(us_to_ms(accel->timestamp), base_time, &time_offset)) {
+        inerr("Failed to calculate time offset for Accel block\n");
+        return -1;
+    }
+
+    blk->time_offset = time_offset;
+    blk->x = (int16_t)cm_per_sec_squared(accel->x);
+    blk->y = (int16_t)cm_per_sec_squared(accel->y);
+    blk->z = (int16_t)cm_per_sec_squared(accel->z);
+    return 0;
+}
+
+int orb_ang_vel_pkt(struct sensor_gyro *gyro, struct ang_vel_blk_t *blk, uint16_t base_time) {
+    int16_t time_offset;
+    if(pkt_blk_calc_time(us_to_ms(gyro->timestamp), base_time, &time_offset)) {
+        inerr("Failed to calculate time offset for Ang vel block\n");
+        return -1;
+    }
+    blk->time_offset = time_offset;
+    blk->x = (int16_t)tenth_degree(gyro->x);
+    blk->y = (int16_t)tenth_degree(gyro->y);
+    blk->z = (int16_t)tenth_degree(gyro->z);
+    return 0;
+}
+
+int orb_mag_pkt(struct sensor_mag *mag, struct mag_blk_t *blk, uint16_t base_time) {
+    int16_t time_offset;
+    if(pkt_blk_calc_time(us_to_ms(mag->timestamp), base_time, &time_offset)) {
+        inerr("Failed to calculate time offset for Mag block\n");
+        return -1;
+    }
+    blk->time_offset = time_offset;
+    blk->x = (int16_t)tenth_microtesla(mag->x);
+    blk->y = (int16_t)tenth_microtesla(mag->y);
+    blk->z = (int16_t)tenth_microtesla(mag->z);
+    return 0;
+}
+
+int orb_baro_pkt(struct sensor_baro *baro, struct pres_blk_t *blk, uint16_t base_time) {
+    int16_t time_offset;
+    if(pkt_blk_calc_time(us_to_ms(baro->timestamp), base_time, &time_offset)) {
+        inerr("Failed to calculate time offset for Baro block\n");
+        return -1;
+    }
+    blk->time_offset = time_offset;
+    blk->pressure = (uint32_t)pascals(baro->pressure);
+    return 0;
+}
+
+int orb_baro_temp_pkt(struct sensor_baro *baro, struct temp_blk_t *blk, uint16_t base_time) {
+    int16_t time_offset;
+    if(pkt_blk_calc_time(us_to_ms(baro->timestamp), base_time, &time_offset)) {
+        inerr("Failed to calculate time offset for Baro temp block\n");
+        return -1;
+    }
+    blk->time_offset = time_offset;
+    blk->temperature = (int32_t)millidegrees(baro->temperature);
+    return 0;
+}
+
+int orb_alt_pkt(struct fusion_altitude *alt, struct alt_blk_t *blk, uint16_t base_time) {
+    int16_t time_offset;
+    if(pkt_blk_calc_time(us_to_ms(alt->timestamp), base_time, &time_offset)) {
+        inerr("Failed to calculate time offset for Alt block\n");
+        return -1;
+    }
+    blk->time_offset = time_offset;
+    blk->altitude = (int32_t)millimeters(alt->altitude);
+    return 0;
+}
+
+int orb_gnss_pkt(struct sensor_gnss *gnss, struct coord_blk_t *blk, uint16_t base_time) {
+    int16_t time_offset;
+    if(pkt_blk_calc_time(us_to_ms(gnss->timestamp), base_time, &time_offset)) {
+        inerr("Failed to calculate time offset for GNSS block\n");
+        return -1;
+    }
+    blk->time_offset = time_offset;
+    blk->latitude = (int32_t)point_one_microdegrees(gnss->latitude);
+    blk->longitude = (int32_t)point_one_microdegrees(gnss->longitude);
+    return 0;
+}
+
+int orb_battery_pkt(struct sensor_battery *battery, struct volt_blk_t *blk, uint16_t base_time) {
+    int16_t time_offset;
+    if(pkt_blk_calc_time(us_to_ms(battery->timestamp), base_time, &time_offset)) {
+        inerr("Failed to calculate time offset for Battery block\n");
+        return -1;
+    }
+    blk->time_offset = time_offset;
+    blk->voltage = (int16_t)battery->voltage;
+    blk->id = 0;
+    return 0;
+}
+
+int orb_error_pkt(struct error_message *error, struct error_blk_t *blk, uint16_t base_time) {
+    int16_t time_offset;
+    if(pkt_blk_calc_time(us_to_ms(error->timestamp), base_time, &time_offset)) {
+        inerr("Failed to calculate time offset for Error block\n");
+        return -1;
+    }
+    blk->time_offset = time_offset;
+    blk->originating_process = (uint8_t)error->proc_id;
+    blk->error_code = (uint8_t)error->error_code;
+    return 0;
+}
+
+int orb_status_pkt(struct status_message *status, struct status_blk_t *blk, uint16_t base_time) {
+    int16_t time_offset;
+    if(pkt_blk_calc_time(us_to_ms(status->timestamp), base_time, &time_offset)) {
+        inerr("Failed to calculate time offset for Status block\n");
+        return -1;
+    }
+    blk->time_offset = time_offset;
+    blk->status_code = (uint8_t)status->status_code;
+    return 0;
+}
+

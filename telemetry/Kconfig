@@ -177,11 +177,11 @@ config INSPACE_TELEMETRY_PWM
 
 comment "Sampling options"
 
-config INSPACE_TELEMETRY_TARGET_TRANSMIT_FREQ
-	int "Target output sampling frequency for radio"
+config INSPACE_DOWNSAMPLING_TARGET_FREQ
+	int "Target downsampling frequency for sensor data"
 	default 10
 	---help---
-		The output sampling frequency for the radio telemetry in Hz
+		The downsampling frequency for the sensor data in Hz
 
 config INSPACE_TELEMETRY_ACCEL_SF
 	int "Accelerometer sampling frequency"

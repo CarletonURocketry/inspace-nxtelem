@@ -36,11 +36,9 @@ static int configure_radio(int fd, struct radio_options const *config);
 
 /* Main thread for data transmission over radio. */
 void *transmit_main(void *arg) {
-
     int err;
     int radio = -1; /* Radio device file descriptor */
     struct transmit_args *unpacked_args = (struct transmit_args *)arg;
-    packet_buffer_t *buffer = unpacked_args->buffer;
     radio_telem_t *radio_telem = unpacked_args->radio_telem;
     uint32_t seq_num = 0;
 
@@ -85,7 +83,7 @@ void *transmit_main(void *arg) {
         uint8_t packet_buffer[PACKET_MAX_SIZE];
         uint8_t *packet_ptr = packet_buffer;
 
-        /* use mission time as current time for now */
+        /* use mission time as current time for now, this does not account for reboots */
         struct timespec current_time;
         clock_gettime(CLOCK_REALTIME, &current_time);
         uint32_t mission_time_ms = current_time.tv_sec * 1000 + current_time.tv_nsec / 1000000;
@@ -101,16 +99,12 @@ void *transmit_main(void *arg) {
             memcpy(packet_ptr, &blk_hdr, sizeof(blk_hdr));
             packet_ptr += sizeof(blk_hdr);
             for(int i = 0; i < radio_telem->full->gnss_n; i++) {
-                struct sensor_gnss gnss = radio_telem->full->gnss[i];
-                int16_t time_offset;
-                if(pkt_blk_calc_time(gnss.timestamp, header->timestamp, &time_offset)) {
-                    inerr("Failed to calculate time offset for GNSS block %d\n", i);
+                struct coord_blk_t coord_blk;
+                if(orb_gnss_pkt(&radio_telem->full->gnss[i], &coord_blk, header->timestamp)) {
+                    inerr("Failed to create GNSS block %d\n", i);
                     continue;
                 }
-                struct coord_blk_t coord_blk;
-                coord_blk.time_offset = time_offset;
-                coord_blk.latitude = (int32_t)gnss.latitude;
-                coord_blk.longitude = (int32_t)gnss.longitude;
+
                 memcpy(packet_ptr, &coord_blk, sizeof(struct coord_blk_t));
                 packet_ptr += sizeof(struct coord_blk_t);
             }
@@ -125,16 +119,11 @@ void *transmit_main(void *arg) {
             memcpy(packet_ptr, &blk_hdr, sizeof(blk_hdr));
             packet_ptr += sizeof(blk_hdr);
             for(int i = 0; i < radio_telem->full->alt_n; i++) {
-                struct fusion_altitude alt = radio_telem->full->alt[i];
-
-                int16_t time_offset;
-                if(pkt_blk_calc_time(alt.timestamp, header->timestamp, &time_offset)) {
-                    inerr("Failed to calculate time offset for Alt block %d\n", i);
+                struct alt_blk_t alt_blk;
+                if(orb_alt_pkt(&radio_telem->full->alt[i], &alt_blk, header->timestamp)) {
+                    inerr("Failed to create Alt block %d\n", i);
                     continue;
                 }
-                struct alt_blk_t alt_blk;
-                alt_blk.time_offset = time_offset;
-                alt_blk.altitude = (int32_t)alt.altitude;
                 memcpy(packet_ptr, &alt_blk, sizeof(struct alt_blk_t));
                 packet_ptr += sizeof(struct alt_blk_t);
             }
@@ -149,17 +138,11 @@ void *transmit_main(void *arg) {
             memcpy(packet_ptr, &blk_hdr, sizeof(blk_hdr));
             packet_ptr += sizeof(blk_hdr);
             for(int i = 0; i < radio_telem->full->mag_n; i++) {
-                struct sensor_mag mag = radio_telem->full->mag[i];
-                int16_t time_offset;
-                if(pkt_blk_calc_time(mag.timestamp, header->timestamp, &time_offset)) {
-                    inerr("Failed to calculate time offset for Mag block %d\n", i);
+                struct mag_blk_t mag_blk;
+                if(orb_mag_pkt(&radio_telem->full->mag[i], &mag_blk, header->timestamp)) {
+                    inerr("Failed to create Mag block %d\n", i);
                     continue;
                 }
-                struct mag_blk_t mag_blk;
-                mag_blk.time_offset = time_offset;
-                mag_blk.x = (int16_t)mag.x;
-                mag_blk.y = (int16_t)mag.y;
-                mag_blk.z = (int16_t)mag.z;
                 memcpy(packet_ptr, &mag_blk, sizeof(struct mag_blk_t));
                 packet_ptr += sizeof(struct mag_blk_t);
             }
@@ -174,17 +157,11 @@ void *transmit_main(void *arg) {
             memcpy(packet_ptr, &blk_hdr, sizeof(blk_hdr));
             packet_ptr += sizeof(blk_hdr);
             for(int i = 0; i < radio_telem->full->accel_n; i++) {
-                struct sensor_accel accel = radio_telem->full->accel[i];
-                int16_t time_offset;
-                if(pkt_blk_calc_time(accel.timestamp, header->timestamp, &time_offset)) {
-                    inerr("Failed to calculate time offset for Accel block %d\n", i);
+                struct accel_blk_t accel_blk;
+                if(orb_accel_pkt(&radio_telem->full->accel[i], &accel_blk, header->timestamp)) {
+                    inerr("Failed to create Accel block %d\n", i);
                     continue;
                 }
-                struct accel_blk_t accel_blk;
-                accel_blk.time_offset = time_offset;
-                accel_blk.x = (int16_t)accel.x;
-                accel_blk.y = (int16_t)accel.y;
-                accel_blk.z = (int16_t)accel.z;
                 memcpy(packet_ptr, &accel_blk, sizeof(struct accel_blk_t));
                 packet_ptr += sizeof(struct accel_blk_t);
             }
@@ -199,17 +176,11 @@ void *transmit_main(void *arg) {
             memcpy(packet_ptr, &blk_hdr, sizeof(blk_hdr));
             packet_ptr += sizeof(blk_hdr);
             for(int i = 0; i < radio_telem->full->gyro_n; i++) {
-                struct sensor_gyro gyro = radio_telem->full->gyro[i];
-                int16_t time_offset;
-                if(pkt_blk_calc_time(gyro.timestamp, header->timestamp, &time_offset)) {
-                    inerr("Failed to calculate time offset for Ang vel block %d\n", i);
+                struct ang_vel_blk_t ang_vel_blk;
+                if(orb_ang_vel_pkt(&radio_telem->full->gyro[i], &ang_vel_blk, header->timestamp)) {
+                    inerr("Failed to create Ang vel block %d\n", i);
                     continue;
                 }
-                struct ang_vel_blk_t ang_vel_blk;
-                ang_vel_blk.time_offset = time_offset;
-                ang_vel_blk.x = (int16_t)gyro.x;
-                ang_vel_blk.y = (int16_t)gyro.y;
-                ang_vel_blk.z = (int16_t)gyro.z;
                 memcpy(packet_ptr, &ang_vel_blk, sizeof(struct ang_vel_blk_t));
                 packet_ptr += sizeof(struct ang_vel_blk_t);
             }
@@ -219,6 +190,7 @@ void *transmit_main(void *arg) {
         size_t packet_size = packet_ptr - packet_buffer;
         if(packet_size > PACKET_MAX_SIZE) {
             inerr("Packet size is too large: %zu\n", packet_size);
+            sleep(1);
             continue;
         } else if (packet_size == sizeof(pkt_hdr_t)) {
             inerr("Packet does not contain any data\n");
