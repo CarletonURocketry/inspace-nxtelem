@@ -8,11 +8,14 @@
 #if defined(CONFIG_DEBUG_UORB)
 static const char error_message_format[] = "error message - timestamp:%" PRIu64 ", proc_id %d error %d";
 static const char status_message_format[] = "status message - timestamp%" PRIu64 ", status %d";
+static const char sensor_battery_format[] = "sensor battery - timestamp:%" PRIu64 ", voltage %d";
 ORB_DEFINE(error_message, struct error_message, error_message_format);
 ORB_DEFINE(status_message, struct status_message, status_message_format);
+ORB_DEFINE(sensor_battery, struct sensor_battery, sensor_battery_format);
 #else
 ORB_DEFINE(error_message, struct error_message, 0);
 ORB_DEFINE(status_message, struct status_message, 0);
+ORB_DEFINE(sensor_battery, struct sensor_battery, 0);
 #endif
 
 /**
@@ -23,7 +26,7 @@ ORB_DEFINE(status_message, struct status_message, 0);
  */
 int publish_status(enum status_code_e status_code) {
     struct status_message status = {.timestamp = orb_absolute_time(), .status_code = status_code};
-    ininfo("Publishing a status message with code %d\n", status_code);
+    // ininfo("Publishing a status message with code %d\n", status_code);
     return orb_publish_auto(ORB_ID(status_message), NULL, &status, NULL);
 }
 
