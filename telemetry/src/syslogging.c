@@ -10,15 +10,17 @@ FILE *__syslogging_file;
 atomic_int syslog_count;
 
 /*
- * Sets up the syslogging to a file
- * @return Zero on success, or errno on failure
+ * Sets up the syslogging to a file if syslog output is enabled.
+ * @return Zero on success or skip, or errno on failure
  */
 int setup_syslogging(void) {
+#ifdef CONFIG_INSPACE_SYSLOG_PATH
     atomic_set(&syslog_count, 0);
     __syslogging_file = fopen(CONFIG_INSPACE_SYSLOG_PATH, "a");
     if (__syslogging_file == NULL) {
         return errno;
     }
+#endif
     return 0;
 }
 
