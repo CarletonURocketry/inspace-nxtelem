@@ -1,6 +1,9 @@
 #ifndef _INSPACE_TELEMETRY_PACKETS_H_
 #define _INSPACE_TELEMETRY_PACKETS_H_
 
+#include "../collection/status-update.h"
+#include "../fusion/fusion.h"
+#include <nuttx/uorb.h>
 #include <stdint.h>
 #include <stdlib.h>
 
@@ -43,8 +46,8 @@ typedef struct {
      * half-minutes
      */
     uint16_t timestamp;
-    /* The number of blocks in this packet*/
-    uint8_t blocks;
+    /* The number of blocks types in this packet*/
+    uint8_t type_count;
     /* Which number this packet is in the stream of sent packets. */
     uint8_t packet_num;
 } TIGHTLY_PACKED pkt_hdr_t;
@@ -55,9 +58,10 @@ void pkt_hdr_init(pkt_hdr_t *p, uint8_t packet_number, uint32_t mission_time);
 typedef struct {
     /* The type of this block. */
     uint8_t type;
+    uint8_t count;
 } TIGHTLY_PACKED blk_hdr_t;
 
-void blk_hdr_init(blk_hdr_t *b, const enum block_type_e type);
+void blk_hdr_init(blk_hdr_t *b, const enum block_type_e type, const uint8_t count);
 
 size_t blk_body_len(enum block_type_e type);
 
@@ -199,5 +203,16 @@ struct error_blk_t {
 } TIGHTLY_PACKED;
 
 void error_blk_init(struct error_blk_t *b, const uint8_t proc_id, const uint8_t error_code);
+
+int orb_accel_pkt(struct sensor_accel *accel, struct accel_blk_t *blk, uint16_t base_time);
+int orb_ang_vel_pkt(struct sensor_gyro *gyro, struct ang_vel_blk_t *blk, uint16_t base_time);
+int orb_mag_pkt(struct sensor_mag *mag, struct mag_blk_t *blk, uint16_t base_time);
+int orb_baro_pkt(struct sensor_baro *baro, struct pres_blk_t *blk, uint16_t base_time);
+int orb_baro_temp_pkt(struct sensor_baro *baro, struct temp_blk_t *blk, uint16_t base_time);
+int orb_alt_pkt(struct fusion_altitude *alt, struct alt_blk_t *blk, uint16_t base_time);
+int orb_gnss_pkt(struct sensor_gnss *gnss, struct coord_blk_t *blk, uint16_t base_time);
+int orb_battery_pkt(struct sensor_battery *battery, struct volt_blk_t *blk, uint16_t base_time);
+int orb_error_pkt(struct error_message *error, struct error_blk_t *blk, uint16_t base_time);
+int orb_status_pkt(struct status_message *status, struct status_blk_t *blk, uint16_t base_time);
 
 #endif // _INSPACE_TELEMETRY_PACKET_H_

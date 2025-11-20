@@ -3,12 +3,11 @@
 #include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
-#include "collection/collection.h"
-#include "collection/status-update.h"
+#include "collection/downsample.h"
 #include "fusion/fusion.h"
 #include "logging/logging.h"
-#include "packets/buffering.h"
 #include "pwm/pwm_olg.h"
 #include "rocket-state/rocket-state.h"
 #include "syslogging.h"
@@ -20,12 +19,9 @@
 
 /* Buffers for sharing sensor data between threads */
 
-static packet_buffer_t transmit_buffer;
-static packet_buffer_t logging_buffer;
-
 static pthread_t transmit_thread;
 static pthread_t log_thread;
-static pthread_t collect_thread;
+static pthread_t downsample_thread;
 static pthread_t fusion_thread;
 static pthread_t startup_sound_thread;
 #ifdef CONFIG_INSPACE_TELEMETRY_USBSH
@@ -34,6 +30,11 @@ static pthread_t shell_thread;
 
 static rocket_state_t state; /* The shared rocket state. */
 static struct config_options config;
+
+/* Radio telemetry double-buffer storage */
+static radio_raw_data radio_buf1;
+static radio_raw_data radio_buf2;
+static radio_telem_t radio_telem;
 
 int main(int argc, char **argv) {
     int err;
@@ -78,32 +79,34 @@ int main(int argc, char **argv) {
         state_set_flightsubstate(&state, SUBSTATE_UNKNOWN);
     }
 
-    err = packet_buffer_init(&transmit_buffer);
-    if (err) {
-        inerr("Could not initialize transmit buffer: %d\n", err);
-        goto exit_error;
-    }
+    radio_telem.full = &radio_buf1;
+    radio_telem.empty = &radio_buf2;
 
-    err = packet_buffer_init(&logging_buffer);
-    if (err) {
-        inerr("Could not initialize logging buffer: %d\n", err);
-        goto exit_error;
-    }
+    memset(&radio_buf1, 0, sizeof(radio_buf1));
+    memset(&radio_buf2, 0, sizeof(radio_buf2));
+
+    pthread_mutex_init(&(radio_telem.full_mux), NULL);
+    pthread_mutex_init(&(radio_telem.empty_mux), NULL);
+
     /* Start all threads */
+    struct fusion_args fusion_thread_args = {.state = &state};
+    err = pthread_create(&fusion_thread, NULL, fusion_main, &fusion_thread_args);
+    if (err) {
+        inerr("Problem starting fusion thread: %d\n", err);
+        goto exit_error;
+    }
 
-    struct collection_args collect_thread_args = {
-        .state = &state, .transmit_buffer = &transmit_buffer, .logging_buffer = &logging_buffer};
-    err = pthread_create(&collect_thread, NULL, collection_main, &collect_thread_args);
+    struct downsample_args downsample_thread_args = {.state = &state, .radio_telem = &radio_telem};
+    err = pthread_create(&downsample_thread, NULL, downsample_main, &downsample_thread_args);
     // TODO: handle thread creation errors better
     if (err) {
-        inerr("Problem starting collection thread: %d\n", err);
+        inerr("Problem starting downsample thread: %d\n", err);
         goto exit_error;
     }
 
     struct transmit_args transmit_thread_args = {
-        .state = &state,
-        .buffer = &transmit_buffer,
         .config = config.radio,
+        .radio_telem = &radio_telem,
     };
     err = pthread_create(&transmit_thread, NULL, transmit_main, &transmit_thread_args);
     if (err) {
@@ -111,19 +114,11 @@ int main(int argc, char **argv) {
         goto exit_error;
     }
 
-    struct logging_args logging_thread_args = {.state = &state, .buffer = &logging_buffer};
-    err = pthread_create(&log_thread, NULL, logging_main, &logging_thread_args);
-    if (err) {
-        inerr("Problem starting logging thread: %d\n", err);
-        goto exit_error;
-    }
-
-    struct fusion_args fusion_thread_args = {.state = &state};
-    err = pthread_create(&fusion_thread, NULL, fusion_main, &fusion_thread_args);
-    if (err) {
-        inerr("Problem starting fusion thread: %d\n", err);
-        goto exit_error;
-    }
+    // err = pthread_create(&log_thread, NULL, logging_main, NULL);
+    // if (err) {
+    //     inerr("Problem starting logging thread: %d\n", err);
+    //     goto exit_error;
+    // }
 
 #ifdef CONFIG_INSPACE_TELEMETRY_USBSH
     struct shell_args shell_args;
@@ -147,10 +142,10 @@ int main(int argc, char **argv) {
 
     /* Join on all threads: TODO handle errors */
 
-    err = pthread_join(collect_thread, NULL);
-    err = pthread_join(transmit_thread, NULL);
-    err = pthread_join(log_thread, NULL);
     err = pthread_join(fusion_thread, NULL);
+    err = pthread_join(downsample_thread, NULL);
+    err = pthread_join(transmit_thread, NULL);
+    // err = pthread_join(log_thread, NULL);
 #ifdef CONFIG_INSPACE_TELEMETRY_USBSH
     err = pthread_join(shell_thread, NULL);
 #endif
