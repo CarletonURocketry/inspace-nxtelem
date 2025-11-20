@@ -11,11 +11,10 @@
 #include <nuttx/wireless/lpwan/rn2xx3.h>
 #endif
 
-#include "../packets/packets.h"
 #include "../collection/status-update.h"
+#include "../packets/packets.h"
 #include "../syslogging.h"
 #include "transmit.h"
-#include "../packets/packets.h"
 
 /* If there was an error in configuration, display which line and return the
  * error */
@@ -90,7 +89,7 @@ void *transmit_main(void *arg) {
         pkt_hdr_t *header = (pkt_hdr_t *)packet_ptr;
         packet_ptr = pkt_init(packet_ptr, seq_num++, mission_time_ms);
 
-        if(radio_telem->full->gnss_n > 0) {
+        if (radio_telem->full->gnss_n > 0) {
             header->type_count++;
             blk_hdr_t blk_hdr = {
                 .type = DATA_LAT_LONG,
@@ -98,9 +97,9 @@ void *transmit_main(void *arg) {
             };
             memcpy(packet_ptr, &blk_hdr, sizeof(blk_hdr));
             packet_ptr += sizeof(blk_hdr);
-            for(int i = 0; i < radio_telem->full->gnss_n; i++) {
+            for (int i = 0; i < radio_telem->full->gnss_n; i++) {
                 struct coord_blk_t coord_blk;
-                if(orb_gnss_pkt(&radio_telem->full->gnss[i], &coord_blk, header->timestamp)) {
+                if (orb_gnss_pkt(&radio_telem->full->gnss[i], &coord_blk, header->timestamp)) {
                     inerr("Failed to create GNSS block %d\n", i);
                     continue;
                 }
@@ -110,7 +109,7 @@ void *transmit_main(void *arg) {
             }
         }
 
-        if(radio_telem->full->alt_n > 0) {
+        if (radio_telem->full->alt_n > 0) {
             header->type_count++;
             blk_hdr_t blk_hdr = {
                 .type = DATA_ALT_LAUNCH,
@@ -118,9 +117,9 @@ void *transmit_main(void *arg) {
             };
             memcpy(packet_ptr, &blk_hdr, sizeof(blk_hdr));
             packet_ptr += sizeof(blk_hdr);
-            for(int i = 0; i < radio_telem->full->alt_n; i++) {
+            for (int i = 0; i < radio_telem->full->alt_n; i++) {
                 struct alt_blk_t alt_blk;
-                if(orb_alt_pkt(&radio_telem->full->alt[i], &alt_blk, header->timestamp)) {
+                if (orb_alt_pkt(&radio_telem->full->alt[i], &alt_blk, header->timestamp)) {
                     inerr("Failed to create Alt block %d\n", i);
                     continue;
                 }
@@ -129,7 +128,7 @@ void *transmit_main(void *arg) {
             }
         }
 
-        if(radio_telem->full->mag_n > 0) {
+        if (radio_telem->full->mag_n > 0) {
             header->type_count++;
             blk_hdr_t blk_hdr = {
                 .type = DATA_MAGNETIC,
@@ -137,9 +136,9 @@ void *transmit_main(void *arg) {
             };
             memcpy(packet_ptr, &blk_hdr, sizeof(blk_hdr));
             packet_ptr += sizeof(blk_hdr);
-            for(int i = 0; i < radio_telem->full->mag_n; i++) {
+            for (int i = 0; i < radio_telem->full->mag_n; i++) {
                 struct mag_blk_t mag_blk;
-                if(orb_mag_pkt(&radio_telem->full->mag[i], &mag_blk, header->timestamp)) {
+                if (orb_mag_pkt(&radio_telem->full->mag[i], &mag_blk, header->timestamp)) {
                     inerr("Failed to create Mag block %d\n", i);
                     continue;
                 }
@@ -148,7 +147,7 @@ void *transmit_main(void *arg) {
             }
         }
 
-        if(radio_telem->full->accel_n > 0) {
+        if (radio_telem->full->accel_n > 0) {
             header->type_count++;
             blk_hdr_t blk_hdr = {
                 .type = DATA_ACCEL_REL,
@@ -156,9 +155,9 @@ void *transmit_main(void *arg) {
             };
             memcpy(packet_ptr, &blk_hdr, sizeof(blk_hdr));
             packet_ptr += sizeof(blk_hdr);
-            for(int i = 0; i < radio_telem->full->accel_n; i++) {
+            for (int i = 0; i < radio_telem->full->accel_n; i++) {
                 struct accel_blk_t accel_blk;
-                if(orb_accel_pkt(&radio_telem->full->accel[i], &accel_blk, header->timestamp)) {
+                if (orb_accel_pkt(&radio_telem->full->accel[i], &accel_blk, header->timestamp)) {
                     inerr("Failed to create Accel block %d\n", i);
                     continue;
                 }
@@ -167,7 +166,7 @@ void *transmit_main(void *arg) {
             }
         }
 
-        if(radio_telem->full->gyro_n > 0) {
+        if (radio_telem->full->gyro_n > 0) {
             header->type_count++;
             blk_hdr_t blk_hdr = {
                 .type = DATA_ANGULAR_VEL,
@@ -175,9 +174,9 @@ void *transmit_main(void *arg) {
             };
             memcpy(packet_ptr, &blk_hdr, sizeof(blk_hdr));
             packet_ptr += sizeof(blk_hdr);
-            for(int i = 0; i < radio_telem->full->gyro_n; i++) {
+            for (int i = 0; i < radio_telem->full->gyro_n; i++) {
                 struct ang_vel_blk_t ang_vel_blk;
-                if(orb_ang_vel_pkt(&radio_telem->full->gyro[i], &ang_vel_blk, header->timestamp)) {
+                if (orb_ang_vel_pkt(&radio_telem->full->gyro[i], &ang_vel_blk, header->timestamp)) {
                     inerr("Failed to create Ang vel block %d\n", i);
                     continue;
                 }
@@ -188,12 +187,15 @@ void *transmit_main(void *arg) {
 
         pthread_mutex_unlock(&radio_telem->full_mux);
         size_t packet_size = packet_ptr - packet_buffer;
-        if(packet_size > PACKET_MAX_SIZE) {
+        if (packet_size > PACKET_MAX_SIZE) {
+            /* if the packet size is too large we are cooked, this should never happen if the downsampling variable is
+             * set correctly */
             inerr("Packet size is too large: %zu\n", packet_size);
-            sleep(1);
             continue;
         } else if (packet_size == sizeof(pkt_hdr_t)) {
             inerr("Packet does not contain any data\n");
+            /* this sleep is needed to avoid priority inversion between the 2 threads, this is a problem I didn't find a
+             * good soluition to */
             sleep(1);
             continue;
         }

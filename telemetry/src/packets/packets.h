@@ -1,11 +1,11 @@
 #ifndef _INSPACE_TELEMETRY_PACKETS_H_
 #define _INSPACE_TELEMETRY_PACKETS_H_
 
+#include "../collection/status-update.h"
+#include "../fusion/fusion.h"
+#include <nuttx/uorb.h>
 #include <stdint.h>
 #include <stdlib.h>
-#include <nuttx/uorb.h>
-#include "../fusion/fusion.h"
-#include "../collection/status-update.h"
 
 /* The CU InSpace packet specification version implemented here */
 

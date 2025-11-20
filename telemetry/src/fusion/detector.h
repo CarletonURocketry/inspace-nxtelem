@@ -40,10 +40,10 @@ struct accel_filter {
 
 /* Information related to detecting liftoff or landing */
 struct detector {
-    struct alt_filter alts;            /* Filtering for altitude data */
-    struct accel_filter accels;        /* Filtering for acceleration data */
+    struct alt_filter alts;     /* Filtering for altitude data */
+    struct accel_filter accels; /* Filtering for acceleration data */
 
-    struct window_criteria land_alt_window;   /* Window that tracks the variation in altitude */
+    struct window_criteria land_alt_window; /* Window that tracks the variation in altitude */
 
     uint64_t init_time;         /* The time the detector was first used in microseconds*/
     uint64_t current_time;      /* The time of the most recent update to the detector in microseconds */

@@ -1,11 +1,11 @@
 #ifndef _RADIO_TELEM_H_
 #define _RADIO_TELEM_H_
 
+#include "fusion/fusion.h"
 #include "packets/packets.h"
 #include <pthread.h>
-#include "fusion/fusion.h"
 
-typedef struct{
+typedef struct {
     struct sensor_gnss gnss[CONFIG_INSPACE_DOWNSAMPLING_TARGET_FREQ];
     int gnss_n;
     struct fusion_altitude alt[CONFIG_INSPACE_DOWNSAMPLING_TARGET_FREQ];

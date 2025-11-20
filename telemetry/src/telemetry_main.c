@@ -5,8 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "collection/collection.h"
-#include "collection/status-update.h"
+#include "collection/downsample.h"
 #include "fusion/fusion.h"
 #include "logging/logging.h"
 #include "pwm/pwm_olg.h"
@@ -22,7 +21,7 @@
 
 static pthread_t transmit_thread;
 static pthread_t log_thread;
-static pthread_t collect_thread;
+static pthread_t downsample_thread;
 static pthread_t fusion_thread;
 static pthread_t startup_sound_thread;
 #ifdef CONFIG_INSPACE_TELEMETRY_USBSH
@@ -97,12 +96,11 @@ int main(int argc, char **argv) {
         goto exit_error;
     }
 
-    struct collection_args collect_thread_args = {
-        .state = &state, .radio_telem = &radio_telem};
-    err = pthread_create(&collect_thread, NULL, collection_main, &collect_thread_args);
+    struct downsample_args downsample_thread_args = {.state = &state, .radio_telem = &radio_telem};
+    err = pthread_create(&downsample_thread, NULL, downsample_main, &downsample_thread_args);
     // TODO: handle thread creation errors better
     if (err) {
-        inerr("Problem starting collection thread: %d\n", err);
+        inerr("Problem starting downsample thread: %d\n", err);
         goto exit_error;
     }
 
@@ -121,7 +119,6 @@ int main(int argc, char **argv) {
     //     inerr("Problem starting logging thread: %d\n", err);
     //     goto exit_error;
     // }
-
 
 #ifdef CONFIG_INSPACE_TELEMETRY_USBSH
     struct shell_args shell_args;
@@ -146,7 +143,7 @@ int main(int argc, char **argv) {
     /* Join on all threads: TODO handle errors */
 
     err = pthread_join(fusion_thread, NULL);
-    err = pthread_join(collect_thread, NULL);
+    err = pthread_join(downsample_thread, NULL);
     err = pthread_join(transmit_thread, NULL);
     // err = pthread_join(log_thread, NULL);
 #ifdef CONFIG_INSPACE_TELEMETRY_USBSH
