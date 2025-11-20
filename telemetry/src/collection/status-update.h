@@ -34,7 +34,7 @@ enum error_code_e {
 /* Process IDs for error messages */
 enum process_id_e {
     PROC_ID_GENERAL = 0x00,    /* General error process ID */
-    PROC_ID_DOWNSAMPLE = 0x01, /* Downsample thread */
+    PROC_ID_COLLECTION = 0x01, /* Collection thread */
     PROC_ID_FUSION = 0x02,     /* Fusion thread */
     PROC_ID_LOGGING = 0x03,    /* Logging thread */
     PROC_ID_TRANSMIT = 0x04,   /* Transmit thread */
@@ -51,15 +51,9 @@ struct status_message {
     enum status_code_e status_code;
 };
 
-struct sensor_battery {
-    uint64_t timestamp;
-    int16_t voltage;
-};
-
 /* UORB declarations */
 ORB_DECLARE(error_message);
 ORB_DECLARE(status_message);
-ORB_DECLARE(sensor_battery);
 
 int publish_status(enum status_code_e status_code);
 int publish_error(enum process_id_e proc_id, enum error_code_e error_code);

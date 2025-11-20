@@ -4,6 +4,17 @@
 #include "packets.h"
 #include <math.h>
 
+/* Unit conversion helpers */
+
+#define us_to_ms(us) (us / 1000)
+#define pascals(millibar) (millibar * 100)
+#define millimeters(meters) (meters * 1000)
+#define point_one_microdegrees(degrees) (1E7f * degrees)
+#define tenth_degree(radian) (radian * 1800 / M_PI)
+#define tenth_microtesla(microtesla) (microtesla * 10)
+#define cm_per_sec_squared(meters_per_sec_squared) (meters_per_sec_squared * 100)
+#define millidegrees(celsius) (celsius * 1000)
+
 /* Get the absolute timestamp that should be used for a packet created
  * at the given mission time
  */
@@ -23,7 +34,7 @@ static uint16_t calc_timestamp(uint32_t mission_time) {
  * @return If mission_time could be represented as an offset from the
  * given timestamp returns 0, otherwise returns 1
  */
-int pkt_blk_calc_time(uint32_t mission_time, uint16_t abs_timestamp, int16_t *result) {
+static int pkt_blk_calc_time(uint32_t mission_time, uint16_t abs_timestamp, int16_t *result) {
     /* Offset from abs_timestamp to time zero */
     int64_t offset = (int64_t)abs_timestamp * 30 * -1000;
     offset += mission_time;
@@ -274,17 +285,6 @@ void error_blk_init(struct error_blk_t *b, const uint8_t proc_id, const uint8_t 
     b->originating_process = proc_id;
     b->error_code = error_code;
 }
-
-/* Unit conversion helpers */
-
-#define us_to_ms(us) (us / 1000)
-#define pascals(millibar) (millibar * 100)
-#define millimeters(meters) (meters * 1000)
-#define point_one_microdegrees(degrees) (1E7f * degrees)
-#define tenth_degree(radian) (radian * 1800 / M_PI)
-#define tenth_microtesla(microtesla) (microtesla * 10)
-#define cm_per_sec_squared(meters_per_sec_squared) (meters_per_sec_squared * 100)
-#define millidegrees(celsius) (celsius * 1000)
 
 int orb_accel_pkt(struct sensor_accel *accel, struct accel_blk_t *blk, uint16_t base_time) {
     int16_t time_offset;

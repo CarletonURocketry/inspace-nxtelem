@@ -203,7 +203,6 @@ struct error_blk_t {
 } TIGHTLY_PACKED;
 
 void error_blk_init(struct error_blk_t *b, const uint8_t proc_id, const uint8_t error_code);
-int pkt_blk_calc_time(uint32_t mission_time, uint16_t abs_timestamp, int16_t *result);
 
 int orb_accel_pkt(struct sensor_accel *accel, struct accel_blk_t *blk, uint16_t base_time);
 int orb_ang_vel_pkt(struct sensor_gyro *gyro, struct ang_vel_blk_t *blk, uint16_t base_time);
