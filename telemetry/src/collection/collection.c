@@ -225,8 +225,8 @@ void *collection_main(void *arg) {
 
                 /* adjust downsampling rates and reset internal state */
                 for(int k = 0; k < sizeof(sensor_downsamples) / sizeof(sensor_downsamples[0]); k++){
-                    int updated_rate = sensor_downsamples[k].total_count / CONFIG_INSPACE_DOWNSAMPLING_TARGET_FREQ;
-                    if(updated_rate > 0 && (sensor_downsamples[k].rate != updated_rate)) {
+                    int updated_rate = sensor_downsamples[k].total_count / (CONFIG_INSPACE_DOWNSAMPLING_TARGET_FREQ + 1);
+                    if(updated_rate > 0 && updated_rate != sensor_downsamples[k].rate) {
                         sensor_downsamples[k].rate = updated_rate;
                     }
 
