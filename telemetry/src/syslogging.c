@@ -50,9 +50,13 @@ void syslog_tee(const char *fmt, ...) {
     va_end(args);
 
     if (__syslogging_file) {
-        vfprintf(__syslogging_file, fmt, args_copy);
+        if (vfprintf(__syslogging_file, fmt, args_copy) < 0) {
+            fprintf(stderr, "syslog_tee: write failed, switching to stdout only\n");
+            fclose(__syslogging_file);
+            __syslogging_file = NULL;
+        } else {
+            syslog_flush();
+        }
         va_end(args_copy);
-
-        syslog_flush();
     }
 }
