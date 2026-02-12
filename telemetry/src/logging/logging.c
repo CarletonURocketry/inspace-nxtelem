@@ -5,6 +5,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <poll.h>
 #include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
@@ -42,28 +43,84 @@
 
 #define PING_PONG_DURATION 30.0f
 
-static int log_packet(FILE *storage, uint8_t *packet, size_t packet_size);
+enum uorb_sensors {
+    SENSOR_ACCEL,   /* Accelerometer */
+    SENSOR_GYRO,    /* Gyroscope */
+    SENSOR_MAG,     /* Magnetometer */
+    SENSOR_GNSS,    /* GNSS */
+    SENSOR_ALT,     /* Altitude fusion */
+    SENSOR_BARO,    /* Barometer */
+    STATUS_MESSAGE, /* Status message */
+    ERROR_MESSAGE,  /* Error message */
+};
+
+/* A buffer that can hold any of the types of data created by the sensors in uorb_inputs */
+union uorb_data {
+    struct sensor_accel accel;
+    struct sensor_gyro gyro;
+    struct sensor_mag mag;
+    struct sensor_gnss gnss;
+    struct fusion_altitude alt;
+    struct sensor_baro baro;
+    struct status_message status;
+    struct error_message error;
+};
+
+typedef struct {
+    enum uorb_sensors type;
+    union uorb_data data;
+} uorb_block_t TIGHTLY_PACKED;
+
+/* uORB polling file descriptors */
+
+static struct pollfd uorb_fds[] = {
+    [SENSOR_ACCEL] = {.fd = -1, .events = POLLIN, .revents = 0},
+    [SENSOR_GYRO] = {.fd = -1, .events = POLLIN, .revents = 0},
+    [SENSOR_MAG] = {.fd = -1, .events = POLLIN, .revents = 0},
+    [SENSOR_GNSS] = {.fd = -1, .events = POLLIN, .revents = 0},
+    [SENSOR_ALT] = {.fd = -1, .events = POLLIN, .revents = 0},
+    [SENSOR_BARO] = {.fd = -1, .events = POLLIN, .revents = 0},
+    [STATUS_MESSAGE] = {.fd = -1, .events = POLLIN, .revents = 0},
+    [ERROR_MESSAGE] = {.fd = -1, .events = POLLIN, .revents = 0},
+};
+
+/* uORB sensor metadatas */
+
+ORB_DECLARE(sensor_accel);
+ORB_DECLARE(sensor_gyro);
+ORB_DECLARE(sensor_mag);
+ORB_DECLARE(sensor_gnss);
+ORB_DECLARE(fusion_altitude);
+ORB_DECLARE(sensor_baro);
+ORB_DECLARE(status_message);
+ORB_DECLARE(error_message);
+
+static struct orb_metadata const *uorb_metas[] = {
+    [SENSOR_ACCEL] = ORB_ID(sensor_accel),     [SENSOR_GYRO] = ORB_ID(sensor_gyro),
+    [SENSOR_MAG] = ORB_ID(sensor_mag),         [SENSOR_GNSS] = ORB_ID(sensor_gnss),
+    [SENSOR_ALT] = ORB_ID(fusion_altitude),    [SENSOR_BARO] = ORB_ID(sensor_baro),
+    [STATUS_MESSAGE] = ORB_ID(status_message), [ERROR_MESSAGE] = ORB_ID(error_message),
+};
+
+/* The numbers of sensors that are available to be polled */
+
+#define NUM_SENSORS (sizeof(uorb_fds) / sizeof(uorb_fds[0]))
+
+static int log_buffer(FILE *storage, uint8_t *buffer, size_t buffer_size);
 static int clear_file(FILE *to_clear);
 static int try_open_file(FILE **file_to_open, const char *filename, const char *open_option);
 static int find_max_mission_number(const char *dir, const char *format);
 static double timespec_diff(struct timespec *new_time, struct timespec *old_time);
 static int close_synced(FILE *to_close);
 static int ejectled_set(bool on);
-
 /*
  * Logging thread which runs to log data to the SD card.
  */
 void *logging_main(void *arg) {
     int err;
-    enum flight_state_e flight_state;
-    struct logging_args *unpacked_args = (struct logging_args *)(arg);
-    rocket_state_t *state = unpacked_args->state;
-    packet_buffer_t *buffer = unpacked_args->buffer;
     unsigned int packet_seq_num = 0;
     bool ejectled_on = false;
     FILE *active_file = NULL;
-    FILE *standby_file = NULL;
-    struct timespec last_swap;
 
     ininfo("Logging thread started.\n");
 
@@ -81,130 +138,153 @@ void *logging_main(void *arg) {
         goto err_cleanup;
     }
 
-    err = open_log_file(&standby_file, FLIGHT_FPATH_FMT, mission_num, flight_ser_num++, "w+");
-    if (err < 0) {
-        inerr("Error opening log file with flight number %d, serial number: %d: %d\n", mission_num, flight_ser_num,
-              err);
-        goto err_cleanup;
-    }
+    /* subscribe to topics */
+    for (int i = 0; i < NUM_SENSORS; i++) {
 
-    // Since both files were just overwritten, neither has any data
-    if (clock_gettime(CLOCK_REALTIME, &last_swap) < 0) {
-        err = errno;
-        inerr("Error during clock_gettime: %d\n", err);
-    }
-
-    /* Infinite loop to handle states */
-    for (;;) {
-        err = state_get_flightstate(state, &flight_state);
-        if (err) {
-            inerr("Error getting flight state: %d\n", err);
-            flight_state = STATE_AIRBORNE;
+        /* Skip metadata that couldn't be found */
+        if (uorb_metas[i] == NULL) {
+            inerr("Missing metadata for sensor %d\n", i);
+            continue;
         }
 
-        switch (flight_state) {
-        case STATE_IDLE: {
-            struct timespec now;
-            if (clock_gettime(CLOCK_REALTIME, &now) < 0) {
-                err = errno;
-                inerr("Error during clock_gettime: %d\n", err);
-            }
-            if (should_swap(&now, &last_swap)) {
-                swap_files(&active_file, &standby_file);
-                last_swap = now;
-                ininfo("Swapped logging files\n");
-            }
+        ininfo("Subscribing to '%s'\n", uorb_metas[i]->o_name);
+        uorb_fds[i].fd = orb_subscribe(uorb_metas[i]);
+        if (uorb_fds[i].fd < 0) {
+            inerr("Failed to subscribe to '%s': %d\n", uorb_metas[i]->o_name, errno);
+        }
+    }
 
-            if (!ejectled_on) {
-                if (!ejectled_set(true)) {
-                    ejectled_on = true;
-                }
-            }
+    union uorb_data data_buf[10];
 
-        } /* Purposeful fall-through */
+    struct timespec current_time;
+    clock_gettime(CLOCK_REALTIME, &current_time);
+    uint32_t mission_time_ms = current_time.tv_sec * 1000 + current_time.tv_nsec / 1000000;
 
-        case STATE_AIRBORNE: {
-            /* Not safe to eject from now onward until files are copied. if-statement is to guard against idle state
-             * fall-through.
-             */
-            if (ejectled_on && flight_state == STATE_AIRBORNE) {
-                if (!ejectled_set(false)) {
-                    ejectled_on = false;
-                }
+    int log_err = 0;
+
+    for (;;) {
+        poll(uorb_fds, NUM_SENSORS, -1);
+
+        for (int i = 0; i < NUM_SENSORS; i++) {
+
+            /* Skip invalid sensors and sensors without new data */
+
+            if (uorb_fds[i].fd < 0 || !(uorb_fds[i].revents & POLLIN)) {
+                continue;
             }
 
-            // Get the next packet, or wait if there isn't one yet
-            packet_node_t *next_packet = packet_buffer_get_full(buffer);
-            ((pkt_hdr_t *)next_packet->packet)->packet_num = packet_seq_num++;
-            if (log_packet(active_file, next_packet->packet, next_packet->end - next_packet->packet) < 0) {
-                inerr("Opening a new logging file because writing to the current one failed");
-                fclose(active_file);
-                err = open_log_file(&active_file, FLIGHT_FPATH_FMT, mission_num, flight_ser_num++, "w+");
-                if (err < 0) {
-                    inerr("Error opening log file with flight number %d, serial number: %d: %d\n", mission_num,
-                          flight_ser_num, err);
-                    goto err_cleanup;
-                }
-            }
-            packet_buffer_put_empty(buffer, next_packet);
+            uorb_fds[i].revents = 0; /* Mark the event as handled */
 
-            // Have to flush and sync on the power safe file system to commit writes. Do this sparingly to save time
-            if ((packet_seq_num % CONFIG_INSPACE_TELEMETRY_FS_SYNC_FREQ) == 0) {
-                indebug("Syncing littlefs...\n");
-                fsync(fileno(active_file));
-                indebug("littlefs synced!\n");
-            }
-
-        } break;
-
-        case STATE_LANDED: {
-            /* Copy out files */
-
-            /* Close to make sure the changes are committed, seperate this flight from next */
-            close_synced(active_file);
-            close_synced(standby_file);
-
-            err = sync_files(CONFIG_INSPACE_TELEMETRY_FLIGHT_FS, FLIGHT_FNAME_FMT, EXTR_FPATH_FMT);
-            if (err == 0) {
-                /* Only delete files if everything was synced successfully */
-
-                err = clean_dir(CONFIG_INSPACE_TELEMETRY_FLIGHT_FS, FLIGHT_FNAME_FMT);
-                if (err < 0) {
-                    inerr("Couldn't clear flight file directory after successful sync: %d\n", err);
-                }
-
-                /* It's now safe to take out the SD card */
-
-                if (!ejectled_set(true)) {
-                    ejectled_on = true;
-                }
-            } else {
-                inerr("Couldn't sync all files to user system (skipped deletion): %d\n", err);
-            }
-
-            /* Open new active/standby files */
-
-            err = open_log_file(&standby_file, FLIGHT_FPATH_FMT, mission_num, flight_ser_num++, "w+");
+            err = orb_copy_multi(uorb_fds[i].fd, &data_buf, sizeof(data_buf));
             if (err < 0) {
-                inerr("Error opening new standby log file with flight number %d, serial number: %d: %d\n", mission_num,
-                      flight_ser_num, err);
-                goto err_cleanup;
+                inerr("Error reading data from %s: %d\n", uorb_metas[i]->o_name, err);
+                continue;
             }
 
-            err = open_log_file(&active_file, FLIGHT_FPATH_FMT, mission_num, flight_ser_num++, "w+");
-            if (err < 0) {
-                inerr("Error opening new active log file with flight number %d, serial number: %d: %d\n", mission_num,
-                      flight_ser_num, err);
-                goto err_cleanup;
-            }
+            for (int j = 0; j < (err / uorb_metas[i]->o_size); j++) {
+                switch (i) {
 
-            /* If copying the files out failed, still set to IDLE so that we don't get stuck */
+                case SENSOR_ACCEL: {
+                    uint8_t sensor_type = SENSOR_ACCEL;
+                    log_err = log_buffer(active_file, (uint8_t *)&sensor_type, sizeof(sensor_type));
+                    if (log_err < 0) break;
 
-            err = state_set_flightstate(state, STATE_IDLE);
-            if (err < 0) {
-                inerr("Error during state_set_flightstate: %d\n", err);
+                    struct sensor_accel *accel = &((struct sensor_accel *)data_buf)[j];
+                    log_err = log_buffer(active_file, (uint8_t *)accel, sizeof(struct sensor_accel));
+                    break;
+                }
+                case SENSOR_GYRO: {
+                    uint8_t sensor_type = SENSOR_GYRO;
+                    log_err = log_buffer(active_file, (uint8_t *)&sensor_type, sizeof(sensor_type));
+                    if (log_err < 0) break;
+
+                    struct sensor_gyro *gyro = &((struct sensor_gyro *)data_buf)[j];
+                    log_err = log_buffer(active_file, (uint8_t *)gyro, sizeof(struct sensor_gyro));
+                    break;
+                }
+                case SENSOR_MAG: {
+                    uint8_t sensor_type = SENSOR_MAG;
+                    log_err = log_buffer(active_file, (uint8_t *)&sensor_type, sizeof(sensor_type));
+                    if (log_err < 0) break;
+
+                    struct sensor_mag *mag = &((struct sensor_mag *)data_buf)[j];
+                    log_err = log_buffer(active_file, (uint8_t *)mag, sizeof(struct sensor_mag));
+                    break;
+                }
+                case SENSOR_GNSS: {
+                    uint8_t sensor_type = SENSOR_GNSS;
+                    log_err = log_buffer(active_file, (uint8_t *)&sensor_type, sizeof(sensor_type));
+                    if (log_err < 0) break;
+
+                    struct sensor_gnss *gnss = &((struct sensor_gnss *)data_buf)[j];
+                    log_err = log_buffer(active_file, (uint8_t *)gnss, sizeof(struct sensor_gnss));
+                    break;
+                }
+                case SENSOR_ALT: {
+                    uint8_t sensor_type = SENSOR_ALT;
+                    log_err = log_buffer(active_file, (uint8_t *)&sensor_type, sizeof(sensor_type));
+                    if (log_err < 0) break;
+
+                    struct fusion_altitude *alt = &((struct fusion_altitude *)data_buf)[j];
+                    log_err = log_buffer(active_file, (uint8_t *)alt, sizeof(struct fusion_altitude));
+                    break;
+                }
+                case SENSOR_BARO: {
+                    uint8_t sensor_type = SENSOR_BARO;
+                    log_err = log_buffer(active_file, (uint8_t *)&sensor_type, sizeof(sensor_type));
+                    if (log_err < 0) break;
+
+                    struct sensor_baro *baro = &((struct sensor_baro *)data_buf)[j];
+                    log_err = log_buffer(active_file, (uint8_t *)baro, sizeof(struct sensor_baro));
+                    break;
+                }
+                case STATUS_MESSAGE: {
+                    uint8_t sensor_type = STATUS_MESSAGE;
+                    log_err = log_buffer(active_file, (uint8_t *)&sensor_type, sizeof(sensor_type));
+                    if (log_err < 0) break;
+
+                    struct status_message *status = &((struct status_message *)data_buf)[j];
+                    log_err = log_buffer(active_file, (uint8_t *)status, sizeof(struct status_message));
+                    break;
+                }
+                case ERROR_MESSAGE: {
+                    uint8_t sensor_type = ERROR_MESSAGE;
+                    log_err = log_buffer(active_file, (uint8_t *)&sensor_type, sizeof(sensor_type));
+                    if (log_err < 0) break;
+
+                    struct error_message *error = &((struct error_message *)data_buf)[j];
+                    log_err = log_buffer(active_file, (uint8_t *)error, sizeof(struct error_message));
+                    break;
+                }
+                }
+
+                if (log_err < 0) {
+                    if (log_err == -EFBIG) {
+                        inerr("File is too big, attempting to recover\n");
+                        close_synced(active_file);
+
+                        err = open_log_file(&active_file, FLIGHT_FPATH_FMT, mission_num, flight_ser_num++, "w+");
+                        if (err < 0) {
+                            inerr("Error opening new log file: %d\n", err);
+                            goto err_cleanup;
+                        }
+
+                        /* reattempt the same block */
+                        j -= 1;
+                        continue;
+                    } else {
+                        inerr("Error logging data: %d\n", log_err);
+                        goto err_cleanup;
+                    }
+                }
+
+                packet_seq_num++;
+
+                if (packet_seq_num % CONFIG_INSPACE_TELEMETRY_FS_SYNC_FREQ == 0) {
+                    indebug("Syncing file\n");
+                    fsync(fileno(active_file));
+                }
             }
-        } break;
         }
     }
 
@@ -213,11 +293,6 @@ err_cleanup:
     if (active_file && close_synced(active_file) != 0) {
         err = errno;
         inerr("Failed to close active file: %d\n", err);
-    }
-
-    if (standby_file && close_synced(standby_file) != 0) {
-        err = errno;
-        inerr("Failed to close standby file: %d\n", err);
     }
 
     publish_error(PROC_ID_LOGGING, ERROR_PROCESS_DEAD);
@@ -232,10 +307,9 @@ err_cleanup:
  * @param packet_size The size of the packet being logged
  * @return The number of bytes written or a negative error code
  */
-static int log_packet(FILE *storage, uint8_t *packet, size_t packet_size) {
-    size_t written = fwrite(packet, 1, packet_size, storage);
-    indebug("Logged %zu bytes\n", written);
-    if (written != packet_size) {
+static int log_buffer(FILE *storage, uint8_t *buffer, size_t buffer_size) {
+    size_t written = fwrite(buffer, 1, buffer_size, storage);
+    if (written != buffer_size) {
         if (ferror(storage)) {
             int err = errno;
             inerr("Failed to write data to the logging file: %d\n", err);

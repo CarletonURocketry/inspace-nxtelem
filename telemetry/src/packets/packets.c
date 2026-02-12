@@ -371,18 +371,6 @@ int orb_gnss_pkt(struct sensor_gnss *gnss, struct coord_blk_t *blk, uint16_t bas
     return 0;
 }
 
-int orb_battery_pkt(struct sensor_battery *battery, struct volt_blk_t *blk, uint16_t base_time) {
-    int16_t time_offset;
-    if (pkt_blk_calc_time(us_to_ms(battery->timestamp), base_time, &time_offset)) {
-        inerr("Failed to calculate time offset for Battery block\n");
-        return -1;
-    }
-    blk->time_offset = time_offset;
-    blk->voltage = (int16_t)battery->voltage;
-    blk->id = 0;
-    return 0;
-}
-
 int orb_error_pkt(struct error_message *error, struct error_blk_t *blk, uint16_t base_time) {
     int16_t time_offset;
     if (pkt_blk_calc_time(us_to_ms(error->timestamp), base_time, &time_offset)) {
