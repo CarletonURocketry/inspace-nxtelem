@@ -23,7 +23,6 @@ ORB_DEFINE(status_message, struct status_message, 0);
  */
 int publish_status(enum status_code_e status_code) {
     struct status_message status = {.timestamp = orb_absolute_time(), .status_code = status_code};
-    ininfo("Publishing a status message with code %d\n", status_code);
     return orb_publish_auto(ORB_ID(status_message), NULL, &status, NULL);
 }
 

@@ -187,97 +187,78 @@ void *logging_main(void *arg) {
             }
 
             for (int j = 0; j < (err / uorb_metas[i]->o_size); j++) {
+                /* we write the header and body separately to reduce memory copies, in the case the header write
+                 * completes and the body write fails, we need to not write the header again, hence the check*/
+                if (log_err >= 0) {
+                    uint8_t sensor_type = i;
+                    log_err = log_buffer(active_file, (uint8_t *)&sensor_type, sizeof(sensor_type));
+                    if (log_err < 0) goto handle_write_error;
+                }
+
                 switch (i) {
 
                 case SENSOR_ACCEL: {
-                    uint8_t sensor_type = SENSOR_ACCEL;
-                    log_err = log_buffer(active_file, (uint8_t *)&sensor_type, sizeof(sensor_type));
-                    if (log_err < 0) break;
-
                     struct sensor_accel *accel = &((struct sensor_accel *)data_buf)[j];
                     log_err = log_buffer(active_file, (uint8_t *)accel, sizeof(struct sensor_accel));
                     break;
                 }
                 case SENSOR_GYRO: {
-                    uint8_t sensor_type = SENSOR_GYRO;
-                    log_err = log_buffer(active_file, (uint8_t *)&sensor_type, sizeof(sensor_type));
-                    if (log_err < 0) break;
-
                     struct sensor_gyro *gyro = &((struct sensor_gyro *)data_buf)[j];
                     log_err = log_buffer(active_file, (uint8_t *)gyro, sizeof(struct sensor_gyro));
                     break;
                 }
                 case SENSOR_MAG: {
-                    uint8_t sensor_type = SENSOR_MAG;
-                    log_err = log_buffer(active_file, (uint8_t *)&sensor_type, sizeof(sensor_type));
-                    if (log_err < 0) break;
-
                     struct sensor_mag *mag = &((struct sensor_mag *)data_buf)[j];
                     log_err = log_buffer(active_file, (uint8_t *)mag, sizeof(struct sensor_mag));
                     break;
                 }
                 case SENSOR_GNSS: {
-                    uint8_t sensor_type = SENSOR_GNSS;
-                    log_err = log_buffer(active_file, (uint8_t *)&sensor_type, sizeof(sensor_type));
-                    if (log_err < 0) break;
-
                     struct sensor_gnss *gnss = &((struct sensor_gnss *)data_buf)[j];
                     log_err = log_buffer(active_file, (uint8_t *)gnss, sizeof(struct sensor_gnss));
                     break;
                 }
                 case SENSOR_ALT: {
-                    uint8_t sensor_type = SENSOR_ALT;
-                    log_err = log_buffer(active_file, (uint8_t *)&sensor_type, sizeof(sensor_type));
-                    if (log_err < 0) break;
-
                     struct fusion_altitude *alt = &((struct fusion_altitude *)data_buf)[j];
                     log_err = log_buffer(active_file, (uint8_t *)alt, sizeof(struct fusion_altitude));
                     break;
                 }
                 case SENSOR_BARO: {
-                    uint8_t sensor_type = SENSOR_BARO;
-                    log_err = log_buffer(active_file, (uint8_t *)&sensor_type, sizeof(sensor_type));
-                    if (log_err < 0) break;
-
                     struct sensor_baro *baro = &((struct sensor_baro *)data_buf)[j];
                     log_err = log_buffer(active_file, (uint8_t *)baro, sizeof(struct sensor_baro));
                     break;
                 }
                 case STATUS_MESSAGE: {
-                    uint8_t sensor_type = STATUS_MESSAGE;
-                    log_err = log_buffer(active_file, (uint8_t *)&sensor_type, sizeof(sensor_type));
-                    if (log_err < 0) break;
-
                     struct status_message *status = &((struct status_message *)data_buf)[j];
                     log_err = log_buffer(active_file, (uint8_t *)status, sizeof(struct status_message));
                     break;
                 }
                 case ERROR_MESSAGE: {
-                    uint8_t sensor_type = ERROR_MESSAGE;
-                    log_err = log_buffer(active_file, (uint8_t *)&sensor_type, sizeof(sensor_type));
-                    if (log_err < 0) break;
-
                     struct error_message *error = &((struct error_message *)data_buf)[j];
                     log_err = log_buffer(active_file, (uint8_t *)error, sizeof(struct error_message));
                     break;
                 }
                 }
 
+            handle_write_error:
                 if (log_err < 0) {
-                    write_retries++;
-                    if (write_retries > MAX_WRITE_RETRIES) {
-                        inerr("Too many consecutive write errors, giving up\n");
-                        goto err_cleanup;
-                    }
+                    if (log_err == -EFBIG) {
+                        inwarn("File too big, creating new log file\n");
+                        close_synced(active_file);
 
-                    inwarn("File write error (%d), attempting to recover, retry %d\n",
-                          log_err, write_retries);
-                    close_synced(active_file);
+                        err = open_log_file(&active_file, FLIGHT_FPATH_FMT, mission_num, flight_ser_num++, "w+");
+                        if (err < 0) {
+                            inerr("Error opening new log file: %d\n", err);
+                            goto err_cleanup;
+                        }
+                    } else {
+                        write_retries++;
+                        if (write_retries > MAX_WRITE_RETRIES) {
+                            inerr("Too many consecutive write errors, giving up\n");
+                            goto err_cleanup;
+                        }
 
-                    err = open_log_file(&active_file, FLIGHT_FPATH_FMT, mission_num, flight_ser_num++, "w+");
-                    if (err < 0) {
-                        inerr("Error opening new log file: %d\n", err);
-                        goto err_cleanup;
+                        inwarn("File write error %d, retry %d/%d\n", log_err, write_retries, MAX_WRITE_RETRIES);
+                        clearerr(active_file);
                     }
 
                     j -= 1;
@@ -289,6 +270,7 @@ void *logging_main(void *arg) {
 
                 if (packet_seq_num % CONFIG_INSPACE_TELEMETRY_FS_SYNC_FREQ == 0) {
                     indebug("Syncing file\n");
+                    fflush(active_file);
                     fsync(fileno(active_file));
                 }
             }
