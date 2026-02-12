@@ -39,6 +39,10 @@
 
 #define NUM_TIMES_TRY_OPEN 10
 
+/* The number of consecutive write errors before giving up */
+
+#define MAX_WRITE_RETRIES 5
+
 /* The number of seconds of guaranteed data before liftoff */
 
 #define PING_PONG_DURATION 30.0f
@@ -161,6 +165,7 @@ void *logging_main(void *arg) {
     uint32_t mission_time_ms = current_time.tv_sec * 1000 + current_time.tv_nsec / 1000000;
 
     int log_err = 0;
+    int write_retries = 0;
 
     for (;;) {
         poll(uorb_fds, NUM_SENSORS, -1);
@@ -259,25 +264,27 @@ void *logging_main(void *arg) {
                 }
 
                 if (log_err < 0) {
-                    if (log_err == -EFBIG) {
-                        inerr("File is too big, attempting to recover\n");
-                        close_synced(active_file);
-
-                        err = open_log_file(&active_file, FLIGHT_FPATH_FMT, mission_num, flight_ser_num++, "w+");
-                        if (err < 0) {
-                            inerr("Error opening new log file: %d\n", err);
-                            goto err_cleanup;
-                        }
-
-                        /* reattempt the same block */
-                        j -= 1;
-                        continue;
-                    } else {
-                        inerr("Error logging data: %d\n", log_err);
+                    write_retries++;
+                    if (write_retries > MAX_WRITE_RETRIES) {
+                        inerr("Too many consecutive write errors, giving up\n");
                         goto err_cleanup;
                     }
+
+                    inwarn("File write error (%d), attempting to recover, retry %d\n",
+                          log_err, write_retries);
+                    close_synced(active_file);
+
+                    err = open_log_file(&active_file, FLIGHT_FPATH_FMT, mission_num, flight_ser_num++, "w+");
+                    if (err < 0) {
+                        inerr("Error opening new log file: %d\n", err);
+                        goto err_cleanup;
+                    }
+
+                    j -= 1;
+                    continue;
                 }
 
+                write_retries = 0;
                 packet_seq_num++;
 
                 if (packet_seq_num % CONFIG_INSPACE_TELEMETRY_FS_SYNC_FREQ == 0) {
