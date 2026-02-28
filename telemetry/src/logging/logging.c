@@ -70,11 +70,6 @@ union uorb_data {
     struct error_message error;
 };
 
-typedef struct {
-    enum uorb_sensors type;
-    union uorb_data data;
-} uorb_block_t TIGHTLY_PACKED;
-
 /* uORB polling file descriptors */
 
 static struct pollfd uorb_fds[] = {
