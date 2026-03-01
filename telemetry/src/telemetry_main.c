@@ -69,9 +69,27 @@ int main(int argc, char **argv) {
 
     err = config_get(&config);
     if (err) {
-        inerr("Couldn't read EEPROM contents: %d\n", err);
-        // TODO maybe some sensible defaults?
+        inerr("Couldn't read EEPROM contents, using defaults: %d\n", err);
+        config.radio.freq = 433050000;
+        config.radio.bw = 125;
+        config.radio.spread = 7;
+        config.radio.cr = 1;
+        config.radio.preamble = 6;
+        config.radio.txpwr = 15;
+        config.radio.sync = 0x43;
+        config.radio.crc = 1;
+        config.radio.iqi = 0;
+
+        ininfo("Writing default configuration to EEPROM\n");
+        err = config_set(&config);
+        if (err) {
+            inerr("Failed to write default config to EEPROM: %d\n", err);
+        }
     }
+
+    ininfo("EPROM contents: freq=%u, bw=%u, spread=%u, cr=%u, preamble=%u, txpwr=%d, sync=0x%llx, crc=%u, iqi=%u\n",
+           config.radio.freq, config.radio.bw, config.radio.spread, config.radio.cr, config.radio.preamble,
+           config.radio.txpwr, (unsigned long long)config.radio.sync, config.radio.crc, config.radio.iqi);
 
     // Allow apogee to be detected again (in case we happen to actually be in liftoff when loaded)
     if (state.state == STATE_AIRBORNE && state.substate == SUBSTATE_DESCENT) {
