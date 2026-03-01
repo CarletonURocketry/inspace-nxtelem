@@ -219,7 +219,8 @@ int config_get(struct config_options *config) {
     err = read(fd, config, sizeof(*config));
     if (err < 0) {
         inerr("Error reading configuration from EEPROM: %d\n", errno);
-        err = errno;
+        close(fd);
+        return errno;
     }
 
     close(fd);
