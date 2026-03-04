@@ -211,7 +211,6 @@ int orb_baro_pkt(struct sensor_baro *baro, struct pres_blk_t *blk, uint16_t base
 int orb_baro_temp_pkt(struct sensor_baro *baro, struct temp_blk_t *blk, uint16_t base_time);
 int orb_alt_pkt(struct fusion_altitude *alt, struct alt_blk_t *blk, uint16_t base_time);
 int orb_gnss_pkt(struct sensor_gnss *gnss, struct coord_blk_t *blk, uint16_t base_time);
-int orb_battery_pkt(struct sensor_battery *battery, struct volt_blk_t *blk, uint16_t base_time);
 int orb_error_pkt(struct error_message *error, struct error_blk_t *blk, uint16_t base_time);
 int orb_status_pkt(struct status_message *status, struct status_blk_t *blk, uint16_t base_time);
 

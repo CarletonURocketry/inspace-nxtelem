@@ -114,11 +114,11 @@ int main(int argc, char **argv) {
         goto exit_error;
     }
 
-    // err = pthread_create(&log_thread, NULL, logging_main, NULL);
-    // if (err) {
-    //     inerr("Problem starting logging thread: %d\n", err);
-    //     goto exit_error;
-    // }
+    err = pthread_create(&log_thread, NULL, logging_main, NULL);
+    if (err) {
+        inerr("Problem starting logging thread: %d\n", err);
+        goto exit_error;
+    }
 
 #ifdef CONFIG_INSPACE_TELEMETRY_USBSH
     struct shell_args shell_args;
@@ -145,7 +145,7 @@ int main(int argc, char **argv) {
     err = pthread_join(fusion_thread, NULL);
     err = pthread_join(downsample_thread, NULL);
     err = pthread_join(transmit_thread, NULL);
-    // err = pthread_join(log_thread, NULL);
+    err = pthread_join(log_thread, NULL);
 #ifdef CONFIG_INSPACE_TELEMETRY_USBSH
     err = pthread_join(shell_thread, NULL);
 #endif

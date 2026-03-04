@@ -34,7 +34,7 @@ enum error_code_e {
 /* Process IDs for error messages */
 enum process_id_e {
     PROC_ID_GENERAL = 0x00,    /* General error process ID */
-    PROC_ID_COLLECTION = 0x01, /* Collection thread */
+    PROC_ID_DOWNSAMPLE = 0x01, /* Collection thread */
     PROC_ID_FUSION = 0x02,     /* Fusion thread */
     PROC_ID_LOGGING = 0x03,    /* Logging thread */
     PROC_ID_TRANSMIT = 0x04,   /* Transmit thread */
