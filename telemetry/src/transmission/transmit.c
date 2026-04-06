@@ -112,7 +112,7 @@ void *transmit_main(void *arg) {
         if (radio_telem->full->alt_n > 0) {
             header->type_count++;
             blk_hdr_t blk_hdr = {
-                .type = DATA_ALT_LAUNCH,
+                .type = DATA_ALT_SEA,
                 .count = radio_telem->full->alt_n,
             };
             memcpy(packet_ptr, &blk_hdr, sizeof(blk_hdr));
@@ -191,6 +191,7 @@ void *transmit_main(void *arg) {
             /* if the packet size is too large we are cooked, this should never happen if the downsampling variable is
              * set correctly */
             inerr("Packet size is too large: %zu\n", packet_size);
+            sleep(1);
             continue;
         } else if (packet_size == sizeof(pkt_hdr_t)) {
             inerr("Packet does not contain any data\n");
@@ -199,8 +200,17 @@ void *transmit_main(void *arg) {
             sleep(1);
             continue;
         }
-        ininfo("Packet size: %zu\n", packet_size);
-        transmit(radio, packet_buffer, packet_size);
+
+        ininfo("%ld - packet size %zu - alt %d - gnss %d - mag %d - accel %d - gyro %d\n",
+               (long)(current_time.tv_sec * 1000 + current_time.tv_nsec / 1000000), packet_size,
+               radio_telem->full->alt_n, radio_telem->full->gnss_n, radio_telem->full->mag_n,
+               radio_telem->full->accel_n, radio_telem->full->gyro_n);
+        err = transmit(radio, packet_buffer, packet_size);
+        if (err < 0) {
+            inerr("Error transmitting packet: %d\n", err);
+            sleep(1);
+            continue;
+        }
     }
 
 err_cleanup:
