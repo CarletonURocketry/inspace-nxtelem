@@ -21,8 +21,8 @@ enum uorb_sensors {
     SENSOR_GYRO,  /* Gyroscope */
     SENSOR_MAG,   /* Magnetometer */
     SENSOR_GNSS,  /* GNSS */
+    SENSOR_BARO,  /* Barometer */
     SENSOR_ALT,   /* Altitude fusion */
-    SENSOR_BARO,
 };
 
 /* A buffer that can hold any of the types of data created by the sensors in uorb_inputs */
@@ -56,9 +56,8 @@ ORB_DECLARE(fusion_altitude);
 ORB_DECLARE(sensor_baro);
 
 static struct orb_metadata const *uorb_metas[] = {
-    [SENSOR_ACCEL] = ORB_ID(sensor_accel), [SENSOR_GYRO] = ORB_ID(sensor_gyro),    [SENSOR_MAG] = ORB_ID(sensor_mag),
-    [SENSOR_GNSS] = ORB_ID(sensor_gnss),   [SENSOR_ALT] = ORB_ID(fusion_altitude), [SENSOR_BARO] = ORB_ID(sensor_baro),
-};
+    [SENSOR_ACCEL] = ORB_ID(sensor_accel), [SENSOR_GYRO] = ORB_ID(sensor_gyro), [SENSOR_MAG] = ORB_ID(sensor_mag),
+    [SENSOR_GNSS] = ORB_ID(sensor_gnss),   [SENSOR_BARO] = ORB_ID(sensor_baro), [SENSOR_ALT] = ORB_ID(fusion_altitude)};
 
 /* The default sampling rate for low-sample sensors or topics */
 
