@@ -346,14 +346,13 @@ static int try_open_file(FILE **file_pointer, const char *filename, const char *
         *file_pointer = fopen(filename, open_option);
         if (*file_pointer == NULL) {
             err = errno;
-            inerr("Error (Attempt %d) opening '%s' file: %d\n", i, filename, err);
-            usleep(1 * 1000); // Sleep for 1 millisecond before trying again
+            usleep(1 * 1000); /* Sleep for 1 millisecond before trying again */
         } else {
-            err = 0;
             indebug("Opened File: %s\n", filename);
-            break;
+            return 0;
         }
     }
+    inerr("Error opening '%s' after %d attempts: %d\n", filename, NUM_TIMES_TRY_OPEN, err);
     return -err;
 }
 

@@ -42,6 +42,7 @@ int main(int argc, char **argv) {
     /* Sets up the syslogging to a file. If this fails, stdout is still open */
 
     if (setup_syslogging()) {
+        inerr("Failed to setup syslog to SD card: %s, publishing error and continuing anyways\n", strerror(errno));
         publish_error(PROC_ID_GENERAL, ERROR_SYSLOGGING_NOT_SAVING);
     }
 
