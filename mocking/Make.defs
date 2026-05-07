@@ -1,3 +1,0 @@
-ifneq ($(CONFIG_INSPACE_MOCKING),)
-CONFIGURED_APPS += $(APPDIR)/inspace-nxtelem/mocking
-endif
