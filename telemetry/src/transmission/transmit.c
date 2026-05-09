@@ -1,9 +1,12 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <math.h>
+#include <poll.h>
 #include <pthread.h>
+#include <stdbool.h>
 #include <string.h>
 #include <sys/ioctl.h>
+#include <time.h>
 #include <unistd.h>
 
 #if defined(CONFIG_LPWAN_RN2XX3)
@@ -29,8 +32,12 @@
 /* Cast an error to a void pointer */
 
 #define err_to_ptr(err) ((void *)((err)))
-
 #define TRANSMIT_PERIOD_MS 700
+
+enum status_topics_e {
+    STATUS_TOPIC = 0,
+    ERROR_TOPIC = 1,
+};
 
 static int transmit(int radio, uint8_t *packet, size_t packet_size);
 static int configure_radio(int fd, struct radio_options const *config);
@@ -42,6 +49,17 @@ void *transmit_main(void *arg) {
     struct transmit_args *unpacked_args = (struct transmit_args *)arg;
     radio_telem_t *radio_telem = unpacked_args->radio_telem;
     uint32_t seq_num = 0;
+
+    ORB_DECLARE(status_message);
+    ORB_DECLARE(error_message);
+    const struct orb_metadata *status_metas[] = {
+        [STATUS_TOPIC] = ORB_ID(status_message),
+        [ERROR_TOPIC] = ORB_ID(error_message),
+    };
+    struct pollfd status_fds[] = {
+        [STATUS_TOPIC] = {.fd = -1, .events = POLLIN, .revents = 0},
+        [ERROR_TOPIC] = {.fd = -1, .events = POLLIN, .revents = 0},
+    };
 
     ininfo("Transmit thread started.\n");
 
@@ -57,6 +75,14 @@ void *transmit_main(void *arg) {
         /* Error will have been reported in configure_rn2483 where we can say which
          * config failed in particular */
         goto err_cleanup;
+    }
+
+    for (int i = 0; i < sizeof(status_fds) / sizeof(status_fds[0]); i++) {
+        status_fds[i].fd = orb_subscribe(status_metas[i]);
+        if (status_fds[i].fd < 0) {
+            err = errno;
+            inerr("Failed to subscribe to '%s': %d\n", status_metas[i]->o_name, err);
+        }
     }
 
     /* Transmit forever, regardless of rocket flight state. */
@@ -87,6 +113,56 @@ void *transmit_main(void *arg) {
         uint32_t mission_time_ms = current_time.tv_sec * 1000 + current_time.tv_nsec / 1000000;
         pkt_hdr_t *header = (pkt_hdr_t *)packet_ptr;
         packet_ptr = pkt_init(packet_ptr, seq_num++, mission_time_ms);
+
+        err = poll(status_fds, sizeof(status_fds) / sizeof(status_fds[0]), 0);
+        if (err < 0) {
+            inwarn("Status poll failed: %d\n", errno);
+            continue;
+        }
+
+        if (status_fds[STATUS_TOPIC].revents & POLLIN) {
+            struct status_message latest_status;
+            err = orb_copy(ORB_ID(status_message), status_fds[STATUS_TOPIC].fd, &latest_status);
+            if (err < 0) {
+                inwarn("Failed to read status message: %d\n", errno);
+            } else {
+                struct status_blk_t status_blk;
+                err = orb_status_pkt(&latest_status, &status_blk, header->timestamp);
+                if (err == 0) {
+                    blk_hdr_t status_hdr = {.type = DATA_STATUS, .count = 1};
+                    header->type_count++;
+                    memcpy(packet_ptr, &status_hdr, sizeof(status_hdr));
+                    packet_ptr += sizeof(status_hdr);
+                    memcpy(packet_ptr, &status_blk, sizeof(status_blk));
+                    packet_ptr += sizeof(status_blk);
+                } else {
+                    inerr("Failed to append status block: %d\n", EINVAL);
+                }
+            }
+        }
+        status_fds[STATUS_TOPIC].revents = 0;
+
+        if (status_fds[ERROR_TOPIC].revents & POLLIN) {
+            struct error_message latest_error;
+            err = orb_copy(ORB_ID(error_message), status_fds[ERROR_TOPIC].fd, &latest_error);
+            if (err < 0) {
+                inwarn("Failed to read error message: %d\n", errno);
+            } else {
+                struct error_blk_t error_blk;
+                err = orb_error_pkt(&latest_error, &error_blk, header->timestamp);
+                if (err == 0) {
+                    blk_hdr_t error_hdr = {.type = DATA_ERROR, .count = 1};
+                    header->type_count++;
+                    memcpy(packet_ptr, &error_hdr, sizeof(error_hdr));
+                    packet_ptr += sizeof(error_hdr);
+                    memcpy(packet_ptr, &error_blk, sizeof(error_blk));
+                    packet_ptr += sizeof(error_blk);
+                } else {
+                    inerr("Failed to append error block: %d\n", EINVAL);
+                }
+            }
+        }
+        status_fds[ERROR_TOPIC].revents = 0;
 
         if (radio_telem->buff->gnss_n > 0) {
             header->type_count++;
