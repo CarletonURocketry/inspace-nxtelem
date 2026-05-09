@@ -10,6 +10,7 @@
 #include <poll.h>
 #include <pthread.h>
 #include <sys/ioctl.h>
+#include <time.h>
 #include <unistd.h>
 
 /* Cast an error to a void pointer */
@@ -79,20 +80,20 @@ static uint8_t data_buf[sizeof(union uorb_data) * 10];
 #define NUM_SENSORS (sizeof(uorb_fds) / sizeof(uorb_fds[0]))
 
 typedef struct {
-    float mean[3];                /* the downsampled output, 3 fields to account for sensors with 3 axes */
-    uint16_t curr_sample_count;   /* the number of samples taken to calculate the mean */
-    uint16_t tot_sample_count;    /* the total number of samples taken until the queue is cleared */
-    uint16_t target_sample_count; /* number of measurements to account for in a sample */
+    float out[3];             /* downsampled output, 3 fields for sensors with 3 axes */
+    uint16_t window_n;        /* number of samples accumulated in the current downsampling window */
+    uint16_t target_window_n; /* target number of input samples per downsampled output */
+    uint16_t total_n;         /* total samples since last buffer swap, used for dynamic rate adjustment */
+    uint16_t dropped_n;       /* output blocks dropped since last buffer swap */
+    uint16_t output_n;        /* output blocks written since last swap */
 } sensor_downsampling_t;
 
 static sensor_downsampling_t sensor_downsamples[] = {
-    [SENSOR_ACCEL] = {.target_sample_count =
-                          CONFIG_INSPACE_TELEMETRY_ACCEL_SF / CONFIG_INSPACE_DOWNSAMPLING_TARGET_FREQ},
-    [SENSOR_GYRO] = {.target_sample_count = CONFIG_INSPACE_TELEMETRY_GYRO_SF / CONFIG_INSPACE_DOWNSAMPLING_TARGET_FREQ},
-    [SENSOR_MAG] = {.target_sample_count = CONFIG_INSPACE_TELEMETRY_MAG_SF / CONFIG_INSPACE_DOWNSAMPLING_TARGET_FREQ},
-    [SENSOR_GNSS] = {.target_sample_count = CONFIG_INSPACE_TELEMETRY_GPS_SF / CONFIG_INSPACE_DOWNSAMPLING_TARGET_FREQ},
-    [SENSOR_ALT] = {.target_sample_count = CONFIG_INSPACE_TELEMETRY_ALT_SF / CONFIG_INSPACE_DOWNSAMPLING_TARGET_FREQ},
-    [SENSOR_BARO] = {.target_sample_count = CONFIG_INSPACE_TELEMETRY_BARO_SF / CONFIG_INSPACE_DOWNSAMPLING_TARGET_FREQ},
+    [SENSOR_ACCEL] = {.target_window_n = CONFIG_INSPACE_TELEMETRY_ACCEL_SF / CONFIG_INSPACE_DOWNSAMPLING_TARGET_FREQ},
+    [SENSOR_GYRO] = {.target_window_n = CONFIG_INSPACE_TELEMETRY_GYRO_SF / CONFIG_INSPACE_DOWNSAMPLING_TARGET_FREQ},
+    [SENSOR_MAG] = {.target_window_n = CONFIG_INSPACE_TELEMETRY_MAG_SF / CONFIG_INSPACE_DOWNSAMPLING_TARGET_FREQ},
+    [SENSOR_GNSS] = {.target_window_n = CONFIG_INSPACE_TELEMETRY_GPS_SF / CONFIG_INSPACE_DOWNSAMPLING_TARGET_FREQ},
+    [SENSOR_ALT] = {.target_window_n = CONFIG_INSPACE_TELEMETRY_ALT_SF / CONFIG_INSPACE_DOWNSAMPLING_TARGET_FREQ},
 };
 
 /*
@@ -175,9 +176,32 @@ void *downsample_main(void *arg) {
     ininfo("Sensor frequencies set.\n");
 #endif
 
+    /* keepint track of sampling rates */
+    uint32_t rate_counts[NUM_SENSORS] = {0};
+    struct timespec rate_report_start;
+    clock_gettime(CLOCK_MONOTONIC, &rate_report_start);
+
     /* Measure data forever */
     for (;;) {
         poll(uorb_fds, NUM_SENSORS, -1);
+
+        if (sem_trywait(&radio_telem->swapped) == 0) {
+            for (int k = 0; k < NUM_SENSORS; k++) {
+                if (k == SENSOR_BARO) continue;
+                int new_target_window_n = sensor_downsamples[k].total_n / (CONFIG_INSPACE_DOWNSAMPLING_TARGET_FREQ - 1);
+                if (sensor_downsamples[k].dropped_n > 0) {
+                    new_target_window_n = new_target_window_n *
+                                          (CONFIG_INSPACE_DOWNSAMPLING_TARGET_FREQ + sensor_downsamples[k].dropped_n) /
+                                          CONFIG_INSPACE_DOWNSAMPLING_TARGET_FREQ;
+                }
+                if (new_target_window_n > 0 && new_target_window_n != sensor_downsamples[k].target_window_n) {
+                    sensor_downsamples[k].target_window_n = new_target_window_n;
+                }
+                sensor_downsamples[k].total_n = 0;
+                sensor_downsamples[k].dropped_n = 0;
+                sensor_downsamples[k].output_n = 0;
+            }
+        }
 
         for (int i = 0; i < NUM_SENSORS; i++) {
 
@@ -197,45 +221,16 @@ void *downsample_main(void *arg) {
                 continue;
             }
 
-            pthread_mutex_lock(&radio_telem->empty_mux);
-
-            /* check if the telemetry thread has swapped the buffer */
-            if (radio_telem->empty->accel_n == -1 || radio_telem->empty->gyro_n == -1 ||
-                radio_telem->empty->mag_n == -1 || radio_telem->empty->gnss_n == -1 ||
-                radio_telem->empty->alt_n == -1) {
-
-                for (int k = 0; k < sizeof(sensor_downsamples) / sizeof(sensor_downsamples[0]); k++) {
-
-                    /* conservative formula for the new target sample count, +1 is added to avoid jitter and keep the
-                     * output at the target frequency */
-                    int new_target_sample_count =
-                        sensor_downsamples[k].tot_sample_count / (CONFIG_INSPACE_DOWNSAMPLING_TARGET_FREQ + 1);
-                    if (new_target_sample_count > 0 &&
-                        new_target_sample_count != sensor_downsamples[k].target_sample_count) {
-                        sensor_downsamples[k].target_sample_count = new_target_sample_count;
-                    }
-
-                    sensor_downsamples[k].tot_sample_count = 0;
-                    sensor_downsamples[k].curr_sample_count = 0;
-                    sensor_downsamples[k].mean[0] = 0;
-                    sensor_downsamples[k].mean[1] = 0;
-                    sensor_downsamples[k].mean[2] = 0;
-                }
-
-                radio_telem->empty->accel_n = 0;
-                radio_telem->empty->gyro_n = 0;
-                radio_telem->empty->mag_n = 0;
-                radio_telem->empty->gnss_n = 0;
-                radio_telem->empty->alt_n = 0;
-            }
-
             for (int j = 0; j < (err / uorb_metas[i]->o_size); j++) {
-                sensor_downsamples[i].tot_sample_count++;
-                sensor_downsamples[i].curr_sample_count++;
+                sensor_downsamples[i].total_n++;
+                sensor_downsamples[i].window_n++;
+                rate_counts[i]++;
 
                 switch (i) {
                 case SENSOR_ACCEL: {
-                    if (radio_telem->empty->accel_n == CONFIG_INSPACE_DOWNSAMPLING_TARGET_FREQ) {
+                    if (radio_telem->empty_buff->accel_n == CONFIG_INSPACE_DOWNSAMPLING_TARGET_FREQ) {
+                        sensor_downsamples[SENSOR_ACCEL].dropped_n++;
+                        sensor_downsamples[SENSOR_ACCEL].window_n = 0;
                         break;
                     }
 
@@ -245,37 +240,39 @@ void *downsample_main(void *arg) {
                     using the Welford formula to calculate the mean, one pass for each axis
                     mean = mean_(n-1) + (x - mean_(n-1)) / n
                     */
-                    sensor_downsamples[SENSOR_ACCEL].mean[0] +=
-                        (accel_input.x - sensor_downsamples[SENSOR_ACCEL].mean[0]) /
-                        sensor_downsamples[SENSOR_ACCEL].curr_sample_count;
-                    sensor_downsamples[SENSOR_ACCEL].mean[1] +=
-                        (accel_input.y - sensor_downsamples[SENSOR_ACCEL].mean[1]) /
-                        sensor_downsamples[SENSOR_ACCEL].curr_sample_count;
-                    sensor_downsamples[SENSOR_ACCEL].mean[2] +=
-                        (accel_input.z - sensor_downsamples[SENSOR_ACCEL].mean[2]) /
-                        sensor_downsamples[SENSOR_ACCEL].curr_sample_count;
+                    sensor_downsamples[SENSOR_ACCEL].out[0] +=
+                        (accel_input.x - sensor_downsamples[SENSOR_ACCEL].out[0]) /
+                        sensor_downsamples[SENSOR_ACCEL].window_n;
+                    sensor_downsamples[SENSOR_ACCEL].out[1] +=
+                        (accel_input.y - sensor_downsamples[SENSOR_ACCEL].out[1]) /
+                        sensor_downsamples[SENSOR_ACCEL].window_n;
+                    sensor_downsamples[SENSOR_ACCEL].out[2] +=
+                        (accel_input.z - sensor_downsamples[SENSOR_ACCEL].out[2]) /
+                        sensor_downsamples[SENSOR_ACCEL].window_n;
 
-                    if (sensor_downsamples[SENSOR_ACCEL].curr_sample_count ==
-                        sensor_downsamples[SENSOR_ACCEL].target_sample_count) {
+                    if (sensor_downsamples[SENSOR_ACCEL].window_n >= sensor_downsamples[SENSOR_ACCEL].target_window_n) {
 
                         struct sensor_accel sensor_accel = {
                             .timestamp = accel_input.timestamp,
-                            .x = sensor_downsamples[SENSOR_ACCEL].mean[0],
-                            .y = sensor_downsamples[SENSOR_ACCEL].mean[1],
-                            .z = sensor_downsamples[SENSOR_ACCEL].mean[2],
+                            .x = sensor_downsamples[SENSOR_ACCEL].out[0],
+                            .y = sensor_downsamples[SENSOR_ACCEL].out[1],
+                            .z = sensor_downsamples[SENSOR_ACCEL].out[2],
                         };
 
-                        radio_telem->empty->accel[radio_telem->empty->accel_n++] = sensor_accel;
-                        sensor_downsamples[SENSOR_ACCEL].mean[0] = 0;
-                        sensor_downsamples[SENSOR_ACCEL].mean[1] = 0;
-                        sensor_downsamples[SENSOR_ACCEL].mean[2] = 0;
-                        sensor_downsamples[SENSOR_ACCEL].curr_sample_count = 0;
+                        radio_telem->empty_buff->accel[radio_telem->empty_buff->accel_n++] = sensor_accel;
+                        sensor_downsamples[SENSOR_ACCEL].output_n++;
+                        sensor_downsamples[SENSOR_ACCEL].out[0] = 0;
+                        sensor_downsamples[SENSOR_ACCEL].out[1] = 0;
+                        sensor_downsamples[SENSOR_ACCEL].out[2] = 0;
+                        sensor_downsamples[SENSOR_ACCEL].window_n = 0;
                     }
 
                     break;
                 }
                 case SENSOR_GYRO: {
-                    if (radio_telem->empty->gyro_n == CONFIG_INSPACE_DOWNSAMPLING_TARGET_FREQ) {
+                    if (radio_telem->empty_buff->gyro_n == CONFIG_INSPACE_DOWNSAMPLING_TARGET_FREQ) {
+                        sensor_downsamples[SENSOR_GYRO].dropped_n++;
+                        sensor_downsamples[SENSOR_GYRO].window_n = 0;
                         break;
                     }
 
@@ -285,36 +282,35 @@ void *downsample_main(void *arg) {
                     using the Welford formula to calculate the mean, one pass for each axis
                     mean = mean_(n-1) + (x - mean_(n-1)) / n
                     */
-                    sensor_downsamples[SENSOR_GYRO].mean[0] +=
-                        (gyro_input.x - sensor_downsamples[SENSOR_GYRO].mean[0]) /
-                        sensor_downsamples[SENSOR_GYRO].curr_sample_count;
-                    sensor_downsamples[SENSOR_GYRO].mean[1] +=
-                        (gyro_input.y - sensor_downsamples[SENSOR_GYRO].mean[1]) /
-                        sensor_downsamples[SENSOR_GYRO].curr_sample_count;
-                    sensor_downsamples[SENSOR_GYRO].mean[2] +=
-                        (gyro_input.z - sensor_downsamples[SENSOR_GYRO].mean[2]) /
-                        sensor_downsamples[SENSOR_GYRO].curr_sample_count;
+                    sensor_downsamples[SENSOR_GYRO].out[0] += (gyro_input.x - sensor_downsamples[SENSOR_GYRO].out[0]) /
+                                                              sensor_downsamples[SENSOR_GYRO].window_n;
+                    sensor_downsamples[SENSOR_GYRO].out[1] += (gyro_input.y - sensor_downsamples[SENSOR_GYRO].out[1]) /
+                                                              sensor_downsamples[SENSOR_GYRO].window_n;
+                    sensor_downsamples[SENSOR_GYRO].out[2] += (gyro_input.z - sensor_downsamples[SENSOR_GYRO].out[2]) /
+                                                              sensor_downsamples[SENSOR_GYRO].window_n;
 
-                    if (sensor_downsamples[SENSOR_GYRO].curr_sample_count ==
-                        sensor_downsamples[SENSOR_GYRO].target_sample_count) {
+                    if (sensor_downsamples[SENSOR_GYRO].window_n >= sensor_downsamples[SENSOR_GYRO].target_window_n) {
                         struct sensor_gyro sensor_gyro = {
                             .timestamp = gyro_input.timestamp,
-                            .x = sensor_downsamples[SENSOR_GYRO].mean[0],
-                            .y = sensor_downsamples[SENSOR_GYRO].mean[1],
-                            .z = sensor_downsamples[SENSOR_GYRO].mean[2],
+                            .x = sensor_downsamples[SENSOR_GYRO].out[0],
+                            .y = sensor_downsamples[SENSOR_GYRO].out[1],
+                            .z = sensor_downsamples[SENSOR_GYRO].out[2],
                         };
 
-                        radio_telem->empty->gyro[radio_telem->empty->gyro_n++] = sensor_gyro;
-                        sensor_downsamples[SENSOR_GYRO].mean[0] = 0;
-                        sensor_downsamples[SENSOR_GYRO].mean[1] = 0;
-                        sensor_downsamples[SENSOR_GYRO].mean[2] = 0;
-                        sensor_downsamples[SENSOR_GYRO].curr_sample_count = 0;
+                        radio_telem->empty_buff->gyro[radio_telem->empty_buff->gyro_n++] = sensor_gyro;
+                        sensor_downsamples[SENSOR_GYRO].output_n++;
+                        sensor_downsamples[SENSOR_GYRO].out[0] = 0;
+                        sensor_downsamples[SENSOR_GYRO].out[1] = 0;
+                        sensor_downsamples[SENSOR_GYRO].out[2] = 0;
+                        sensor_downsamples[SENSOR_GYRO].window_n = 0;
                     }
 
                     break;
                 }
                 case SENSOR_MAG: {
-                    if (radio_telem->empty->mag_n == CONFIG_INSPACE_DOWNSAMPLING_TARGET_FREQ) {
+                    if (radio_telem->empty_buff->mag_n == CONFIG_INSPACE_DOWNSAMPLING_TARGET_FREQ) {
+                        sensor_downsamples[SENSOR_MAG].dropped_n++;
+                        sensor_downsamples[SENSOR_MAG].window_n = 0;
                         break;
                     }
 
@@ -324,39 +320,42 @@ void *downsample_main(void *arg) {
                     using the Welford formula to calculate the mean, one pass for each axis
                     mean = mean_(n-1) + (x - mean_(n-1)) / n
                     */
-                    sensor_downsamples[SENSOR_MAG].mean[0] += (mag_input.x - sensor_downsamples[SENSOR_MAG].mean[0]) /
-                                                              sensor_downsamples[SENSOR_MAG].curr_sample_count;
-                    sensor_downsamples[SENSOR_MAG].mean[1] += (mag_input.y - sensor_downsamples[SENSOR_MAG].mean[1]) /
-                                                              sensor_downsamples[SENSOR_MAG].curr_sample_count;
-                    sensor_downsamples[SENSOR_MAG].mean[2] += (mag_input.z - sensor_downsamples[SENSOR_MAG].mean[2]) /
-                                                              sensor_downsamples[SENSOR_MAG].curr_sample_count;
+                    sensor_downsamples[SENSOR_MAG].out[0] +=
+                        (mag_input.x - sensor_downsamples[SENSOR_MAG].out[0]) / sensor_downsamples[SENSOR_MAG].window_n;
+                    sensor_downsamples[SENSOR_MAG].out[1] +=
+                        (mag_input.y - sensor_downsamples[SENSOR_MAG].out[1]) / sensor_downsamples[SENSOR_MAG].window_n;
+                    sensor_downsamples[SENSOR_MAG].out[2] +=
+                        (mag_input.z - sensor_downsamples[SENSOR_MAG].out[2]) / sensor_downsamples[SENSOR_MAG].window_n;
 
-                    if (sensor_downsamples[SENSOR_MAG].curr_sample_count ==
-                        sensor_downsamples[SENSOR_MAG].target_sample_count) {
+                    if (sensor_downsamples[SENSOR_MAG].window_n >= sensor_downsamples[SENSOR_MAG].target_window_n) {
                         struct sensor_mag sensor_mag = {
                             .timestamp = mag_input.timestamp,
-                            .x = sensor_downsamples[SENSOR_MAG].mean[0],
-                            .y = sensor_downsamples[SENSOR_MAG].mean[1],
-                            .z = sensor_downsamples[SENSOR_MAG].mean[2],
+                            .x = sensor_downsamples[SENSOR_MAG].out[0],
+                            .y = sensor_downsamples[SENSOR_MAG].out[1],
+                            .z = sensor_downsamples[SENSOR_MAG].out[2],
                         };
 
-                        if (radio_telem->empty->mag_n == CONFIG_INSPACE_DOWNSAMPLING_TARGET_FREQ) {
+                        if (radio_telem->empty_buff->mag_n == CONFIG_INSPACE_DOWNSAMPLING_TARGET_FREQ) {
                             inerr("Magnetometer buffer full, dropping data\n");
+                            sensor_downsamples[SENSOR_MAG].dropped_n++;
+                            sensor_downsamples[SENSOR_MAG].window_n = 0;
                             break;
                         }
 
-                        radio_telem->empty->mag[radio_telem->empty->mag_n++] = sensor_mag;
-
-                        sensor_downsamples[SENSOR_MAG].mean[0] = 0;
-                        sensor_downsamples[SENSOR_MAG].mean[1] = 0;
-                        sensor_downsamples[SENSOR_MAG].mean[2] = 0;
-                        sensor_downsamples[SENSOR_MAG].curr_sample_count = 0;
+                        radio_telem->empty_buff->mag[radio_telem->empty_buff->mag_n++] = sensor_mag;
+                        sensor_downsamples[SENSOR_MAG].output_n++;
+                        sensor_downsamples[SENSOR_MAG].out[0] = 0;
+                        sensor_downsamples[SENSOR_MAG].out[1] = 0;
+                        sensor_downsamples[SENSOR_MAG].out[2] = 0;
+                        sensor_downsamples[SENSOR_MAG].window_n = 0;
                     }
 
                     break;
                 }
                 case SENSOR_GNSS: {
-                    if (radio_telem->empty->gnss_n == CONFIG_INSPACE_DOWNSAMPLING_TARGET_FREQ) {
+                    if (radio_telem->empty_buff->gnss_n == CONFIG_INSPACE_DOWNSAMPLING_TARGET_FREQ) {
+                        sensor_downsamples[SENSOR_GNSS].dropped_n++;
+                        sensor_downsamples[SENSOR_GNSS].window_n = 0;
                         break;
                     }
 
@@ -366,37 +365,40 @@ void *downsample_main(void *arg) {
                     using the Welford formula to calculate the mean, one pass for each axis
                     mean = mean_(n-1) + (x - mean_(n-1)) / n
                     */
-                    sensor_downsamples[SENSOR_GNSS].mean[0] +=
-                        (gnss_input.latitude - sensor_downsamples[SENSOR_GNSS].mean[0]) /
-                        sensor_downsamples[SENSOR_GNSS].curr_sample_count;
-                    sensor_downsamples[SENSOR_GNSS].mean[1] +=
-                        (gnss_input.longitude - sensor_downsamples[SENSOR_GNSS].mean[1]) /
-                        sensor_downsamples[SENSOR_GNSS].curr_sample_count;
+                    sensor_downsamples[SENSOR_GNSS].out[0] +=
+                        (gnss_input.latitude - sensor_downsamples[SENSOR_GNSS].out[0]) /
+                        sensor_downsamples[SENSOR_GNSS].window_n;
+                    sensor_downsamples[SENSOR_GNSS].out[1] +=
+                        (gnss_input.longitude - sensor_downsamples[SENSOR_GNSS].out[1]) /
+                        sensor_downsamples[SENSOR_GNSS].window_n;
 
-                    if (sensor_downsamples[SENSOR_GNSS].curr_sample_count ==
-                        sensor_downsamples[SENSOR_GNSS].target_sample_count) {
+                    if (sensor_downsamples[SENSOR_GNSS].window_n >= sensor_downsamples[SENSOR_GNSS].target_window_n) {
                         struct sensor_gnss sensor_gnss = {
                             .timestamp = gnss_input.timestamp,
-                            .latitude = sensor_downsamples[SENSOR_GNSS].mean[0],
-                            .longitude = sensor_downsamples[SENSOR_GNSS].mean[1],
+                            .latitude = sensor_downsamples[SENSOR_GNSS].out[0],
+                            .longitude = sensor_downsamples[SENSOR_GNSS].out[1],
                         };
 
-                        if (radio_telem->empty->gnss_n == CONFIG_INSPACE_DOWNSAMPLING_TARGET_FREQ) {
+                        if (radio_telem->empty_buff->gnss_n == CONFIG_INSPACE_DOWNSAMPLING_TARGET_FREQ) {
                             inerr("GNSS buffer full, dropping data\n");
+                            sensor_downsamples[SENSOR_GNSS].dropped_n++;
+                            sensor_downsamples[SENSOR_GNSS].window_n = 0;
                             break;
                         }
 
-                        radio_telem->empty->gnss[radio_telem->empty->gnss_n++] = sensor_gnss;
-
-                        sensor_downsamples[SENSOR_GNSS].mean[0] = 0;
-                        sensor_downsamples[SENSOR_GNSS].mean[1] = 0;
-                        sensor_downsamples[SENSOR_GNSS].curr_sample_count = 0;
+                        radio_telem->empty_buff->gnss[radio_telem->empty_buff->gnss_n++] = sensor_gnss;
+                        sensor_downsamples[SENSOR_GNSS].output_n++;
+                        sensor_downsamples[SENSOR_GNSS].out[0] = 0;
+                        sensor_downsamples[SENSOR_GNSS].out[1] = 0;
+                        sensor_downsamples[SENSOR_GNSS].window_n = 0;
                     }
 
                     break;
                 }
                 case SENSOR_ALT: {
-                    if (radio_telem->empty->alt_n == CONFIG_INSPACE_DOWNSAMPLING_TARGET_FREQ) {
+                    if (radio_telem->empty_buff->alt_n == CONFIG_INSPACE_DOWNSAMPLING_TARGET_FREQ) {
+                        sensor_downsamples[SENSOR_ALT].dropped_n++;
+                        sensor_downsamples[SENSOR_ALT].window_n = 0;
                         break;
                     }
 
@@ -406,35 +408,35 @@ void *downsample_main(void *arg) {
                     using the Welford formula to calculate the mean, one pass for each axis
                     mean = mean_(n-1) + (x - mean_(n-1)) / n
                     */
-                    sensor_downsamples[SENSOR_ALT].mean[0] +=
-                        (alt_input.altitude - sensor_downsamples[SENSOR_ALT].mean[0]) /
-                        sensor_downsamples[SENSOR_ALT].curr_sample_count;
+                    sensor_downsamples[SENSOR_ALT].out[0] +=
+                        (alt_input.altitude - sensor_downsamples[SENSOR_ALT].out[0]) /
+                        sensor_downsamples[SENSOR_ALT].window_n;
 
-                    if (sensor_downsamples[SENSOR_ALT].curr_sample_count ==
-                        sensor_downsamples[SENSOR_ALT].target_sample_count) {
+                    if (sensor_downsamples[SENSOR_ALT].window_n >= sensor_downsamples[SENSOR_ALT].target_window_n) {
                         struct fusion_altitude sensor_alt = {
                             .timestamp = alt_input.timestamp,
-                            .altitude = sensor_downsamples[SENSOR_ALT].mean[0],
+                            .altitude = sensor_downsamples[SENSOR_ALT].out[0],
                         };
 
-                        if (radio_telem->empty->alt_n == CONFIG_INSPACE_DOWNSAMPLING_TARGET_FREQ) {
+                        if (radio_telem->empty_buff->alt_n == CONFIG_INSPACE_DOWNSAMPLING_TARGET_FREQ) {
                             inerr("Altitude buffer full, dropping data\n");
+                            sensor_downsamples[SENSOR_ALT].dropped_n++;
+                            sensor_downsamples[SENSOR_ALT].window_n = 0;
                             break;
                         }
 
-                        radio_telem->empty->alt[radio_telem->empty->alt_n++] = sensor_alt;
-
-                        sensor_downsamples[SENSOR_ALT].mean[0] = 0;
-                        sensor_downsamples[SENSOR_ALT].curr_sample_count = 0;
+                        radio_telem->empty_buff->alt[radio_telem->empty_buff->alt_n++] = sensor_alt;
+                        sensor_downsamples[SENSOR_ALT].output_n++;
+                        sensor_downsamples[SENSOR_ALT].out[0] = 0;
+                        sensor_downsamples[SENSOR_ALT].window_n = 0;
                     }
                     break;
                 }
                 }
             }
-
-            pthread_mutex_unlock(&radio_telem->empty_mux);
         }
     }
+
     publish_error(PROC_ID_DOWNSAMPLE, ERROR_PROCESS_DEAD);
     pthread_exit(0);
 }

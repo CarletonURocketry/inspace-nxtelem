@@ -79,14 +79,14 @@ int main(int argc, char **argv) {
         state_set_flightsubstate(&state, SUBSTATE_UNKNOWN);
     }
 
-    radio_telem.full = &radio_buf1;
-    radio_telem.empty = &radio_buf2;
+    radio_telem.buff = &radio_buf1;
+    radio_telem.empty_buff = &radio_buf2;
 
     memset(&radio_buf1, 0, sizeof(radio_buf1));
     memset(&radio_buf2, 0, sizeof(radio_buf2));
 
-    pthread_mutex_init(&(radio_telem.full_mux), NULL);
-    pthread_mutex_init(&(radio_telem.empty_mux), NULL);
+    pthread_mutex_init(&(radio_telem.buff_mux), NULL);
+    sem_init(&radio_telem.swapped, 0, 0);
 
     /* Start all threads */
     struct fusion_args fusion_thread_args = {.state = &state};
