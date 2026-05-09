@@ -11,8 +11,10 @@ read -p "Confirm? (y/N) " confirm
 sudo sgdisk --zap-all /dev/$DISK \
   && sudo sgdisk -n 1:2048:+31G -t 1:0700 -c 1:PART1 /dev/$DISK \
   && sudo sgdisk -n 2:0:0 -t 2:0700 -c 2:PART2 /dev/$DISK \
+  && sudo diskutil quiet repairDisk /dev/$DISK \
   && sudo diskutil unmountDisk force /dev/$DISK \
   && sudo newfs_msdos -F 32 -v PART1 /dev/r${DISK}s1 \
+  && sudo newfs_msdos -F 32 -v PART2 /dev/r${DISK}s2 \
   && echo "Done."
 
 echo "--- diskutil ---"
