@@ -183,8 +183,44 @@ config INSPACE_DOWNSAMPLING_TARGET_FREQ
 	---help---
 		The downsampling frequency for the sensor data in Hz
 
+config INSPACE_TELEMETRY_SENSOR_ACCEL
+	bool "Enable accelerometer"
+	default y
+	---help---
+		Subscribe to the accelerometer uORB topic and include accelerometer
+		data in downsampled telemetry.
+
+config INSPACE_TELEMETRY_SENSOR_GYRO
+	bool "Enable gyroscope"
+	default y
+	---help---
+		Subscribe to the gyroscope uORB topic and include gyroscope data in
+		downsampled telemetry.
+
+config INSPACE_TELEMETRY_SENSOR_MAG
+	bool "Enable magnetometer"
+	default y
+	---help---
+		Subscribe to the magnetometer uORB topic and include magnetometer data
+		in downsampled telemetry.
+
+config INSPACE_TELEMETRY_SENSOR_GNSS
+	bool "Enable GNSS"
+	default y
+	---help---
+		Subscribe to the GNSS uORB topic and include GNSS data in downsampled
+		telemetry.
+
+config INSPACE_TELEMETRY_SENSOR_BARO
+	bool "Enable barometer"
+	default y
+	---help---
+		Subscribe to the barometer uORB topic so the telemetry application can
+		configure its sampling frequency.
+
 config INSPACE_TELEMETRY_ACCEL_SF
 	int "Accelerometer sampling frequency"
+	depends on INSPACE_TELEMETRY_SENSOR_ACCEL
 	default 100
 	range 1 6600
 	---help---
@@ -192,6 +228,7 @@ config INSPACE_TELEMETRY_ACCEL_SF
 
 config INSPACE_TELEMETRY_GYRO_SF
 	int "Gyroscope sampling frequency"
+	depends on INSPACE_TELEMETRY_SENSOR_GYRO
 	default 100
 	range 1 6600
 	---help---
@@ -199,6 +236,7 @@ config INSPACE_TELEMETRY_GYRO_SF
 
 config INSPACE_TELEMETRY_MAG_SF
 	int "Magnetometer sampling frequency"
+	depends on INSPACE_TELEMETRY_SENSOR_MAG
 	default 50
 	range 1 50
 	---help---
@@ -206,6 +244,7 @@ config INSPACE_TELEMETRY_MAG_SF
 
 config INSPACE_TELEMETRY_BARO_SF
 	int "Barometer sampling frequency"
+	depends on INSPACE_TELEMETRY_SENSOR_BARO
 	default 50
 	range 1 100
 	---help---
@@ -213,6 +252,7 @@ config INSPACE_TELEMETRY_BARO_SF
 
 config INSPACE_TELEMETRY_GPS_SF
 	int "GPS sampling frequency"
+	depends on INSPACE_TELEMETRY_SENSOR_GNSS
 	default 10
 	range 1 10
 	---help---
@@ -220,6 +260,7 @@ config INSPACE_TELEMETRY_GPS_SF
 
 config INSPACE_TELEMETRY_ALT_SF
 	int "Altitude sampling frequency"
+	depends on INSPACE_TELEMETRY_SENSOR_ALT
 	default 25
 	range 1 INSPACE_TELEMETRY_BARO_SF
 	---help---

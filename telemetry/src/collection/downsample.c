@@ -44,21 +44,49 @@ static struct pollfd uorb_fds[] = {
     [SENSOR_MAG] = {.fd = -1, .events = POLLIN, .revents = 0},
     [SENSOR_GNSS] = {.fd = -1, .events = POLLIN, .revents = 0},
     [SENSOR_ALT] = {.fd = -1, .events = POLLIN, .revents = 0},
-    [SENSOR_BARO] = {.fd = -1, .events = POLLIN, .revents = 0},
+    [SENSOR_BARO] = {.fd = -1, .events = 0, .revents = 0},
 };
 
 /* uORB sensor metadatas */
 
+#ifdef CONFIG_INSPACE_TELEMETRY_SENSOR_ACCEL
 ORB_DECLARE(sensor_accel);
+#endif
+#ifdef CONFIG_INSPACE_TELEMETRY_SENSOR_GYRO
 ORB_DECLARE(sensor_gyro);
+#endif
+#ifdef CONFIG_INSPACE_TELEMETRY_SENSOR_MAG
 ORB_DECLARE(sensor_mag);
+#endif
+#ifdef CONFIG_INSPACE_TELEMETRY_SENSOR_GNSS
 ORB_DECLARE(sensor_gnss);
+#endif
+#ifdef CONFIG_INSPACE_TELEMETRY_SENSOR_ALT
 ORB_DECLARE(fusion_altitude);
+#endif
+#ifdef CONFIG_INSPACE_TELEMETRY_SENSOR_BARO
 ORB_DECLARE(sensor_baro);
+#endif
 
 static struct orb_metadata const *uorb_metas[] = {
-    [SENSOR_ACCEL] = ORB_ID(sensor_accel), [SENSOR_GYRO] = ORB_ID(sensor_gyro),    [SENSOR_MAG] = ORB_ID(sensor_mag),
-    [SENSOR_GNSS] = ORB_ID(sensor_gnss),   [SENSOR_ALT] = ORB_ID(fusion_altitude), [SENSOR_BARO] = ORB_ID(sensor_baro),
+#ifdef CONFIG_INSPACE_TELEMETRY_SENSOR_ACCEL
+    [SENSOR_ACCEL] = ORB_ID(sensor_accel),
+#endif
+#ifdef CONFIG_INSPACE_TELEMETRY_SENSOR_GYRO
+    [SENSOR_GYRO] = ORB_ID(sensor_gyro),
+#endif
+#ifdef CONFIG_INSPACE_TELEMETRY_SENSOR_MAG
+    [SENSOR_MAG] = ORB_ID(sensor_mag),
+#endif
+#ifdef CONFIG_INSPACE_TELEMETRY_SENSOR_GNSS
+    [SENSOR_GNSS] = ORB_ID(sensor_gnss),
+#endif
+#ifdef CONFIG_INSPACE_TELEMETRY_SENSOR_ALT
+    [SENSOR_ALT] = ORB_ID(fusion_altitude),
+#endif
+#ifdef CONFIG_INSPACE_TELEMETRY_SENSOR_BARO
+    [SENSOR_BARO] = ORB_ID(sensor_baro),
+#endif
 };
 
 /* The default sampling rate for low-sample sensors or topics */
@@ -66,9 +94,21 @@ static struct orb_metadata const *uorb_metas[] = {
 #define LOW_SAMPLE_RATE_DEFAULT 10
 
 static const uint32_t sample_freqs[] = {
-    [SENSOR_ACCEL] = CONFIG_INSPACE_TELEMETRY_ACCEL_SF, [SENSOR_GYRO] = CONFIG_INSPACE_TELEMETRY_GYRO_SF,
-    [SENSOR_MAG] = CONFIG_INSPACE_TELEMETRY_MAG_SF,     [SENSOR_GNSS] = CONFIG_INSPACE_TELEMETRY_GPS_SF,
+#ifdef CONFIG_INSPACE_TELEMETRY_SENSOR_ACCEL
+    [SENSOR_ACCEL] = CONFIG_INSPACE_TELEMETRY_ACCEL_SF,
+#endif
+#ifdef CONFIG_INSPACE_TELEMETRY_SENSOR_GYRO
+    [SENSOR_GYRO] = CONFIG_INSPACE_TELEMETRY_GYRO_SF,
+#endif
+#ifdef CONFIG_INSPACE_TELEMETRY_SENSOR_MAG
+    [SENSOR_MAG] = CONFIG_INSPACE_TELEMETRY_MAG_SF,
+#endif
+#ifdef CONFIG_INSPACE_TELEMETRY_SENSOR_GNSS
+    [SENSOR_GNSS] = CONFIG_INSPACE_TELEMETRY_GPS_SF,
+#endif
+#ifdef CONFIG_INSPACE_TELEMETRY_SENSOR_BARO
     [SENSOR_BARO] = CONFIG_INSPACE_TELEMETRY_BARO_SF,
+#endif
 };
 
 /* Data buffer for copying uORB data */
@@ -89,11 +129,21 @@ typedef struct {
 } sensor_downsampling_t;
 
 static sensor_downsampling_t sensor_downsamples[] = {
+#ifdef CONFIG_INSPACE_TELEMETRY_SENSOR_ACCEL
     [SENSOR_ACCEL] = {.target_window_n = CONFIG_INSPACE_TELEMETRY_ACCEL_SF / CONFIG_INSPACE_DOWNSAMPLING_TARGET_FREQ},
+#endif
+#ifdef CONFIG_INSPACE_TELEMETRY_SENSOR_GYRO
     [SENSOR_GYRO] = {.target_window_n = CONFIG_INSPACE_TELEMETRY_GYRO_SF / CONFIG_INSPACE_DOWNSAMPLING_TARGET_FREQ},
+#endif
+#ifdef CONFIG_INSPACE_TELEMETRY_SENSOR_MAG
     [SENSOR_MAG] = {.target_window_n = CONFIG_INSPACE_TELEMETRY_MAG_SF / CONFIG_INSPACE_DOWNSAMPLING_TARGET_FREQ},
+#endif
+#ifdef CONFIG_INSPACE_TELEMETRY_SENSOR_GNSS
     [SENSOR_GNSS] = {.target_window_n = CONFIG_INSPACE_TELEMETRY_GPS_SF / CONFIG_INSPACE_DOWNSAMPLING_TARGET_FREQ},
+#endif
+#ifdef CONFIG_INSPACE_TELEMETRY_SENSOR_ALT
     [SENSOR_ALT] = {.target_window_n = CONFIG_INSPACE_TELEMETRY_ALT_SF / CONFIG_INSPACE_DOWNSAMPLING_TARGET_FREQ},
+#endif
 };
 
 /*
@@ -131,6 +181,7 @@ void *downsample_main(void *arg) {
 
     ininfo("Configuring sensors with their specific requirements.\n");
 
+#ifdef CONFIG_INSPACE_TELEMETRY_SENSOR_ACCEL
     if (uorb_fds[SENSOR_ACCEL].fd >= 0) {
         ininfo("Configuring accelerometer FSR to +/-32g.\n");
         err = orb_ioctl(uorb_fds[SENSOR_ACCEL].fd, SNIOC_SETFULLSCALE, 32);
@@ -138,7 +189,9 @@ void *downsample_main(void *arg) {
             inerr("Couldn't set FSR of sensor_accel: %d\n", errno);
         }
     }
+#endif
 
+#ifdef CONFIG_INSPACE_TELEMETRY_SENSOR_GYRO
     if (uorb_fds[SENSOR_GYRO].fd >= 0) {
         ininfo("Configuring gyro FSR to +/-2000dps.\n");
         err = orb_ioctl(uorb_fds[SENSOR_GYRO].fd, SNIOC_SETFULLSCALE, 2000);
@@ -146,6 +199,7 @@ void *downsample_main(void *arg) {
             inerr("Couldn't set FSR of sensor_gyro: %d\n", errno);
         }
     }
+#endif
 
 #ifndef CONFIG_INSPACE_MOCKING
     /* Set sample frequencies for all sensors
@@ -227,6 +281,7 @@ void *downsample_main(void *arg) {
                 rate_counts[i]++;
 
                 switch (i) {
+#ifdef CONFIG_INSPACE_TELEMETRY_SENSOR_ACCEL
                 case SENSOR_ACCEL: {
                     if (radio_telem->empty_buff->accel_n == CONFIG_INSPACE_DOWNSAMPLING_TARGET_FREQ) {
                         sensor_downsamples[SENSOR_ACCEL].dropped_n++;
@@ -269,6 +324,8 @@ void *downsample_main(void *arg) {
 
                     break;
                 }
+#endif
+#ifdef CONFIG_INSPACE_TELEMETRY_SENSOR_GYRO
                 case SENSOR_GYRO: {
                     if (radio_telem->empty_buff->gyro_n == CONFIG_INSPACE_DOWNSAMPLING_TARGET_FREQ) {
                         sensor_downsamples[SENSOR_GYRO].dropped_n++;
@@ -307,6 +364,8 @@ void *downsample_main(void *arg) {
 
                     break;
                 }
+#endif
+#ifdef CONFIG_INSPACE_TELEMETRY_SENSOR_MAG
                 case SENSOR_MAG: {
                     if (radio_telem->empty_buff->mag_n == CONFIG_INSPACE_DOWNSAMPLING_TARGET_FREQ) {
                         sensor_downsamples[SENSOR_MAG].dropped_n++;
@@ -352,6 +411,8 @@ void *downsample_main(void *arg) {
 
                     break;
                 }
+#endif
+#ifdef CONFIG_INSPACE_TELEMETRY_SENSOR_GNSS
                 case SENSOR_GNSS: {
                     if (radio_telem->empty_buff->gnss_n == CONFIG_INSPACE_DOWNSAMPLING_TARGET_FREQ) {
                         sensor_downsamples[SENSOR_GNSS].dropped_n++;
@@ -395,6 +456,8 @@ void *downsample_main(void *arg) {
 
                     break;
                 }
+#endif
+#ifdef CONFIG_INSPACE_TELEMETRY_SENSOR_ALT
                 case SENSOR_ALT: {
                     if (radio_telem->empty_buff->alt_n == CONFIG_INSPACE_DOWNSAMPLING_TARGET_FREQ) {
                         sensor_downsamples[SENSOR_ALT].dropped_n++;
@@ -432,6 +495,7 @@ void *downsample_main(void *arg) {
                     }
                     break;
                 }
+#endif
                 }
             }
         }
