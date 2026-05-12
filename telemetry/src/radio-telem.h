@@ -19,10 +19,10 @@ typedef struct {
 } radio_raw_data;
 
 typedef struct {
-    radio_raw_data *full;
-    pthread_mutex_t full_mux;
-    radio_raw_data *empty;
-    pthread_mutex_t empty_mux;
+    radio_raw_data *buff;
+    pthread_mutex_t buff_mux;
+    sem_t swapped;
+    radio_raw_data *empty_buff; /* internal to the downsampler thread */
 } radio_telem_t;
 
 #endif

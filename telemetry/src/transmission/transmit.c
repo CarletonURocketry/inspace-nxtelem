@@ -1,9 +1,12 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <math.h>
+#include <poll.h>
 #include <pthread.h>
+#include <stdbool.h>
 #include <string.h>
 #include <sys/ioctl.h>
+#include <time.h>
 #include <unistd.h>
 
 #if defined(CONFIG_LPWAN_RN2XX3)
@@ -29,6 +32,12 @@
 /* Cast an error to a void pointer */
 
 #define err_to_ptr(err) ((void *)((err)))
+#define TRANSMIT_PERIOD_MS 700
+
+enum status_topics_e {
+    STATUS_TOPIC = 0,
+    ERROR_TOPIC = 1,
+};
 
 static int transmit(int radio, uint8_t *packet, size_t packet_size);
 static int configure_radio(int fd, struct radio_options const *config);
@@ -40,6 +49,17 @@ void *transmit_main(void *arg) {
     struct transmit_args *unpacked_args = (struct transmit_args *)arg;
     radio_telem_t *radio_telem = unpacked_args->radio_telem;
     uint32_t seq_num = 0;
+
+    ORB_DECLARE(status_message);
+    ORB_DECLARE(error_message);
+    const struct orb_metadata *status_metas[] = {
+        [STATUS_TOPIC] = ORB_ID(status_message),
+        [ERROR_TOPIC] = ORB_ID(error_message),
+    };
+    struct pollfd status_fds[] = {
+        [STATUS_TOPIC] = {.fd = -1, .events = POLLIN, .revents = 0},
+        [ERROR_TOPIC] = {.fd = -1, .events = POLLIN, .revents = 0},
+    };
 
     ininfo("Transmit thread started.\n");
 
@@ -57,26 +77,31 @@ void *transmit_main(void *arg) {
         goto err_cleanup;
     }
 
+    for (int i = 0; i < sizeof(status_fds) / sizeof(status_fds[0]); i++) {
+        status_fds[i].fd = orb_subscribe(status_metas[i]);
+        if (status_fds[i].fd < 0) {
+            err = errno;
+            inerr("Failed to subscribe to '%s': %d\n", status_metas[i]->o_name, err);
+        }
+    }
+
     /* Transmit forever, regardless of rocket flight state. */
 
     for (;;) {
-        pthread_mutex_lock(&radio_telem->empty_mux);
-        pthread_mutex_lock(&radio_telem->full_mux);
+        struct timespec cycle_start;
+        clock_gettime(CLOCK_MONOTONIC, &cycle_start);
 
-        /* Swap the pointers of the empty and full data */
-        radio_raw_data *temp = radio_telem->empty;
-        radio_telem->empty = radio_telem->full;
-        radio_telem->full = temp;
-
-        /* Reset the new empty buffer's counters */
-        radio_telem->empty->gnss_n = -1;
-        radio_telem->empty->alt_n = -1;
-        radio_telem->empty->mag_n = -1;
-        radio_telem->empty->accel_n = -1;
-        radio_telem->empty->gyro_n = -1;
-
-        /* release the empty mutex, collector can lock it and start collecting again */
-        pthread_mutex_unlock(&radio_telem->empty_mux);
+        pthread_mutex_lock(&radio_telem->buff_mux);
+        radio_raw_data *temp = radio_telem->buff;
+        radio_telem->buff = radio_telem->empty_buff;
+        radio_telem->empty_buff = temp;
+        radio_telem->empty_buff->accel_n = 0;
+        radio_telem->empty_buff->gyro_n = 0;
+        radio_telem->empty_buff->mag_n = 0;
+        radio_telem->empty_buff->gnss_n = 0;
+        radio_telem->empty_buff->alt_n = 0;
+        pthread_mutex_unlock(&radio_telem->buff_mux);
+        sem_post(&radio_telem->swapped);
 
         /* create a new packet buffer */
         uint8_t packet_buffer[PACKET_MAX_SIZE];
@@ -89,17 +114,67 @@ void *transmit_main(void *arg) {
         pkt_hdr_t *header = (pkt_hdr_t *)packet_ptr;
         packet_ptr = pkt_init(packet_ptr, seq_num++, mission_time_ms);
 
-        if (radio_telem->full->gnss_n > 0) {
+        err = poll(status_fds, sizeof(status_fds) / sizeof(status_fds[0]), 0);
+        if (err < 0) {
+            inwarn("Status poll failed: %d\n", errno);
+            continue;
+        }
+
+        if (status_fds[STATUS_TOPIC].revents & POLLIN) {
+            struct status_message latest_status;
+            err = orb_copy(ORB_ID(status_message), status_fds[STATUS_TOPIC].fd, &latest_status);
+            if (err < 0) {
+                inwarn("Failed to read status message: %d\n", errno);
+            } else {
+                struct status_blk_t status_blk;
+                err = orb_status_pkt(&latest_status, &status_blk, header->timestamp);
+                if (err == 0) {
+                    blk_hdr_t status_hdr = {.type = DATA_STATUS, .count = 1};
+                    header->type_count++;
+                    memcpy(packet_ptr, &status_hdr, sizeof(status_hdr));
+                    packet_ptr += sizeof(status_hdr);
+                    memcpy(packet_ptr, &status_blk, sizeof(status_blk));
+                    packet_ptr += sizeof(status_blk);
+                } else {
+                    inerr("Failed to append status block: %d\n", EINVAL);
+                }
+            }
+        }
+        status_fds[STATUS_TOPIC].revents = 0;
+
+        if (status_fds[ERROR_TOPIC].revents & POLLIN) {
+            struct error_message latest_error;
+            err = orb_copy(ORB_ID(error_message), status_fds[ERROR_TOPIC].fd, &latest_error);
+            if (err < 0) {
+                inwarn("Failed to read error message: %d\n", errno);
+            } else {
+                struct error_blk_t error_blk;
+                err = orb_error_pkt(&latest_error, &error_blk, header->timestamp);
+                if (err == 0) {
+                    blk_hdr_t error_hdr = {.type = DATA_ERROR, .count = 1};
+                    header->type_count++;
+                    memcpy(packet_ptr, &error_hdr, sizeof(error_hdr));
+                    packet_ptr += sizeof(error_hdr);
+                    memcpy(packet_ptr, &error_blk, sizeof(error_blk));
+                    packet_ptr += sizeof(error_blk);
+                } else {
+                    inerr("Failed to append error block: %d\n", EINVAL);
+                }
+            }
+        }
+        status_fds[ERROR_TOPIC].revents = 0;
+
+        if (radio_telem->buff->gnss_n > 0) {
             header->type_count++;
             blk_hdr_t blk_hdr = {
                 .type = DATA_LAT_LONG,
-                .count = radio_telem->full->gnss_n,
+                .count = radio_telem->buff->gnss_n,
             };
             memcpy(packet_ptr, &blk_hdr, sizeof(blk_hdr));
             packet_ptr += sizeof(blk_hdr);
-            for (int i = 0; i < radio_telem->full->gnss_n; i++) {
+            for (int i = 0; i < radio_telem->buff->gnss_n; i++) {
                 struct coord_blk_t coord_blk;
-                if (orb_gnss_pkt(&radio_telem->full->gnss[i], &coord_blk, header->timestamp)) {
+                if (orb_gnss_pkt(&radio_telem->buff->gnss[i], &coord_blk, header->timestamp)) {
                     inerr("Failed to create GNSS block %d\n", i);
                     continue;
                 }
@@ -109,17 +184,17 @@ void *transmit_main(void *arg) {
             }
         }
 
-        if (radio_telem->full->alt_n > 0) {
+        if (radio_telem->buff->alt_n > 0) {
             header->type_count++;
             blk_hdr_t blk_hdr = {
-                .type = DATA_ALT_LAUNCH,
-                .count = radio_telem->full->alt_n,
+                .type = DATA_ALT_SEA,
+                .count = radio_telem->buff->alt_n,
             };
             memcpy(packet_ptr, &blk_hdr, sizeof(blk_hdr));
             packet_ptr += sizeof(blk_hdr);
-            for (int i = 0; i < radio_telem->full->alt_n; i++) {
+            for (int i = 0; i < radio_telem->buff->alt_n; i++) {
                 struct alt_blk_t alt_blk;
-                if (orb_alt_pkt(&radio_telem->full->alt[i], &alt_blk, header->timestamp)) {
+                if (orb_alt_pkt(&radio_telem->buff->alt[i], &alt_blk, header->timestamp)) {
                     inerr("Failed to create Alt block %d\n", i);
                     continue;
                 }
@@ -128,17 +203,17 @@ void *transmit_main(void *arg) {
             }
         }
 
-        if (radio_telem->full->mag_n > 0) {
+        if (radio_telem->buff->mag_n > 0) {
             header->type_count++;
             blk_hdr_t blk_hdr = {
                 .type = DATA_MAGNETIC,
-                .count = radio_telem->full->mag_n,
+                .count = radio_telem->buff->mag_n,
             };
             memcpy(packet_ptr, &blk_hdr, sizeof(blk_hdr));
             packet_ptr += sizeof(blk_hdr);
-            for (int i = 0; i < radio_telem->full->mag_n; i++) {
+            for (int i = 0; i < radio_telem->buff->mag_n; i++) {
                 struct mag_blk_t mag_blk;
-                if (orb_mag_pkt(&radio_telem->full->mag[i], &mag_blk, header->timestamp)) {
+                if (orb_mag_pkt(&radio_telem->buff->mag[i], &mag_blk, header->timestamp)) {
                     inerr("Failed to create Mag block %d\n", i);
                     continue;
                 }
@@ -147,17 +222,17 @@ void *transmit_main(void *arg) {
             }
         }
 
-        if (radio_telem->full->accel_n > 0) {
+        if (radio_telem->buff->accel_n > 0) {
             header->type_count++;
             blk_hdr_t blk_hdr = {
                 .type = DATA_ACCEL_REL,
-                .count = radio_telem->full->accel_n,
+                .count = radio_telem->buff->accel_n,
             };
             memcpy(packet_ptr, &blk_hdr, sizeof(blk_hdr));
             packet_ptr += sizeof(blk_hdr);
-            for (int i = 0; i < radio_telem->full->accel_n; i++) {
+            for (int i = 0; i < radio_telem->buff->accel_n; i++) {
                 struct accel_blk_t accel_blk;
-                if (orb_accel_pkt(&radio_telem->full->accel[i], &accel_blk, header->timestamp)) {
+                if (orb_accel_pkt(&radio_telem->buff->accel[i], &accel_blk, header->timestamp)) {
                     inerr("Failed to create Accel block %d\n", i);
                     continue;
                 }
@@ -166,17 +241,17 @@ void *transmit_main(void *arg) {
             }
         }
 
-        if (radio_telem->full->gyro_n > 0) {
+        if (radio_telem->buff->gyro_n > 0) {
             header->type_count++;
             blk_hdr_t blk_hdr = {
                 .type = DATA_ANGULAR_VEL,
-                .count = radio_telem->full->gyro_n,
+                .count = radio_telem->buff->gyro_n,
             };
             memcpy(packet_ptr, &blk_hdr, sizeof(blk_hdr));
             packet_ptr += sizeof(blk_hdr);
-            for (int i = 0; i < radio_telem->full->gyro_n; i++) {
+            for (int i = 0; i < radio_telem->buff->gyro_n; i++) {
                 struct ang_vel_blk_t ang_vel_blk;
-                if (orb_ang_vel_pkt(&radio_telem->full->gyro[i], &ang_vel_blk, header->timestamp)) {
+                if (orb_ang_vel_pkt(&radio_telem->buff->gyro[i], &ang_vel_blk, header->timestamp)) {
                     inerr("Failed to create Ang vel block %d\n", i);
                     continue;
                 }
@@ -185,22 +260,34 @@ void *transmit_main(void *arg) {
             }
         }
 
-        pthread_mutex_unlock(&radio_telem->full_mux);
         size_t packet_size = packet_ptr - packet_buffer;
         if (packet_size > PACKET_MAX_SIZE) {
-            /* if the packet size is too large we are cooked, this should never happen if the downsampling variable is
-             * set correctly */
             inerr("Packet size is too large: %zu\n", packet_size);
-            continue;
-        } else if (packet_size == sizeof(pkt_hdr_t)) {
-            inerr("Packet does not contain any data\n");
-            /* this sleep is needed to avoid priority inversion between the 2 threads, this is a problem I didn't find a
-             * good soluition to */
-            sleep(1);
-            continue;
+        } else if (packet_size > sizeof(pkt_hdr_t)) {
+            ininfo("Transmitting packet #%u of size %zu bytes. Accel: %d, Gyro: %d, Mag: %d, GNSS: %d, Alt: %d\n",
+                   header->packet_num, packet_size, radio_telem->buff->accel_n, radio_telem->buff->gyro_n,
+                   radio_telem->buff->mag_n, radio_telem->buff->gnss_n, radio_telem->buff->alt_n);
+            err = transmit(radio, packet_buffer, packet_size);
+            if (err < 0) {
+                inerr("Error transmitting packet: %d\n", -err);
+            }
         }
-        ininfo("Packet size: %zu\n", packet_size);
-        transmit(radio, packet_buffer, packet_size);
+
+        /* for the sake of making the dynamic rate adjustment work, we need at least one static thing as an anchor, imo
+         * the choice should be transmission time */
+        struct timespec cycle_end;
+        clock_gettime(CLOCK_MONOTONIC, &cycle_end);
+        long elapsed_ms =
+            (cycle_end.tv_sec - cycle_start.tv_sec) * 1000 + (cycle_end.tv_nsec - cycle_start.tv_nsec) / 1000000;
+        ininfo("Transmission cycle time: %ld ms\n", elapsed_ms);
+        long remaining_ms = TRANSMIT_PERIOD_MS - elapsed_ms;
+        if (remaining_ms > 0) {
+            struct timespec sleep_time = {
+                .tv_sec = remaining_ms / 1000,
+                .tv_nsec = (remaining_ms % 1000) * 1000000,
+            };
+            nanosleep(&sleep_time, NULL);
+        }
     }
 
 err_cleanup:
