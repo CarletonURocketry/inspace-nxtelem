@@ -34,6 +34,8 @@ static int usb_init(void);
 static int read_command(int usbfd, char *buf, size_t n);
 static void print_config(int usbfd, struct config_options const *config);
 static char *get_first_arg(char *command);
+static void print_state_config(int usbfd, struct nv_flightstate const *flight_state);
+static void print_state(int usbfd, struct nv_flightstate const *state);
 
 /* Main shell thread for configuring parameters in the EEPROM and controlling the operation of the flight computer.
  * @param arg The arguments struct for this shell, of type `struct shell_args`
@@ -42,8 +44,8 @@ static char *get_first_arg(char *command);
 void *shell_main(void *arg) {
     int err;
     int usbfd;
-    struct config_options modified;
-    struct config_options disk;
+    struct nv_storage modified;
+    struct nv_storage disk;
     char command_in[COMMAND_IN_SIZE];
     (void)(arg);
 
@@ -70,7 +72,7 @@ void *shell_main(void *arg) {
 
     /* Load disk for modification */
 
-    if (config_get(&modified)) {
+    if (config_get(&modified.config)) {
         inerr("Couldn't get initial disk contents\n");
     }
 
@@ -102,26 +104,37 @@ void *shell_main(void *arg) {
         } else if (strstr(command_in, "disk")) {
             /* Shows the current configuration stored in EEPROM */
 
-            if (config_get(&disk)) {
-                dprintf(usbfd, "Couldn't read EEPROM\n");
+            if (config_get(&disk.config)) {
+                dprintf(usbfd, "Couldn't read radio EEPROM\n");
             }
-            print_config(usbfd, &disk);
+            print_config(usbfd, &disk.config);
+            if (flightstate_read(&disk.fstate)) {
+                dprintf(usbfd, "Couldn't read state EEPROM\n");
+            }
+            print_state(usbfd, &disk.fstate);
         } else if (strstr(command_in, "current")) {
             /* Shows the current configuration stored in RAM (modified) */
 
-            print_config(usbfd, &modified);
+            print_config(usbfd, &modified.config);
+            print_state(usbfd, &modified.fstate);
         } else if (strstr(command_in, "load")) {
             /* Loads the disk configuration into the modifiable copy */
 
-            if (config_get(&modified)) {
-                dprintf(usbfd, "Couldn't read EEPROM\n");
+            if (config_get(&modified.config)) {
+                dprintf(usbfd, "Couldn't read radio EEPROM\n");
+            }
+            if (flightstate_read(&modified.fstate)) {
+                dprintf(usbfd, "Couldn't read state EEPROM\n");
             }
             dprintf(usbfd, "Configuration loaded!\n");
         } else if (strstr(command_in, "save")) {
             /* Saves the entire modified configuration to EEPROM */
 
-            if (config_set(&modified)) {
-                dprintf(usbfd, "Couldn't write to EEPROM\n");
+            if (config_set(&modified.config)) {
+                dprintf(usbfd, "Couldn't write to radio EEPROM\n");
+            }
+            if (flightstate_write(&modified.fstate)) {
+                dprintf(usbfd, "Couldn't write to state EEPROM\n");
             }
             dprintf(usbfd, "Configuration saved!\n");
         } else if (strstr(command_in, "help")) {
@@ -133,52 +146,62 @@ void *shell_main(void *arg) {
         /* Commands for setting radio parameters */
 
         else if (strstr(command_in, "frequency")) {
-            modified.radio.freq = strtoul(get_first_arg(command_in), NULL, 10);
-            print_config(usbfd, &modified);
+            modified.config.radio.freq = strtoul(get_first_arg(command_in), NULL, 10);
+            print_config(usbfd, &modified.config);
         } else if (strstr(command_in, "preamble")) {
-            modified.radio.preamble = strtoul(get_first_arg(command_in), NULL, 10);
-            print_config(usbfd, &modified);
+            modified.config.radio.preamble = strtoul(get_first_arg(command_in), NULL, 10);
+            print_config(usbfd, &modified.config);
         } else if (strstr(command_in, "spread")) {
-            modified.radio.spread = strtoul(get_first_arg(command_in), NULL, 10);
-            print_config(usbfd, &modified);
+            modified.config.radio.spread = strtoul(get_first_arg(command_in), NULL, 10);
+            print_config(usbfd, &modified.config);
         } else if (strstr(command_in, "txpwr")) {
-            modified.radio.txpwr = atoi(get_first_arg(command_in));
-            print_config(usbfd, &modified);
+            modified.config.radio.txpwr = atoi(get_first_arg(command_in));
+            print_config(usbfd, &modified.config);
         } else if (strstr(command_in, "bandwidth")) {
-            modified.radio.bw = strtoul(get_first_arg(command_in), NULL, 10);
-            print_config(usbfd, &modified);
+            modified.config.radio.bw = strtoul(get_first_arg(command_in), NULL, 10);
+            print_config(usbfd, &modified.config);
         } else if (strstr(command_in, "sync")) {
-            modified.radio.sync = strtoul(get_first_arg(command_in), NULL, 16);
-            print_config(usbfd, &modified);
+            modified.config.radio.sync = strtoul(get_first_arg(command_in), NULL, 16);
+            print_config(usbfd, &modified.config);
         } else if (strstr(command_in, "sync")) {
-            modified.radio.sync = strtoul(get_first_arg(command_in), NULL, 16);
-            print_config(usbfd, &modified);
+            modified.config.radio.sync = strtoul(get_first_arg(command_in), NULL, 16);
+            print_config(usbfd, &modified.config);
         } else if (strstr(command_in, "crc")) {
-            modified.radio.crc = atoi(get_first_arg(command_in));
-            print_config(usbfd, &modified);
+            modified.config.radio.crc = atoi(get_first_arg(command_in));
+            print_config(usbfd, &modified.config);
         } else if (strstr(command_in, "iqi")) {
-            modified.radio.iqi = atoi(get_first_arg(command_in));
-            print_config(usbfd, &modified);
+            modified.config.radio.iqi = atoi(get_first_arg(command_in));
+            print_config(usbfd, &modified.config);
         } else if (strstr(command_in, "coder")) {
             char *firstarg = get_first_arg(command_in);
             if (strstr(firstarg, "4/5")) {
-                modified.radio.cr = RN2XX3_CR_4_5;
+                modified.config.radio.cr = RN2XX3_CR_4_5;
             } else if (strstr(firstarg, "4/6")) {
-                modified.radio.cr = RN2XX3_CR_4_6;
+                modified.config.radio.cr = RN2XX3_CR_4_6;
             } else if (strstr(firstarg, "4/7")) {
-                modified.radio.cr = RN2XX3_CR_4_7;
+                modified.config.radio.cr = RN2XX3_CR_4_7;
             } else if (strstr(firstarg, "4/8")) {
-                modified.radio.cr = RN2XX3_CR_4_8;
+                modified.config.radio.cr = RN2XX3_CR_4_8;
             } else {
                 dprintf(usbfd, "Unknown coding rate: %s\n", firstarg);
             }
-            print_config(usbfd, &modified);
+            print_config(usbfd, &modified.config);
+        }
+
+        /* Flight state options */
+
+        else if (strstr(command_in, "state")) {
+            modified.fstate.flight_state = strtoul(get_first_arg(command_in), NULL, 10);
+            print_state(usbfd, &modified.fstate);
+        } else if (strstr(command_in, "sub")) {
+            modified.fstate.flight_substate = strtoul(get_first_arg(command_in), NULL, 10);
+            print_state(usbfd, &modified.fstate);
         }
 
         /* Default case */
 
         else {
-            dprintf(usbfd, "Unkown command: %s\n", command_in);
+            dprintf(usbfd, "Unknown command: %s\n", command_in);
         }
     }
 
@@ -292,8 +315,18 @@ static void print_radio_config(int usbfd, struct radio_options const *config) {
     dprintf(usbfd, "}\n");
 }
 
+static void print_state_config(int usbfd, struct nv_flightstate const *flight_state) {
+    dprintf(usbfd, "state {\n");
+    dprintf(usbfd, "\tState: %u\n", flight_state->flight_state);
+    dprintf(usbfd, "\tSub State: %u\n", flight_state->flight_substate);
+    dprintf(usbfd, "}\n");
+}
+
 /* Prints the configuration parameter struct in a user legible way */
 static void print_config(int usbfd, struct config_options const *config) { print_radio_config(usbfd, &config->radio); }
+
+/* Prints the flight state struct in a user legible way */
+static void print_state(int usbfd, struct nv_flightstate const *state) { print_state_config(usbfd, state); }
 
 /* Gets the first argument in the command (based on space separation). */
 static char *get_first_arg(char *command) {

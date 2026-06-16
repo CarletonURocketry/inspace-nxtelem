@@ -218,6 +218,13 @@ config INSPACE_TELEMETRY_SENSOR_BARO
 		Subscribe to the barometer uORB topic so the telemetry application can
 		configure its sampling frequency.
 
+config INSPACE_TELEMETRY_SENSOR_ALT
+	bool "Enable altitude"
+    default y
+	---help---
+		Subscribe to the altitude uORB topic so the telemetry application can
+		configure its sampling frequency.
+
 config INSPACE_TELEMETRY_ACCEL_SF
 	int "Accelerometer sampling frequency"
 	depends on INSPACE_TELEMETRY_SENSOR_ACCEL
@@ -360,5 +367,12 @@ config INSPACE_TELEMETRY_ACCEL_AVG_FILT_SIZE
 	---help---
 		The number of samples the acceleration average filter will use at a
 		time.
+
+config INSPACE_DETECTOR_STARTUP_SLEEP
+	int "Detector startup sleep"
+	default 5
+	range 0 100
+	---help---
+		The number of seconds to sleep at start up for the detector.
 
 endif # INSPACE_TELEMETRY

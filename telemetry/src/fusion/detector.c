@@ -1,5 +1,6 @@
 #include <float.h>
 #include <math.h>
+#include <nuttx/sched.h>
 #include <stdint.h>
 
 #include "../syslogging.h"
@@ -142,6 +143,8 @@ void detector_init(struct detector *detector, uint64_t time) {
     /* This can be set manually, or will be set by the detector automatically */
     detector->elevation_set = 0;
     detector->elevation = 0.0f;
+
+    nxsched_sleep(CONFIG_INSPACE_DETECTOR_STARTUP_SLEEP);
 
     /* These should ideally be set manually before the detector is used, but these defaults may work */
     detector_set_state(detector, STATE_AIRBORNE, SUBSTATE_UNKNOWN);

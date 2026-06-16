@@ -13,22 +13,6 @@
 
 #define NV_STORAGE_CRC_INITIAL 0xFF
 
-/* A struct that defines the flight state */
-
-struct nv_flightstate {
-    uint8_t flight_state;    /* The flight state of the rocket, of type enum flight_state_e (a uint8_t so only one byte
-                                stored) */
-    uint8_t flight_substate; /* The flight substate of the rocket, of type enum flight_substate_e (a uint8_t so only one
-                                byte stored)*/
-    uint8_t crc;             /* A 8 bit cyclic redundancy check to make sure data is valid before being used */
-} __attribute__((packed, aligned(1)));
-
-/* A struct that defines how the non-volatile storage medium will store information */
-
-struct nv_storage {
-    struct config_options config; /* Flight computer configuration */
-    struct nv_flightstate fstate; /* The flight state with CRC */
-};
 
 #if defined(CONFIG_INSPACE_SYSLOG_OUTPUT)
 static const char *FLIGHT_STATES[] = {
@@ -73,7 +57,7 @@ uint8_t calculate_crc8_bitwise(const uint8_t *buf, size_t nbytes) {
  * @param Where to put the loaded contents of the NV storage
  * @return 0 on success, negative error code on failure
  */
-static int flightstate_read(struct nv_flightstate *contents) {
+int flightstate_read(struct nv_flightstate *contents) {
     int fd;
     ssize_t err;
 
@@ -116,7 +100,7 @@ early_ret:
  * @param contents The contents to write to NV storage
  * @return 0 on success, negative error code on failure
  */
-static int flightstate_write(struct nv_flightstate *contents) {
+int flightstate_write(struct nv_flightstate *contents) {
     int fd;
     ssize_t err;
 
@@ -183,7 +167,7 @@ int state_init(rocket_state_t *state) {
  * @param state The state to save in NV storage
  * @return 0 on success, or an error code if writing to NV storage failed
  */
-static int save_state(rocket_state_t *state) {
+int save_state(rocket_state_t *state) {
     struct nv_flightstate contents;
     int err;
 

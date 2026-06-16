@@ -11,4 +11,6 @@
 "\n    txpwr       Sets transmit power in dBm.\n    sync        Sets sync wor" \
 "d, provided in hexadecimal.\n    crc         Enable/disable cyclic redundanc" \
 "y check. Provide 0 or 1.\n    iqi         Enable/disable IQI. Provide 0 or 1" \
-".\n    coder       Set the coding rate, expressed as a fraction (i.e 4/5).\n"
+".\n    coder       Set the coding rate, expressed as a fraction (i.e 4/5).  " \
+"\n\nSTATE PARAMS\nstate       Set the flight state.\n    sub       Set the f" \
+"light substate. \n                                                 "
