@@ -54,6 +54,23 @@ struct config_options {
     struct radio_options radio;
 };
 
+/* A struct that defines the flight state */
+
+struct nv_flightstate {
+    uint8_t flight_state;    /* The flight state of the rocket, of type enum flight_state_e (a uint8_t so only one byte
+                                stored) */
+    uint8_t flight_substate; /* The flight substate of the rocket, of type enum flight_substate_e (a uint8_t so only one
+                                byte stored)*/
+    uint8_t crc;             /* A 8 bit cyclic redundancy check to make sure data is valid before being used */
+} __attribute__((packed, aligned(1)));
+
+/* A struct that defines how the non-volatile storage medium will store information */
+
+struct nv_storage {
+    struct config_options config; /* Flight computer configuration */
+    struct nv_flightstate fstate; /* The flight state with CRC */
+};
+
 int state_init(rocket_state_t *state);
 
 int state_set_flightstate(rocket_state_t *state, enum flight_state_e flight_state);
@@ -61,6 +78,11 @@ int state_get_flightstate(rocket_state_t *state, enum flight_state_e *flight_sta
 
 int state_set_flightsubstate(rocket_state_t *state, enum flight_substate_e flight_substate);
 int state_get_flightsubstate(rocket_state_t *state, enum flight_substate_e *flight_substate);
+
+int flightstate_read(struct nv_flightstate *contents);
+int flightstate_write(struct nv_flightstate *contents);
+
+int save_state(rocket_state_t *state);
 
 int config_get(struct config_options *config);
 int config_set(struct config_options *config);
