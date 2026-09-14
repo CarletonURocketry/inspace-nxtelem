@@ -247,10 +247,13 @@ void *logging_main(void *arg) {
                         }
                     } else {
                         write_retries++;
+                        /*
                         if (write_retries > MAX_WRITE_RETRIES) {
                             inerr("Too many consecutive write errors, giving up\n");
                             goto err_cleanup;
                         }
+                        */
+                        nxsig_sleep(1);
 
                         inwarn("File write error %d, retry %d/%d\n", log_err, write_retries, MAX_WRITE_RETRIES);
                         clearerr(active_file);
